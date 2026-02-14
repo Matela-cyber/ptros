@@ -1,0 +1,16 @@
+{
+  "rules": {
+    "tracks": {
+      "$uid": {
+        ".read": "root.child('users').child($uid).child('role').exists() || auth.uid === $uid",
+        ".write": "auth.uid === $uid"
+      }
+    },
+    "deliveryTracks": {
+      "$deliveryId": {
+        ".read": true,
+        ".write": "auth != null"
+      }
+    }
+  }
+}

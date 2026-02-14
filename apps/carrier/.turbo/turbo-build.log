@@ -1,0 +1,6 @@
+
+> @ptros/carrier@1.0.0 build C:\Users\Lenovo\Desktop\ptros-platform\apps\carrier
+> tsc && vite build
+
+[36mvite v5.4.21 [32mbuilding for production...[36m[39m
+transforming...

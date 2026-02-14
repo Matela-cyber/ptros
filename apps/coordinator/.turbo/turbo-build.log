@@ -1,0 +1,6 @@
+
+> @ptros/coordinator@1.0.0 build C:\Users\Lenovo\Desktop\ptros-platform\apps\coordinator
+> tsc && vite build
+
+src/LiveMap.tsx(319,38): error TS18046: 'error' is of type 'unknown'.
+ ELIFECYCLE  Command failed with exit code 2.
