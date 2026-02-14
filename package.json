@@ -1,0 +1,21 @@
+{
+  "name": "ptros-platform",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "turbo run dev",
+    "tunnel:carrier": "npx ngrok http 3001",
+    "build": "turbo run build",
+    "lint": "turbo run lint"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.22",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18",
+    "turbo": "^1.13.0"
+  },
+  "pnpm": {
+    "overrides": {}
+  }
+}

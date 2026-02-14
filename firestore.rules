@@ -1,0 +1,130 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ==================== HELPER FUNCTIONS ====================
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // Read role from the user's Firestore document (roles stored in /users/{uid})
+    function getUserRoleFromDoc(uid) {
+      return isAuth() ? get(/databases/$(database)/documents/users/$(uid)).data.role : null;
+    }
+
+    function isCoordinator() {
+      return isAuth() && getUserRoleFromDoc(request.auth.uid) == 'coordinator';
+    }
+
+    function isCarrier() {
+      return isAuth() && getUserRoleFromDoc(request.auth.uid) == 'carrier';
+    }
+
+    function isCustomer() {
+      return isAuth() && getUserRoleFromDoc(request.auth.uid) == 'customer';
+    }
+
+    
+
+    // ==================== USERS COLLECTION ====================
+    // All user profiles with role, approval status, location, etc.
+    match /users/{userId} {
+      // Everyone can read their own user document
+      allow read: if isAuth() && request.auth.uid == userId;
+      
+      // Everyone can write to their own document
+      allow write: if isAuth() && request.auth.uid == userId;
+      
+      // COORDINATOR: Read all users (for queries in CreateDelivery, PendingCarriers, LiveMap, etc.)
+      allow read: if isCoordinator();
+      
+      // COORDINATOR: Update any user (approve carriers, reject carriers, update status, etc.)
+      allow update: if isCoordinator();
+    }
+
+    // ==================== DELIVERIES COLLECTION ====================
+    // Main delivery records with status, location, OTP, assignments, milestones
+    match /deliveries/{deliveryId} {
+      
+      // COORDINATOR: Full access - create, read, update all deliveries
+      allow read: if isCoordinator();
+      allow write: if isCoordinator();
+      allow create: if isCoordinator();
+      allow update: if isCoordinator();
+
+      // CARRIER: Read deliveries assigned to them
+      allow read: if request.auth != null && resource.data.carrierId == request.auth.uid;
+
+      // CARRIER: Read available (pending & unassigned) deliveries
+      allow read: if request.auth != null && resource.data.status == 'pending' && resource.data.carrierId == null;
+
+      // CARRIER: Update own delivery status, location, OTP, pickup/delivery times
+      allow update: if isCarrier() && resource.data.carrierId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'location', 'otp', 'pickupTime', 'deliveryTime', 'updatedAt', 'statusHistory']);
+
+      // CUSTOMER: Read own deliveries (order history, tracking)
+      allow read: if isCustomer() && resource.data.customerId == request.auth.uid;
+
+      // CUSTOMER: Create their own delivery/order
+      allow create: if isCustomer() && request.resource.data.customerId == request.auth.uid;
+    }
+
+    // ==================== ORDERS COLLECTION ====================
+    // Order records (if used separately from deliveries)
+    match /orders/{orderId} {
+      
+      // COORDINATOR: Full access
+      allow read, write: if isCoordinator();
+      allow create: if isCoordinator();
+      allow update: if isCoordinator();
+      
+      // CARRIER: Read orders
+      allow read: if isCarrier();
+      
+      // CUSTOMER: Read own orders
+      allow read: if isCustomer() && resource.data.customerId == request.auth.uid;
+      
+      // CUSTOMER: Create own orders
+      allow create: if isCustomer() && request.resource.data.customerId == request.auth.uid;
+    }
+
+    // ==================== COORDINATORS COLLECTION ====================
+    // Coordinator profile and settings
+    match /coordinators/{coordinatorId} {
+      
+      // COORDINATOR: Read/write own profile
+      allow read, write: if isCoordinator() && request.auth.uid == coordinatorId;
+      
+      // COORDINATOR: Read other coordinators
+      allow read: if isCoordinator();
+    }
+
+    // ==================== CARRIERS COLLECTION ====================
+    // Carrier profile details
+    match /carriers/{carrierId} {
+      
+      // CARRIER: Read/write own profile
+      allow read, write: if isCarrier() && request.auth.uid == carrierId;
+      
+      // COORDINATOR: Read all carriers
+      allow read: if isCoordinator();
+    }
+
+    // ==================== CUSTOMERS COLLECTION ====================
+    // Customer profile details
+    match /customers/{customerId} {
+      
+      // CUSTOMER: Read/write own profile
+      allow read, write: if isCustomer() && request.auth.uid == customerId;
+      
+      // COORDINATOR: Read all customers
+      allow read: if isCoordinator();
+    }
+
+    // ==================== DEFAULT DENY ====================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

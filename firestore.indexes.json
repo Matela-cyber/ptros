@@ -1,0 +1,50 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "deliveries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "carrierId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "assignedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "deliveries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "carrierId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "deliveries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "carrierId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "deliveryTime", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "deliveries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "carrierId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "role", "order": "ASCENDING" },
+        { "fieldPath": "isApproved", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
