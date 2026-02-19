@@ -316,7 +316,7 @@ export default function LiveMap() {
     } catch (error) {
       console.error("❌ Error initializing map:", error);
       setMapError(
-        `Failed to initialize map: ${error.message}. Please check console for details.`
+        `Failed to initialize map: ${error instanceof Error ? error.message : String(error)}. Please check console for details.`
       );
     }
   }, [googleMapsLoaded, is3DEnabled]);

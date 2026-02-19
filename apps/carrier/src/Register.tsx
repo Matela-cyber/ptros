@@ -1,6 +1,9 @@
 import { useState, useRef } from "react";
 import { auth, db, storage } from "@config";
-import { createUserWithEmailAndPassword, fetchSignInMethodsForEmail } from "firebase/auth";
+import {
+  createUserWithEmailAndPassword,
+  fetchSignInMethodsForEmail,
+} from "firebase/auth";
 import { setDoc, doc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { Link, useNavigate } from "react-router-dom";
@@ -46,102 +49,83 @@ export default function Register() {
   const resizeAndCropImage = (file: File): Promise<File> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      
+
       reader.onload = (event) => {
         const img = new Image();
         img.src = event.target?.result as string;
-        
+
         img.onload = () => {
           // Create canvas for processing
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
+
           if (!ctx) {
             reject(new Error("Could not get canvas context"));
             return;
           }
-          
+
           // Set target size for the final image
           const targetSize = 200;
           canvas.width = targetSize;
           canvas.height = targetSize;
-          
+
           // Calculate scaling and cropping
           const width = img.width;
           const height = img.height;
-          
+
           // Determine the shorter side to maintain aspect ratio while cropping
           const minSide = Math.min(width, height);
-          
+
           // Calculate source dimensions for cropping (centered)
           const sx = (width - minSide) / 2;
           const sy = (height - minSide) / 2;
-          
+
           // Draw the image cropped and resized
           ctx.drawImage(
-            img, 
-            sx, sy,
-            minSide, minSide,
-            0, 0,
-            targetSize, targetSize
+            img,
+            sx,
+            sy,
+            minSide,
+            minSide,
+            0,
+            0,
+            targetSize,
+            targetSize,
           );
-          
+
           // Convert canvas to Blob, then to File
-          canvas.toBlob((blob) => {
-            if (blob) {
-              const timestamp = Date.now();
-              const filename = `profile_${timestamp}.jpg`;
-              
-              const resizedFile = new File([blob], filename, {
-                type: 'image/jpeg',
-                lastModified: Date.now(),
-              });
-              resolve(resizedFile);
-            } else {
-              reject(new Error("Failed to create image blob"));
-            }
-          }, 'image/jpeg', 0.85);
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const timestamp = Date.now();
+                const filename = `profile_${timestamp}.jpg`;
+
+                const resizedFile = new File([blob], filename, {
+                  type: "image/jpeg",
+                  lastModified: Date.now(),
+                });
+                resolve(resizedFile);
+              } else {
+                reject(new Error("Failed to create image blob"));
+              }
+            },
+            "image/jpeg",
+            0.85,
+          );
         };
-        
+
         img.onerror = () => reject(new Error("Failed to load image"));
       };
-      
+
       reader.onerror = () => reject(new Error("Failed to read file"));
       reader.readAsDataURL(file);
     });
   };
 
-  // Test storage function
-  const testStorage = async () => {
-    console.log("🧪 Testing Firebase Storage...");
-    try {
-      // Create a simple test file
-      const testContent = `Test upload at ${new Date().toISOString()}`;
-      const testBlob = new Blob([testContent], { type: "text/plain" });
-      const testFile = new File([testBlob], "test.txt");
-      
-      console.log("📤 Uploading test file...");
-      
-      // Upload to carriers/test folder
-      const testRef = ref(storage, "carriers/test_upload.txt");
-      await uploadBytes(testRef, testFile);
-      
-      const url = await getDownloadURL(testRef);
-      console.log("✅ Storage test successful!");
-      console.log("📎 Download URL:", url);
-      
-      alert(`✅ Storage test successful!\nFile uploaded to: carriers/test_upload.txt`);
-      
-    } catch (error: any) {
-      console.error("❌ Storage test failed:", error);
-      alert(`❌ Storage test failed:\n${error.code}\n${error.message}`);
-    }
-  };
-
   const handleChange = async (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >
+    >,
   ) => {
     const { name, value, type } = e.target;
 
@@ -153,39 +137,45 @@ export default function Register() {
       if (file) {
         setIsProcessingImage(true);
         setError("");
-        
+
         try {
           // Validate file type
-          const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+          const validTypes = [
+            "image/jpeg",
+            "image/jpg",
+            "image/png",
+            "image/webp",
+            "image/gif",
+          ];
           if (!validTypes.includes(file.type)) {
             setError("Please upload an image file (JPEG, PNG, WebP, GIF)");
             setIsProcessingImage(false);
             return;
           }
-          
+
           // Validate file size (max 5MB)
           if (file.size > 5 * 1024 * 1024) {
             setError("Image size should be less than 5MB");
             setIsProcessingImage(false);
             return;
           }
-          
+
           console.log("🖼️ Processing image...");
-          
+
           // Resize and crop the image
           const resizedFile = await resizeAndCropImage(file);
-          
-          console.log("✅ Image processed successfully");
+
+          console.log("Image processed successfully");
           console.log("Original size:", file.size, "bytes");
           console.log("Processed size:", resizedFile.size, "bytes");
-          
+
           if (resizedFile.size === 0) {
             throw new Error("Processed image is empty");
           }
-          
+
           // Update form data
           setFormData((prev) => ({ ...prev, profilePicture: resizedFile }));
-          
+
           // Create preview
           const reader = new FileReader();
           reader.onloadend = () => {
@@ -193,7 +183,6 @@ export default function Register() {
             setIsProcessingImage(false);
           };
           reader.readAsDataURL(resizedFile);
-          
         } catch (err: any) {
           console.error("Image processing error:", err);
           setError("Failed to process image. Please try another image.");
@@ -224,22 +213,22 @@ export default function Register() {
       setError("Full name is required");
       return false;
     }
-    
+
     if (!formData.email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
       setError("Valid email is required");
       return false;
     }
-    
+
     if (formData.password.length < 8) {
       setError("Password must be at least 8 characters");
       return false;
     }
-    
+
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords do not match");
       return false;
     }
-    
+
     return true;
   };
 
@@ -248,12 +237,12 @@ export default function Register() {
       setError("Valid phone number is required");
       return false;
     }
-    
+
     if (!formData.address.trim()) {
       setError("Physical address is required");
       return false;
     }
-    
+
     return true;
   };
 
@@ -274,7 +263,7 @@ export default function Register() {
     setLoading(true);
     setError("");
 
-    console.log("🚀 Starting registration process...");
+    console.log("Starting registration process...");
 
     if (!formData.acceptTerms) {
       setError("You must accept the terms and conditions");
@@ -284,26 +273,26 @@ export default function Register() {
 
     try {
       // 1. Create Firebase Auth user
-      console.log("👤 Step 1: Creating Firebase Auth user...");
+      console.log("Step 1: Creating Firebase Auth user...");
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         formData.email,
-        formData.password
+        formData.password,
       );
-      
+
       const userId = userCredential.user.uid;
-      console.log("✅ Auth user created. User ID:", userId);
+      console.log("Auth user created. User ID:", userId);
 
       // 2. Upload profile picture (MANDATORY)
       if (!formData.profilePicture) {
         throw new Error("Profile picture is required");
       }
 
-      console.log("📤 Step 2: Uploading profile picture...");
+      console.log("Step 2: Uploading profile picture...");
       console.log("File details:", {
         name: formData.profilePicture.name,
         size: formData.profilePicture.size,
-        type: formData.profilePicture.type
+        type: formData.profilePicture.type,
       });
 
       if (formData.profilePicture.size === 0) {
@@ -313,18 +302,18 @@ export default function Register() {
       // Create storage reference
       const storagePath = `carriers/${userId}/profile.jpg`;
       console.log("Storage path:", storagePath);
-      
+
       const storageRef = ref(storage, storagePath);
-      
+
       console.log("Uploading file to Firebase Storage...");
       // Upload the file
       await uploadBytes(storageRef, formData.profilePicture);
-      console.log("✅ File uploaded successfully!");
-      
+      console.log("File uploaded successfully");
+
       // Get the download URL
       console.log("🔗 Getting download URL...");
       const photoURL = await getDownloadURL(storageRef);
-      console.log("✅ Download URL obtained");
+      console.log("Download URL obtained");
 
       // 3. Save detailed profile to Firestore
       console.log("💾 Saving user data to Firestore...");
@@ -352,13 +341,13 @@ export default function Register() {
         hasProfilePicture: true,
       });
 
-      console.log("✅ Firestore document saved!");
+      console.log("Firestore document saved");
 
       // 4. Show success and redirect
       alert(
-        "✅ Registration Successful!\n\n" +
-        "Your application has been submitted. Please wait for coordinator approval.\n\n" +
-        "Your profile picture has been uploaded successfully."
+        "Registration Successful!\n\n" +
+          "Your application has been submitted. Please wait for coordinator approval.\n\n" +
+          "Your profile picture has been uploaded successfully.",
       );
 
       console.log("🎉 Registration complete! Redirecting to login...");
@@ -366,33 +355,42 @@ export default function Register() {
       // 5. Redirect to login
       navigate("/login");
     } catch (err: any) {
-      console.error("❌ Registration error:", err);
+      console.error("Registration error:", err);
 
       if (err.code === "auth/email-already-in-use") {
         try {
-          const methods = await fetchSignInMethodsForEmail(auth, formData.email);
+          const methods = await fetchSignInMethodsForEmail(
+            auth,
+            formData.email,
+          );
           console.log("Existing sign-in methods for email:", methods);
           if (methods.length === 0) {
-            setError("This email is already registered. Please login or use a different email.");
+            setError(
+              "This email is already registered. Please login or use a different email.",
+            );
           } else {
             setError(
-              `This email is already registered. Sign-in methods: ${methods.join(', ')}. If you used a password, try signing in or reset your password from the login screen.`
+              `This email is already registered. Sign-in methods: ${methods.join(", ")}. If you used a password, try signing in or reset your password from the login screen.`,
             );
           }
         } catch (fetchErr) {
           console.error("Error fetching sign-in methods:", fetchErr);
-          setError("This email is already registered. Please login or use a different email.");
+          setError(
+            "This email is already registered. Please login or use a different email.",
+          );
         }
       } else if (err.code === "auth/weak-password") {
         setError(
-          "Password is too weak. Use at least 8 characters with letters and numbers."
+          "Password is too weak. Use at least 8 characters with letters and numbers.",
         );
       } else if (err.code === "auth/invalid-email") {
         setError("Invalid email address. Please enter a valid email.");
       } else if (err.code === "storage/unknown") {
         setError("Storage error. Please check if Firebase Storage is enabled.");
       } else if (err.code === "storage/unauthorized") {
-        setError("Storage permission denied. Please check Firebase Storage rules.");
+        setError(
+          "Storage permission denied. Please check Firebase Storage rules.",
+        );
       } else {
         setError(err.message || "Registration failed. Please try again.");
       }
@@ -428,8 +426,8 @@ export default function Register() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+      <div className="max-w-4xl mx-auto py-8 px-4">
         {/* Header */}
         <div className="text-center mb-8">
           <Link to="/" className="inline-block mb-4">
@@ -493,23 +491,16 @@ export default function Register() {
         {/* Form Container */}
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
           {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 p-4 m-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <span className="text-red-500">⚠️</span>
-                </div>
-                <div className="ml-3">
-                  <p className="text-red-700">{error}</p>
-                  {error.includes("already registered") && (
-                    <Link
-                      to="/login"
-                      className="text-blue-600 hover:text-blue-800 font-medium text-sm block mt-1"
-                    >
-                      Click here to login instead
-                    </Link>
-                  )}
-                </div>
-              </div>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 m-6">
+              <p className="text-red-700">{error}</p>
+              {error.includes("already registered") && (
+                <Link
+                  to="/login"
+                  className="text-blue-600 hover:text-blue-800 font-medium text-sm block mt-1"
+                >
+                  Click here to login instead
+                </Link>
+              )}
             </div>
           )}
 
@@ -524,8 +515,7 @@ export default function Register() {
                 <div className="space-y-6">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Profile Picture *
-                      <span className="text-red-500 ml-1">(Required)</span>
+                      Profile Picture <span className="text-red-500">*</span>
                     </label>
                     <div className="flex items-center space-x-4">
                       <div className="flex-shrink-0">
@@ -557,7 +547,9 @@ export default function Register() {
                         ) : (
                           <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center border-2 border-dashed border-gray-300">
                             <div className="text-center">
-                              <span className="text-gray-400 block">Upload Photo</span>
+                              <span className="text-gray-500 block text-xs">
+                                Upload photo
+                              </span>
                               <span className="text-xs text-red-500 block mt-1">
                                 Required
                               </span>
@@ -576,28 +568,14 @@ export default function Register() {
                           required
                           disabled={isProcessingImage}
                         />
-                        <div className="mt-2 text-xs text-gray-600">
-                          <p className="font-medium">Image Processing:</p>
-                          <ul className="list-disc pl-4 mt-1 space-y-1">
-                            <li>Images are automatically cropped to a perfect square</li>
-                            <li>Resized to 200×200 pixels for optimal display</li>
-                            <li>Center-cropped to focus on your face</li>
-                            <li>Optimized for fast loading</li>
-                          </ul>
-                          
-                          <p className="font-medium mt-3">Requirements:</p>
-                          <ul className="list-disc pl-4 mt-1 space-y-1">
-                            <li>Clear front-facing photo of your face</li>
-                            <li>File must be an image (JPEG, PNG, etc.)</li>
-                            <li>Maximum file size: 5MB</li>
-                            <li>This is for identification and security purposes</li>
-                          </ul>
-                          {!formData.profilePicture && !isProcessingImage && (
-                            <p className="text-red-500 font-medium mt-2">
-                              Please upload your profile picture to continue
-                            </p>
-                          )}
-                        </div>
+                        <p className="mt-2 text-xs text-gray-500">
+                          Clear front-facing photo. Max 5MB. Cropped to square.
+                        </p>
+                        {!formData.profilePicture && !isProcessingImage && (
+                          <p className="text-red-500 font-medium mt-2 text-xs">
+                            Please upload your profile picture to continue.
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -621,28 +599,15 @@ export default function Register() {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Email Address *
                     </label>
-                    <div className="relative">
-                      <input
-                        type="email"
-                        name="email"
-                        value={formData.email}
-                        onChange={handleChange}
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="john@example.com"
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const timestamp = Date.now();
-                          const testEmail = `carrier${timestamp}@ptros.com`;
-                          setFormData(prev => ({ ...prev, email: testEmail }));
-                        }}
-                        className="absolute right-2 top-3 px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                      >
-                        Generate Test Email
-                      </button>
-                    </div>
+                    <input
+                      type="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="john@example.com"
+                      required
+                    />
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -952,12 +917,15 @@ export default function Register() {
                                 style={{ objectFit: "cover" }}
                               />
                               <div className="absolute -bottom-1 -right-1 bg-green-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">
-                                ✓
+                                <i className="fa-solid fa-check" />
                               </div>
                             </div>
                             <div className="ml-3">
                               <span className="text-green-600 font-medium block">
-                                ✓ Uploaded and optimized
+                                <span className="inline-flex items-center gap-2">
+                                  <i className="fa-solid fa-circle-check" />
+                                  Uploaded and optimized
+                                </span>
                               </span>
                               <span className="text-xs text-gray-500 block mt-1">
                                 Cropped to square (200×200 pixels)
@@ -965,8 +933,9 @@ export default function Register() {
                             </div>
                           </>
                         ) : (
-                          <span className="text-red-500 font-medium">
-                            ❌ No picture uploaded
+                          <span className="text-red-500 font-medium inline-flex items-center gap-2">
+                            <i className="fa-solid fa-circle-xmark" />
+                            No picture uploaded
                           </span>
                         )}
                       </div>
@@ -991,8 +960,8 @@ export default function Register() {
                     >
                       I agree to the PTROS Carrier Terms and Conditions. I
                       understand that my account requires coordinator approval
-                      before I can start working. I confirm that the profile picture
-                      I uploaded is a clear, recent photo of myself.
+                      before I can start working. I confirm that the profile
+                      picture I uploaded is a clear, recent photo of myself.
                     </label>
                   </div>
                 </div>
@@ -1000,7 +969,7 @@ export default function Register() {
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                   <div className="flex">
                     <div className="flex-shrink-0">
-                      <span className="text-blue-600">ℹ️</span>
+                      <i className="fa-solid fa-circle-info text-blue-600" />
                     </div>
                     <div className="ml-3">
                       <h4 className="text-sm font-medium text-blue-800">
@@ -1008,9 +977,9 @@ export default function Register() {
                       </h4>
                       <div className="text-sm text-blue-700 mt-1">
                         <p>
-                          Your profile picture is mandatory for identification and
-                          security verification. Applications without a clear
-                          profile picture will be rejected.
+                          Your profile picture is mandatory for identification
+                          and security verification. Applications without a
+                          clear profile picture will be rejected.
                         </p>
                       </div>
                     </div>
@@ -1020,7 +989,7 @@ export default function Register() {
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
                   <div className="flex">
                     <div className="flex-shrink-0">
-                      <span className="text-yellow-600">⚠️</span>
+                      <i className="fa-solid fa-triangle-exclamation text-yellow-600" />
                     </div>
                     <div className="ml-3">
                       <h4 className="text-sm font-medium text-yellow-800">
@@ -1054,7 +1023,11 @@ export default function Register() {
                   </button>
                   <button
                     type="submit"
-                    disabled={loading || !formData.acceptTerms || !formData.profilePicture}
+                    disabled={
+                      loading ||
+                      !formData.acceptTerms ||
+                      !formData.profilePicture
+                    }
                     className="px-8 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {loading ? (
@@ -1089,20 +1062,6 @@ export default function Register() {
               </div>
             )}
           </form>
-
-          {/* Test Storage Button */}
-          <div className="p-6 border-t border-gray-200">
-            <button
-              type="button"
-              onClick={testStorage}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm"
-            >
-              Test Firebase Storage
-            </button>
-            <p className="text-xs text-gray-500 mt-2">
-              Click this button to test if Firebase Storage is working properly.
-            </p>
-          </div>
         </div>
 
         {/* Footer Links */}

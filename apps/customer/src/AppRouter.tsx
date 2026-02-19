@@ -60,15 +60,18 @@ export default function AppRouter({ user }: Props) {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route
               path="/dashboard"
-              element={<Dashboard user={user} userProfile={userProfile} />}
+              element={<Dashboard user={user} />}
             />
-            <Route path="/orders" element={<OrderHistory user={user} />} />
-            <Route path="/orders/new" element={<CreateOrder user={user} userProfile={userProfile} />} />
-            <Route path="/orders/:id" element={<OrderDetails user={user} />} />
+            <Route path="/orders" element={<OrderHistory />} />
+            <Route path="/orders/new" element={<CreateOrder user={user} />} />
+            <Route path="/orders/:id" element={<OrderDetails />} />
             <Route path="/track" element={<TrackOrder />} />
             <Route path="/track-map" element={<TrackingMap user={user} />} />
-            <Route path="/profile" element={<Profile user={user} userProfile={userProfile} />} />
-            <Route path="/settings" element={<Settings user={user} userProfile={userProfile} />} />
+            <Route
+              path="/profile"
+              element={<Profile user={user} userProfile={userProfile} />}
+            />
+            <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>
       </div>
