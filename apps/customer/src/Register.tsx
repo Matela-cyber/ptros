@@ -38,7 +38,7 @@ export default function Register() {
   const handleChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >
+    >,
   ) => {
     const { name, value, type } = e.target;
 
@@ -110,7 +110,7 @@ export default function Register() {
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         formData.email,
-        formData.password
+        formData.password,
       );
 
       const user = userCredential.user;
@@ -189,17 +189,17 @@ export default function Register() {
       // User-friendly error messages
       if (err.code === "auth/email-already-in-use") {
         setError(
-          "This email is already registered. Please login or use a different email."
+          "This email is already registered. Please login or use a different email.",
         );
       } else if (err.code === "auth/weak-password") {
         setError(
-          "Password is too weak. Use at least 8 characters with letters and numbers."
+          "Password is too weak. Use at least 8 characters with letters and numbers.",
         );
       } else if (err.code === "auth/invalid-email") {
         setError("Invalid email address. Please enter a valid email.");
       } else if (err.code === "auth/operation-not-allowed") {
         setError(
-          "Email/password accounts are not enabled. Please contact support."
+          "Email/password accounts are not enabled. Please contact support.",
         );
       } else {
         setError(err.message || "Registration failed. Please try again.");

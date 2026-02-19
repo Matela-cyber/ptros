@@ -1,20 +1,26 @@
-import { useState } from 'react';
-import { updateDeliveryStatus } from '../services/deliveryService';
-import { useCarrier } from './useCarrier';
+import { useState } from "react";
+import { updateDeliveryStatus } from "../services/deliveryService";
+import { useCarrier } from "./useCarrier";
 
 export const useDeliveryStatus = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { carrier } = useCarrier();
-  const currentLocation = carrier?.currentLocation || { latitude: 0, longitude: 0 };
+  const currentLocation = carrier?.currentLocation || {
+    latitude: 0,
+    longitude: 0,
+  };
 
   // Validate status transitions
-  const validateStatusTransition = (current: string, next: string): { valid: boolean; message?: string } => {
+  const validateStatusTransition = (
+    current: string,
+    next: string,
+  ): { valid: boolean; message?: string } => {
     const allowedTransitions: Record<string, string[]> = {
-      accepted: ['picked_up'],
-      picked_up: ['in_transit', 'stuck'],
-      in_transit: ['delivered', 'stuck'],
-      stuck: ['in_transit'], // Can resume from stuck
+      accepted: ["picked_up"],
+      picked_up: ["in_transit", "stuck"],
+      in_transit: ["delivered", "stuck"],
+      stuck: ["in_transit"], // Can resume from stuck
     };
 
     if (!allowedTransitions[current]) {
@@ -22,7 +28,10 @@ export const useDeliveryStatus = () => {
     }
 
     if (!allowedTransitions[current].includes(next)) {
-      return { valid: false, message: `Cannot transition from ${current} to ${next}` };
+      return {
+        valid: false,
+        message: `Cannot transition from ${current} to ${next}`,
+      };
     }
 
     return { valid: true };
@@ -30,8 +39,8 @@ export const useDeliveryStatus = () => {
 
   const updateStatus = async (
     deliveryId: string,
-    status: 'picked_up' | 'in_transit' | 'stuck' | 'delivered',
-    currentStatus?: string
+    status: "picked_up" | "in_transit" | "stuck" | "delivered",
+    currentStatus?: string,
   ) => {
     setLoading(true);
     setError(null);
@@ -41,7 +50,7 @@ export const useDeliveryStatus = () => {
       if (currentStatus) {
         const validation = validateStatusTransition(currentStatus, status);
         if (!validation.valid) {
-          throw new Error(validation.message || 'Invalid status transition');
+          throw new Error(validation.message || "Invalid status transition");
         }
       }
 
@@ -49,7 +58,7 @@ export const useDeliveryStatus = () => {
       setLoading(false);
       return { success: true, message: `Status updated to ${status}` };
     } catch (err: any) {
-      const errorMsg = err.message || 'Failed to update status';
+      const errorMsg = err.message || "Failed to update status";
       setError(errorMsg);
       setLoading(false);
       throw err;
@@ -57,16 +66,18 @@ export const useDeliveryStatus = () => {
   };
 
   // Get next available statuses based on current status
-  const getAvailableStatuses = (currentStatus: string): Array<'picked_up' | 'in_transit' | 'stuck' | 'delivered'> => {
+  const getAvailableStatuses = (
+    currentStatus: string,
+  ): Array<"picked_up" | "in_transit" | "stuck" | "delivered"> => {
     switch (currentStatus) {
-      case 'accepted':
-        return ['picked_up'];
-      case 'picked_up':
-        return ['in_transit', 'stuck'];
-      case 'in_transit':
-        return ['delivered', 'stuck'];
-      case 'stuck':
-        return ['in_transit']; // Can resume from stuck
+      case "accepted":
+        return ["picked_up"];
+      case "picked_up":
+        return ["in_transit", "stuck"];
+      case "in_transit":
+        return ["delivered", "stuck"];
+      case "stuck":
+        return ["in_transit"]; // Can resume from stuck
       default:
         return [];
     }
@@ -76,40 +87,47 @@ export const useDeliveryStatus = () => {
   const getStatusInfo = (status: string) => {
     const statusInfo = {
       picked_up: {
-        label: 'Picked Up',
-        icon: '📦',
-        color: 'bg-blue-600',
-        description: 'Package collected from pickup location'
+        label: "Picked Up",
+        icon: "fa-solid fa-box",
+        color: "bg-blue-600",
+        description: "Package collected from pickup location",
       },
       in_transit: {
-        label: 'In Transit',
-        icon: '🚚',
-        color: 'bg-purple-600',
-        description: 'Package is on the way'
+        label: "In Transit",
+        icon: "fa-solid fa-truck",
+        color: "bg-purple-600",
+        description: "Package is on the way",
       },
       stuck: {
-        label: 'Stuck',
-        icon: '⚠️',
-        color: 'bg-orange-600',
-        description: 'Facing delays or issues'
+        label: "Stuck",
+        icon: "fa-solid fa-triangle-exclamation",
+        color: "bg-orange-600",
+        description: "Facing delays or issues",
       },
       delivered: {
-        label: 'Delivered',
-        icon: '✅',
-        color: 'bg-green-600',
-        description: 'Package delivered successfully'
-      }
+        label: "Delivered",
+        icon: "fa-solid fa-circle-check",
+        color: "bg-green-600",
+        description: "Package delivered successfully",
+      },
     };
 
-    return statusInfo[status as keyof typeof statusInfo] || { label: status, icon: '📋', color: 'bg-gray-600', description: '' };
+    return (
+      statusInfo[status as keyof typeof statusInfo] || {
+        label: status,
+        icon: "fa-regular fa-clipboard",
+        color: "bg-gray-600",
+        description: "",
+      }
+    );
   };
 
-  return { 
-    updateStatus, 
-    loading, 
-    error, 
+  return {
+    updateStatus,
+    loading,
+    error,
     getAvailableStatuses,
     getStatusInfo,
-    validateStatusTransition 
+    validateStatusTransition,
   };
 };

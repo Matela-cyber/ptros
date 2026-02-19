@@ -60,80 +60,80 @@ export default function Dashboard({ user, userProfile }: Props) {
   ];
 
   return (
-    <div>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">
-          Coordinator Dashboard
-        </h1>
-        <p className="text-gray-600 mt-2">
-          Welcome back, {userProfile?.fullName || user.email}. Here's what's
-          happening.
-        </p>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-8">
+          <h1 className="text-4xl font-extrabold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
+            Coordinator Dashboard
+          </h1>
+          <p className="text-indigo-600 mt-2 font-semibold">
+            Welcome back, {userProfile?.fullName || user.email}. Here's what's
+            happening.
+          </p>
+        </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-xl shadow">
-          <div className="flex items-center">
-            <div className="p-3 bg-blue-100 rounded-lg mr-4">
-              <span className="text-2xl text-blue-600">📦</span>
-            </div>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="bg-gradient-to-br from-cyan-500 to-blue-600 rounded-2xl p-6 text-white shadow-2xl hover:shadow-cyan-500/50 transform hover:scale-105 transition-all border border-cyan-300/30">
+          <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Active Deliveries</p>
-              <p className="text-3xl font-bold">12</p>
+              <p className="text-cyan-100 text-sm font-bold uppercase tracking-wide">Active Deliveries</p>
+              <p className="text-4xl font-extrabold mt-2">12</p>
+            </div>
+            <div className="p-4 bg-white/20 rounded-xl">
+              <span className="text-4xl">📦</span>
             </div>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl shadow">
-          <div className="flex items-center">
-            <div className="p-3 bg-green-100 rounded-lg mr-4">
-              <span className="text-2xl text-green-600">🏍️</span>
-            </div>
+        <div className="bg-gradient-to-br from-emerald-500 to-green-600 rounded-2xl p-6 text-white shadow-2xl hover:shadow-green-500/50 transform hover:scale-105 transition-all border border-emerald-300/30">
+          <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Active Carriers</p>
-              <p className="text-3xl font-bold">8</p>
+              <p className="text-emerald-100 text-sm font-bold uppercase tracking-wide">Active Carriers</p>
+              <p className="text-4xl font-extrabold mt-2">8</p>
+            </div>
+            <div className="p-4 bg-white/20 rounded-xl">
+              <span className="text-4xl">🏍️</span>
             </div>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl shadow">
-          <div className="flex items-center">
-            <div className="p-3 bg-purple-100 rounded-lg mr-4">
-              <span className="text-2xl text-purple-600">✅</span>
-            </div>
+        <div className="bg-gradient-to-br from-fuchsia-500 to-purple-600 rounded-2xl p-6 text-white shadow-2xl hover:shadow-purple-500/50 transform hover:scale-105 transition-all border border-fuchsia-300/30">
+          <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Completed Today</p>
-              <p className="text-3xl font-bold">24</p>
+              <p className="text-fuchsia-100 text-sm font-bold uppercase tracking-wide">Completed Today</p>
+              <p className="text-4xl font-extrabold mt-2">24</p>
+            </div>
+            <div className="p-4 bg-white/20 rounded-xl">
+              <span className="text-4xl">✅</span>
             </div>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl shadow">
-          <div className="flex items-center">
-            <div className="p-3 bg-yellow-100 rounded-lg mr-4">
-              <span className="text-2xl text-yellow-600">💰</span>
-            </div>
+        <div className="bg-gradient-to-br from-yellow-500 to-orange-600 rounded-2xl p-6 text-white shadow-2xl hover:shadow-amber-500/50 transform hover:scale-105 transition-all border border-yellow-300/30">
+          <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Revenue Today</p>
-              <p className="text-3xl font-bold">M2,450</p>
+              <p className="text-yellow-100 text-sm font-bold uppercase tracking-wide">Revenue Today</p>
+              <p className="text-4xl font-extrabold mt-2">M2,450</p>
+            </div>
+            <div className="p-4 bg-white/20 rounded-xl">
+              <span className="text-4xl">💰</span>
             </div>
           </div>
         </div>
       </div>
 
       {/* Quick Actions */}
-      <div className="bg-white rounded-xl shadow p-8 mb-8">
-        <h3 className="text-2xl font-bold mb-6">Quick Actions</h3>
+      <div className="bg-white rounded-2xl shadow-2xl p-8 mb-8 border-2 border-indigo-100">
+        <h3 className="text-2xl font-extrabold mb-6 text-gray-800">Quick Actions</h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {quickActions.map((action, index) => (
             <a
               key={index}
               href={action.path}
-              className={`${action.color} text-white p-4 rounded-lg flex flex-col items-center justify-center text-center transition transform hover:scale-105`}
-            >
-              <span className="text-3xl mb-2">{action.icon}</span>
-              <span className="font-medium">{action.label}</span>
+              className={`${action.color === "bg-blue-600 hover:bg-blue-700" ? "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-500/50" : action.color === "bg-green-600 hover:bg-green-700" ? "bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg shadow-green-500/50" : action.color === "bg-purple-600 hover:bg-purple-700" ? "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-lg shadow-purple-500/50" : "bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 shadow-lg shadow-amber-500/50"} text-white p-6 rounded-xl flex flex-col items-center justify-center text-center transition transform hover:scale-110 font-bold"}
+              >
+              <span className="text-4xl mb-3">{action.icon}</span>
+              <span className="font-bold text-lg">{action.label}</span>
             </a>
           ))}
         </div>
@@ -142,8 +142,8 @@ export default function Dashboard({ user, userProfile }: Props) {
       {/* Recent Activity & Alerts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Recent Activity */}
-        <div className="bg-white rounded-xl shadow p-6">
-          <h3 className="text-xl font-bold mb-4">Recent Activity</h3>
+        <div className="bg-white rounded-2xl shadow-2xl p-6 border-2 border-indigo-100">
+          <h3 className="text-xl font-extrabold mb-6 text-gray-800">Recent Activity</h3>
           <div className="space-y-4">
             {recentActivities.map((activity, index) => (
               <div
@@ -186,8 +186,8 @@ export default function Dashboard({ user, userProfile }: Props) {
         </div>
 
         {/* System Alerts */}
-        <div className="bg-white rounded-xl shadow p-6">
-          <h3 className="text-xl font-bold mb-4">System Alerts</h3>
+        <div className="bg-white rounded-2xl shadow-2xl p-6 border-2 border-indigo-100">
+          <h3 className="text-xl font-extrabold mb-6 text-gray-800">System Alerts</h3>
           <div className="space-y-4">
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <div className="flex items-start">
