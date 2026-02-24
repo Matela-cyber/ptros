@@ -1,34 +1,112 @@
 // apps/coordinator/src/Dashboard.tsx - UPDATED
+import { useState, useEffect } from "react";
+import { db } from "@config";
+import { collection, query, where, getDocs, Timestamp } from "firebase/firestore";
+
 type Props = {
   user: any;
   userProfile?: any;
 };
 
+interface Stats {
+  activeDeliveries: number;
+  activeCarriers: number;
+  completedToday: number;
+  revenueToday: number;
+  pendingCarriers: number;
+}
+
 export default function Dashboard({ user, userProfile }: Props) {
+  const [stats, setStats] = useState<Stats>({
+    activeDeliveries: 0,
+    activeCarriers: 0,
+    completedToday: 0,
+    revenueToday: 0,
+    pendingCarriers: 0,
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchDashboardStats();
+    // Refresh stats every 30 seconds to keep them current
+    const interval = setInterval(fetchDashboardStats, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchDashboardStats = async () => {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayTimestamp = Timestamp.fromDate(today);
+
+      // Fetch active deliveries (pending, assigned, picked up, in transit)
+      const activeDeliveriesQuery = query(
+        collection(db, "deliveries"),
+        where("status", "in", ["pending", "assigned", "picked_up", "in_transit"])
+      );
+      const activeDeliveriesSnapshot = await getDocs(activeDeliveriesQuery);
+
+      // Fetch active carriers (approved and active status)
+      const activeCarriersQuery = query(
+        collection(db, "users"),
+        where("role", "==", "carrier"),
+        where("isApproved", "==", true),
+        where("status", "==", "active")
+      );
+      const activeCarriersSnapshot = await getDocs(activeCarriersQuery);
+
+      // Fetch completed deliveries today (status = delivered and createdAt is today)
+      const completedTodayQuery = query(
+        collection(db, "deliveries"),
+        where("status", "==", "delivered"),
+        where("createdAt", ">=", todayTimestamp)
+      );
+      const completedTodaySnapshot = await getDocs(completedTodayQuery);
+
+      // Calculate revenue today from paymentAmount field
+      let revenueToday = 0;
+      completedTodaySnapshot.forEach((doc) => {
+        const data = doc.data();
+        revenueToday += data.paymentAmount || 0;
+      });
+
+      setStats({
+        activeDeliveries: activeDeliveriesSnapshot.size,
+        activeCarriers: activeCarriersSnapshot.size,
+        completedToday: completedTodaySnapshot.size,
+        revenueToday: Math.round(revenueToday),
+        pendingCarriers: 0,
+      });
+    } catch (error) {
+      console.error("Error fetching dashboard stats:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
   const quickActions = [
     {
       label: "Create Delivery",
       icon: "➕",
       path: "/deliveries/create",
-      color: "bg-blue-600 hover:bg-blue-700",
+      color: "bg-accent hover:bg-accent-dark shadow-lg",
     },
     {
       label: "Approve Carriers",
       icon: "✅",
       path: "/carriers/pending",
-      color: "bg-green-600 hover:bg-green-700",
+      color: "bg-success hover:bg-success-dark shadow-lg",
     },
     {
       label: "Live Tracking",
       icon: "📍",
       path: "/tracking/live",
-      color: "bg-purple-600 hover:bg-purple-700",
+      color: "bg-primary hover:bg-primary-dark shadow-lg",
     },
     {
       label: "View Reports",
       icon: "📊",
       path: "/analytics",
-      color: "bg-yellow-600 hover:bg-yellow-700",
+      color: "bg-primary-light hover:bg-primary shadow-lg",
     },
   ];
 
@@ -60,80 +138,88 @@ export default function Dashboard({ user, userProfile }: Props) {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h1 className="text-4xl font-extrabold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
-            Coordinator Dashboard
-          </h1>
-          <p className="text-indigo-600 mt-2 font-semibold">
-            Welcome back, {userProfile?.fullName || user.email}. Here's what's
-            happening.
-          </p>
-        </div>
+    <div>
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-800">
+          Coordinator Dashboard
+        </h1>
+        <p className="text-gray-600 mt-2">
+          Welcome back, {userProfile?.fullName || user.email}. Here's what's
+          happening.
+        </p>
+      </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-gradient-to-br from-cyan-500 to-blue-600 rounded-2xl p-6 text-white shadow-2xl hover:shadow-cyan-500/50 transform hover:scale-105 transition-all border border-cyan-300/30">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-cyan-100 text-sm font-bold uppercase tracking-wide">Active Deliveries</p>
-              <p className="text-4xl font-extrabold mt-2">12</p>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow border-l-4 border-accent">
+          <div className="flex items-center">
+            <div className="p-3 bg-accent-bg rounded-lg mr-4">
+              <span className="text-2xl">📦</span>
             </div>
-            <div className="p-4 bg-white/20 rounded-xl">
-              <span className="text-4xl">📦</span>
+            <div>
+              <p className="text-sm text-gray-500 font-medium">Active Deliveries</p>
+              <p className="text-3xl font-bold text-accent">
+                {loading ? "..." : stats.activeDeliveries}
+              </p>
             </div>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-emerald-500 to-green-600 rounded-2xl p-6 text-white shadow-2xl hover:shadow-green-500/50 transform hover:scale-105 transition-all border border-emerald-300/30">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-emerald-100 text-sm font-bold uppercase tracking-wide">Active Carriers</p>
-              <p className="text-4xl font-extrabold mt-2">8</p>
+        <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow border-l-4 border-success">
+          <div className="flex items-center">
+            <div className="p-3 bg-success-bg rounded-lg mr-4">
+              <span className="text-2xl">🏍️</span>
             </div>
-            <div className="p-4 bg-white/20 rounded-xl">
-              <span className="text-4xl">🏍️</span>
+            <div>
+              <p className="text-sm text-gray-500 font-medium">Active Carriers</p>
+              <p className="text-3xl font-bold text-success">
+                {loading ? "..." : stats.activeCarriers}
+              </p>
             </div>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-fuchsia-500 to-purple-600 rounded-2xl p-6 text-white shadow-2xl hover:shadow-purple-500/50 transform hover:scale-105 transition-all border border-fuchsia-300/30">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-fuchsia-100 text-sm font-bold uppercase tracking-wide">Completed Today</p>
-              <p className="text-4xl font-extrabold mt-2">24</p>
+        <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow border-l-4 border-primary">
+          <div className="flex items-center">
+            <div className="p-3 bg-primary-bg rounded-lg mr-4">
+              <span className="text-2xl">✅</span>
             </div>
-            <div className="p-4 bg-white/20 rounded-xl">
-              <span className="text-4xl">✅</span>
+            <div>
+              <p className="text-sm text-gray-500 font-medium">Completed Today</p>
+              <p className="text-3xl font-bold text-primary">
+                {loading ? "..." : stats.completedToday}
+              </p>
             </div>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-yellow-500 to-orange-600 rounded-2xl p-6 text-white shadow-2xl hover:shadow-amber-500/50 transform hover:scale-105 transition-all border border-yellow-300/30">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-yellow-100 text-sm font-bold uppercase tracking-wide">Revenue Today</p>
-              <p className="text-4xl font-extrabold mt-2">M2,450</p>
+        <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow border-l-4 border-success">
+          <div className="flex items-center">
+            <div className="p-3 bg-success-bg rounded-lg mr-4">
+              <span className="text-2xl">💰</span>
             </div>
-            <div className="p-4 bg-white/20 rounded-xl">
-              <span className="text-4xl">💰</span>
+            <div>
+              <p className="text-sm text-gray-500 font-medium">Revenue Today</p>
+              <p className="text-3xl font-bold text-success">
+                {loading ? "..." : `M${stats.revenueToday.toLocaleString()}`}
+              </p>
             </div>
           </div>
         </div>
       </div>
 
       {/* Quick Actions */}
-      <div className="bg-white rounded-2xl shadow-2xl p-8 mb-8 border-2 border-indigo-100">
-        <h3 className="text-2xl font-extrabold mb-6 text-gray-800">Quick Actions</h3>
+      <div className="bg-white rounded-xl shadow-md p-8 mb-8">
+        <h3 className="text-2xl font-bold mb-6 text-gray-800">Quick Actions</h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {quickActions.map((action, index) => (
             <a
               key={index}
               href={action.path}
-              className={`${action.color === "bg-blue-600 hover:bg-blue-700" ? "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-500/50" : action.color === "bg-green-600 hover:bg-green-700" ? "bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg shadow-green-500/50" : action.color === "bg-purple-600 hover:bg-purple-700" ? "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-lg shadow-purple-500/50" : "bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 shadow-lg shadow-amber-500/50"} text-white p-6 rounded-xl flex flex-col items-center justify-center text-center transition transform hover:scale-110 font-bold"}
-              >
+              className={`${action.color} text-white p-6 rounded-lg flex flex-col items-center justify-center text-center transition-all transform hover:scale-105 hover:-translate-y-1`}
+            >
               <span className="text-4xl mb-3">{action.icon}</span>
-              <span className="font-bold text-lg">{action.label}</span>
+              <span className="font-semibold">{action.label}</span>
             </a>
           ))}
         </div>
@@ -142,8 +228,8 @@ export default function Dashboard({ user, userProfile }: Props) {
       {/* Recent Activity & Alerts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Recent Activity */}
-        <div className="bg-white rounded-2xl shadow-2xl p-6 border-2 border-indigo-100">
-          <h3 className="text-xl font-extrabold mb-6 text-gray-800">Recent Activity</h3>
+        <div className="bg-white rounded-xl shadow p-6">
+          <h3 className="text-xl font-bold mb-4">Recent Activity</h3>
           <div className="space-y-4">
             {recentActivities.map((activity, index) => (
               <div
@@ -153,19 +239,19 @@ export default function Dashboard({ user, userProfile }: Props) {
                 <div
                   className={`w-10 h-10 rounded-full flex items-center justify-center mr-4 ${
                     activity.type === "delivery"
-                      ? "bg-blue-100"
+                      ? "bg-primary-bg"
                       : activity.type === "carrier"
-                      ? "bg-green-100"
-                      : "bg-purple-100"
+                      ? "bg-success-bg"
+                      : "bg-accent-bg"
                   }`}
                 >
                   <span
                     className={
                       activity.type === "delivery"
-                        ? "text-blue-600"
+                        ? "text-primary"
                         : activity.type === "carrier"
-                        ? "text-green-600"
-                        : "text-purple-600"
+                        ? "text-success"
+                        : "text-accent"
                     }
                   >
                     {activity.type === "delivery"
@@ -186,43 +272,45 @@ export default function Dashboard({ user, userProfile }: Props) {
         </div>
 
         {/* System Alerts */}
-        <div className="bg-white rounded-2xl shadow-2xl p-6 border-2 border-indigo-100">
-          <h3 className="text-xl font-extrabold mb-6 text-gray-800">System Alerts</h3>
+        <div className="bg-white rounded-xl shadow p-6">
+          <h3 className="text-xl font-bold mb-4">System Alerts</h3>
           <div className="space-y-4">
-            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <div className="flex items-start">
-                <span className="text-yellow-600 mr-3">⚠️</span>
-                <div>
-                  <h4 className="font-medium text-yellow-800">
-                    3 carriers pending approval
-                  </h4>
-                  <p className="text-sm text-yellow-700 mt-1">
-                    Review carrier applications in the pending approvals
-                    section.
-                  </p>
-                  <a
-                    href="/carriers/pending"
-                    className="text-sm text-yellow-600 font-medium mt-2 inline-block"
-                  >
-                    Review now →
-                  </a>
+            {stats.pendingCarriers > 0 && (
+              <div className="p-4 bg-accent-bg border-l-4 border-accent rounded-lg shadow-sm">
+                <div className="flex items-start">
+                  <span className="text-2xl mr-3">⚠️</span>
+                  <div>
+                    <h4 className="font-semibold text-gray-800">
+                      {stats.pendingCarriers} carrier{stats.pendingCarriers !== 1 ? 's' : ''} pending approval
+                    </h4>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Review carrier applications in the pending approvals
+                      section.
+                    </p>
+                    <a
+                      href="/carriers/pending"
+                      className="text-sm text-accent hover:text-accent-dark font-semibold mt-2 inline-block transition-colors"
+                    >
+                      Review now →
+                    </a>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="p-4 bg-primary-bg border-l-4 border-primary rounded-lg shadow-sm">
               <div className="flex items-start">
-                <span className="text-blue-600 mr-3">📊</span>
+                <span className="text-2xl mr-3">📊</span>
                 <div>
-                  <h4 className="font-medium text-blue-800">
+                  <h4 className="font-semibold text-gray-800">
                     Monthly report ready
                   </h4>
-                  <p className="text-sm text-blue-700 mt-1">
+                  <p className="text-sm text-gray-600 mt-1">
                     View delivery performance and analytics for this month.
                   </p>
                   <a
                     href="/analytics"
-                    className="text-sm text-blue-600 font-medium mt-2 inline-block"
+                    className="text-sm text-primary hover:text-primary-dark font-semibold mt-2 inline-block transition-colors"
                   >
                     View report →
                   </a>
@@ -230,14 +318,14 @@ export default function Dashboard({ user, userProfile }: Props) {
               </div>
             </div>
 
-            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="p-4 bg-success-bg border-l-4 border-success rounded-lg shadow-sm">
               <div className="flex items-start">
-                <span className="text-green-600 mr-3">✅</span>
+                <span className="text-2xl mr-3">✅</span>
                 <div>
-                  <h4 className="font-medium text-green-800">
+                  <h4 className="font-semibold text-gray-800">
                     System is running smoothly
                   </h4>
-                  <p className="text-sm text-green-700 mt-1">
+                  <p className="text-sm text-gray-600 mt-1">
                     All services are operational. No issues detected.
                   </p>
                 </div>

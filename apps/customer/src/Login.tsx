@@ -19,6 +19,7 @@ export default function Login() {
     setEmailNotVerified(false);
 
     try {
+      // 1. Sign in with Firebase Auth
       const userCredential = await signInWithEmailAndPassword(
         auth,
         email,
@@ -26,9 +27,12 @@ export default function Login() {
       );
 
       const user = userCredential.user;
+
+      // 2. Check user profile in Firestore
       const userDoc = await getDoc(doc(db, "users", user.uid));
 
       if (!userDoc.exists()) {
+        // User doesn't have a profile
         setError("Account not found. Please contact support.");
         await auth.signOut();
         setLoading(false);
@@ -37,17 +41,24 @@ export default function Login() {
 
       const userData = userDoc.data();
 
+      // 3. Check if this is a customer account
       if (userData.role !== "customer") {
-        setError("This account is not a customer account. Please use the correct portal.");
+        setError(
+          "This account is not a customer account. Please use the correct portal."
+        );
         await auth.signOut();
         setLoading(false);
         return;
       }
 
-      const isEmailVerified = user.emailVerified || userData.emailVerified === true;
+      // 4. Check email verification status (INFO ONLY - DON'T BLOCK)
+      const isEmailVerified =
+        user.emailVerified || userData.emailVerified === true;
 
       if (!isEmailVerified) {
         setEmailNotVerified(true);
+
+        // Update Firestore with verification status if email is verified
         if (user.emailVerified && !userData.emailVerified) {
           await updateDoc(doc(db, "users", user.uid), {
             emailVerified: true,
@@ -55,6 +66,7 @@ export default function Login() {
           });
         }
       } else {
+        // Update Firestore if needed
         if (user.emailVerified && !userData.emailVerified) {
           await updateDoc(doc(db, "users", user.uid), {
             emailVerified: true,
@@ -63,11 +75,12 @@ export default function Login() {
         }
       }
 
+      // 5. Login successful - always allow login
       console.log("Customer login successful for:", user.email);
-      navigate("/dashboard"); // ✅ Redirect after successful login
     } catch (err: any) {
       console.error("Login error:", err);
 
+      // User-friendly error messages
       if (
         err.code === "auth/invalid-credential" ||
         err.code === "auth/user-not-found" ||
@@ -106,7 +119,7 @@ export default function Login() {
           </p>
         </div>
 
-        {/* Email Not Verified Warning */}
+        {/* Email Not Verified Warning (Non-blocking) */}
         {emailNotVerified && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
             <div className="flex">
@@ -172,12 +185,13 @@ export default function Login() {
               disabled={loading}
             />
             <div className="text-right mt-2">
-              <Link
-                to="/forgot-password"
+              <button
+                type="button"
+                onClick={() => navigate("/forgot-password")}
                 className="text-sm text-green-600 hover:text-green-800"
               >
                 Forgot password?
-              </Link>
+              </button>
             </div>
           </div>
 
@@ -223,11 +237,11 @@ export default function Login() {
           <div className="flex-grow border-t border-gray-300"></div>
         </div>
 
-        {/* Registration Link - FIXED */}
+        {/* Registration Link */}
         <div className="text-center">
           <p className="text-gray-600 mb-4">New to PTROS?</p>
           <Link
-            to="/register"  // ✅ Fixed: removed .tsx extension
+            to="/register"
             className="inline-block w-full py-3 border-2 border-green-600 text-green-600 rounded-lg font-semibold hover:bg-green-50 transition"
           >
             Create Customer Account

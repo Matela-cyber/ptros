@@ -3,16 +3,16 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { db } from "@config";
 import { doc, getDoc } from "firebase/firestore";
-import Sidebar from "./Sidebar";
-import Header from "./Header";
-import Dashboard from "./Dashboard";
-import OrderHistory from "./OrderHistory";
-import OrderDetails from "./OrderDetails";
+import Sidebar from "./Sidebar.tsx";
+import Header from "./Header.tsx";
+import Dashboard from "./Dashboard.tsx";
+import OrderHistory from "./OrderHistory.tsx";
+import OrderDetails from "./OrderDetails.tsx";
 import CreateOrder from "./CreateOrder";
-import TrackOrder from "./TrackOrder";
+import TrackOrder from "./TrackOrder.tsx";
 import TrackingMap from "./TrackingMap";
-import Profile from "./Profile";
-import Settings from "./Settings";
+import Profile from "./Profile.tsx";
+import Settings from "./Settings.tsx";
 
 type Props = {
   user: any;
@@ -25,13 +25,9 @@ export default function AppRouter({ user }: Props) {
   useEffect(() => {
     const fetchProfile = async () => {
       if (user) {
-        try {
-          const userDoc = await getDoc(doc(db, "users", user.uid));
-          if (userDoc.exists()) {
-            setUserProfile(userDoc.data());
-          }
-        } catch (error) {
-          console.error("Error fetching user profile:", error);
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        if (userDoc.exists()) {
+          setUserProfile(userDoc.data());
         }
       }
       setLoading(false);
@@ -43,7 +39,7 @@ export default function AppRouter({ user }: Props) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-green-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading dashboard...</p>
         </div>
       </div>
@@ -60,17 +56,14 @@ export default function AppRouter({ user }: Props) {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route
               path="/dashboard"
-              element={<Dashboard user={user} />}
+              element={<Dashboard user={user} userProfile={userProfile} />}
             />
             <Route path="/orders" element={<OrderHistory />} />
             <Route path="/orders/new" element={<CreateOrder user={user} />} />
             <Route path="/orders/:id" element={<OrderDetails />} />
             <Route path="/track" element={<TrackOrder />} />
             <Route path="/track-map" element={<TrackingMap user={user} />} />
-            <Route
-              path="/profile"
-              element={<Profile user={user} userProfile={userProfile} />}
-            />
+            <Route path="/profile" element={<Profile user={user} userProfile={userProfile} />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>

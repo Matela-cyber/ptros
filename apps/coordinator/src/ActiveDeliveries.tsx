@@ -12,7 +12,7 @@ import {
   getDocs,
 } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { format } from "date-fns";
 import {
   writeTimestamp,
@@ -40,6 +40,7 @@ export default function ActiveDeliveries() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all"); // all, pending, assigned, in_transit, delivered
   const [searchTerm, setSearchTerm] = useState("");
+  const [searchParams] = useSearchParams();
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
@@ -110,6 +111,14 @@ export default function ActiveDeliveries() {
 
     return () => unsubscribe();
   }, []);
+
+  // Initialize search term from URL query
+  useEffect(() => {
+    const queryTerm = searchParams.get("search") || "";
+    if (queryTerm !== searchTerm) {
+      setSearchTerm(queryTerm);
+    }
+  }, [searchParams, searchTerm]);
 
   // Filter deliveries
   const filteredDeliveries = deliveries.filter((delivery) => {

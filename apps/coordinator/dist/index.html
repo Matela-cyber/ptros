@@ -4,8 +4,38 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PTROS - Coordinator</title>
-    <script type="module" crossorigin src="/assets/index-BQJ5RS4N.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-Borvho0q.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: {
+                DEFAULT: '#2563EB',
+                dark: '#1E40AF',
+                light: '#3B82F6',
+                lighter: '#60A5FA',
+                bg: '#EFF6FF',
+              },
+              accent: {
+                DEFAULT: '#F59E0B',
+                dark: '#D97706',
+                light: '#FBBF24',
+                bg: '#FEF3C7',
+              },
+              success: {
+                DEFAULT: '#10B981',
+                dark: '#059669',
+                light: '#34D399',
+                bg: '#D1FAE5',
+              },
+            }
+          }
+        }
+      }
+    </script>
+    <script type="module" crossorigin src="/assets/index-bDjVY6NV.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CL-5W2y3.css">
   </head>
   <body class="bg-gray-50 font-sans">
     <div id="root"></div>
