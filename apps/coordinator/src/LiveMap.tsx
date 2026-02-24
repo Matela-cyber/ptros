@@ -271,52 +271,14 @@ export default function LiveMap() {
         setSatelliteLoaded(true);
       });
 
-      // Add test markers for Maseru landmarks (helps verify satellite view)
-      const maseruLandmarks = [
-        {
-          name: "Royal Palace",
-          position: { lat: -29.3107, lng: 27.4786 },
-          description: "Royal Palace of Lesotho"
-        },
-        {
-          name: "Maseru Mall",
-          position: { lat: -29.3144, lng: 27.4862 },
-          description: "Maseru Mall shopping center"
-        },
-        {
-          name: "Moshoeshoe I International Airport",
-          position: { lat: -29.4622, lng: 27.5525 },
-          description: "International Airport"
-        }
-      ];
-
-      maseruLandmarks.forEach(landmark => {
-        const marker = new window.google.maps.Marker({
-          position: landmark.position,
-          map: map,
-          title: landmark.name,
-          label: "📍",
-          icon: {
-            url: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
-          }
-        });
-
-        const infoWindow = new window.google.maps.InfoWindow({
-          content: `<div class="p-2"><strong>${landmark.name}</strong><br>${landmark.description}</div>`,
-        });
-
-        marker.addListener("click", () => {
-          infoWindow.open(map, marker);
-        });
-      });
-
       // Initialize markers map
       markersRef.current = new Map();
       setMapError(null);
     } catch (error) {
       console.error("❌ Error initializing map:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       setMapError(
-        `Failed to initialize map: ${error instanceof Error ? error.message : String(error)}. Please check console for details.`
+        `Failed to initialize map: ${errorMessage}. Please check console for details.`
       );
     }
   }, [googleMapsLoaded, is3DEnabled]);
@@ -843,7 +805,7 @@ Current Status: ${satelliteLoaded ? 'Satellite tiles loaded' : 'Waiting for sate
       </div>
 
       {/* Map Controls */}
-      <div className="bg-white rounded-xl shadow p-4 mb-6">
+      <div className="bg-white rounded-xl shadow p-4 mb-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap gap-2">
             <button
@@ -900,35 +862,12 @@ Current Status: ${satelliteLoaded ? 'Satellite tiles loaded' : 'Waiting for sate
           </div>
         </div>
 
-        {/* Map Style Controls */}
+        {/* Map Feature Toggles */}
         <div className="mt-4 pt-4 border-t">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            {/* Map Style Selection */}
             <div>
-              <h4 className="text-sm font-medium text-gray-700 mb-2">Map Style</h4>
-              <div className="flex flex-wrap gap-2">
-                {mapStyles.map((style) => (
-                  <button
-                    key={style.id}
-                    onClick={() => setMapStyle(style.id)}
-                    className={`px-3 py-2 rounded-lg flex items-center gap-2 ${
-                      mapStyle === style.id
-                        ? style.id === "satellite" 
-                          ? "bg-green-600 text-white"
-                          : style.id === "hybrid"
-                          ? "bg-purple-600 text-white"
-                          : "bg-blue-600 text-white"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    }`}
-                  >
-                    <span>{style.icon}</span>
-                    <span>{style.name}</span>
-                  </button>
-                ))}
-              </div>
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Map Features</h4>
             </div>
-
-            {/* Map Features Toggles */}
             <div className="flex flex-wrap gap-4">
               <div className="flex items-center gap-2">
                 <label className="relative inline-flex items-center cursor-pointer">
@@ -983,10 +922,64 @@ Current Status: ${satelliteLoaded ? 'Satellite tiles loaded' : 'Waiting for sate
               </div>
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* Satellite-specific controls */}
+      {/* Map Container */}
+      <div className="bg-white rounded-xl shadow overflow-hidden mb-6">
+        <div className="border-b px-6 py-4 bg-gray-50">
+          <div className="flex items-center justify-between">
+            <h3 className="font-medium text-gray-700">
+              Real-time Tracking View • {mapStyles.find(s => s.id === mapStyle)?.name}
+            </h3>
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center">
+                <div className="w-3 h-3 rounded-full bg-blue-600 mr-2"></div>
+                <span className="text-sm">Carriers ({carriers.length})</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-3 h-3 rounded-full bg-amber-500 mr-2"></div>
+                <span className="text-sm">
+                  Deliveries ({deliveries.length})
+                </span>
+              </div>
+              {showTraffic && (
+                <div className="flex items-center">
+                  <div className="w-3 h-3 rounded-full bg-red-500 mr-2"></div>
+                  <span className="text-sm">Traffic Layer</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="border-b px-6 py-3 bg-gray-50">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">Map Style</span>
+              {mapStyles.map((style) => (
+                <button
+                  key={style.id}
+                  onClick={() => setMapStyle(style.id)}
+                  className={`px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm ${
+                    mapStyle === style.id
+                      ? style.id === "satellite" 
+                        ? "bg-green-600 text-white"
+                        : style.id === "hybrid"
+                        ? "bg-purple-600 text-white"
+                        : "bg-blue-600 text-white"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                >
+                  <span>{style.icon}</span>
+                  <span>{style.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {mapStyle === "satellite" && (
-            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-yellow-700">🛰️ Satellite View Active</span>
@@ -1020,35 +1013,6 @@ Current Status: ${satelliteLoaded ? 'Satellite tiles loaded' : 'Waiting for sate
               </p>
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Map Container */}
-      <div className="bg-white rounded-xl shadow overflow-hidden mb-8">
-        <div className="border-b px-6 py-4 bg-gray-50">
-          <div className="flex items-center justify-between">
-            <h3 className="font-medium text-gray-700">
-              Real-time Tracking View • {mapStyles.find(s => s.id === mapStyle)?.name}
-            </h3>
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center">
-                <div className="w-3 h-3 rounded-full bg-blue-600 mr-2"></div>
-                <span className="text-sm">Carriers ({carriers.length})</span>
-              </div>
-              <div className="flex items-center">
-                <div className="w-3 h-3 rounded-full bg-amber-500 mr-2"></div>
-                <span className="text-sm">
-                  Deliveries ({deliveries.length})
-                </span>
-              </div>
-              {showTraffic && (
-                <div className="flex items-center">
-                  <div className="w-3 h-3 rounded-full bg-red-500 mr-2"></div>
-                  <span className="text-sm">Traffic Layer</span>
-                </div>
-              )}
-            </div>
-          </div>
         </div>
 
         <div

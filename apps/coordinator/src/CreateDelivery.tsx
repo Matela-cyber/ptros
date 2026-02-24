@@ -1137,7 +1137,7 @@ export default function CreateDelivery() {
               <button
                 type="button"
                 onClick={() => navigate("/deliveries")}
-                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition"
+                className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 font-semibold transition-all"
               >
                 Cancel
               </button>
@@ -1145,7 +1145,7 @@ export default function CreateDelivery() {
               <button
                 type="submit"
                 disabled={submitting || customers.length === 0}
-                className="px-8 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center shadow-md"
+                className="px-8 py-3 bg-gradient-to-r from-accent to-accent-dark text-white rounded-lg hover:from-accent-dark hover:to-accent font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center shadow-lg hover:shadow-xl transform hover:scale-105"
               >
                 {submitting ? (
                   <>
@@ -1154,7 +1154,7 @@ export default function CreateDelivery() {
                   </>
                 ) : (
                   <>
-                    <span className="mr-2">📦</span>
+                    <span className="mr-2 text-xl">📦</span>
                     Create Delivery
                   </>
                 )}
@@ -1166,23 +1166,32 @@ export default function CreateDelivery() {
 
       {/* Help Information */}
       <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <div className="text-blue-600 font-medium mb-2">📍 Location Tracking</div>
-          <p className="text-sm text-blue-700">
+        <div className="bg-primary-bg border-l-4 border-primary rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+          <div className="text-primary font-semibold mb-2 flex items-center">
+            <span className="text-xl mr-2">📍</span>
+            Location Tracking
+          </div>
+          <p className="text-sm text-gray-700">
             Package location starts at pickup address and updates automatically as the carrier moves.
           </p>
         </div>
 
-        <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-          <div className="text-green-600 font-medium mb-2">💰 Pricing</div>
-          <p className="text-sm text-green-700">
+        <div className="bg-success-bg border-l-4 border-success rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+          <div className="text-success font-semibold mb-2 flex items-center">
+            <span className="text-xl mr-2">💰</span>
+            Pricing
+          </div>
+          <p className="text-sm text-gray-700">
             Distance-based calculation: M10 per km + 15% of package value (minimum M50).
           </p>
         </div>
 
-        <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
-          <div className="text-purple-600 font-medium mb-2">🚚 Carrier Assignment</div>
-          <p className="text-sm text-purple-700">
+        <div className="bg-accent-bg border-l-4 border-accent rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+          <div className="text-accent font-semibold mb-2 flex items-center">
+            <span className="text-xl mr-2">🚚</span>
+            Carrier Assignment
+          </div>
+          <p className="text-sm text-gray-700">
             Auto-assigns nearest available carrier if not manually assigned. OTP verification included.
           </p>
         </div>
