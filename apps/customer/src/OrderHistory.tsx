@@ -32,7 +32,7 @@ export default function OrderHistory() {
 
       const q = query(
         collection(db, "deliveries"),
-        where("customerId", "==", user.uid)
+        where("customerId", "==", user.uid),
       );
 
       const snapshot = await getDocs(q);
@@ -51,9 +51,7 @@ export default function OrderHistory() {
         });
       });
 
-      orderList.sort(
-        (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
-      );
+      orderList.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       setOrders(orderList);
       setLoading(false);
     } catch (error) {
@@ -139,43 +137,51 @@ export default function OrderHistory() {
       ) : (
         <div className="space-y-4">
           {filteredOrders.map((order) => (
-            <Link
+            <div
               key={order.id}
-              to={`/orders/${order.id}`}
               className="bg-white rounded-xl shadow p-6 hover:shadow-lg transition"
             >
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <div className="flex items-center space-x-4 mb-2">
-                    <h3 className="text-lg font-bold">
-                      {order.trackingCode}
-                    </h3>
+                    <h3 className="text-lg font-bold">{order.trackingCode}</h3>
                     <span
                       className={`px-3 py-1 rounded-full text-sm font-medium ${
                         order.status === "delivered"
                           ? "bg-green-100 text-green-800"
                           : order.status === "in_transit"
-                          ? "bg-blue-100 text-blue-800"
-                          : order.status === "pending"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : "bg-gray-100 text-gray-800"
+                            ? "bg-blue-100 text-blue-800"
+                            : order.status === "pending"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : "bg-gray-100 text-gray-800"
                       }`}
                     >
                       {order.status}
                     </span>
                   </div>
-                  <p className="text-gray-600">
-                    To: {order.deliveryAddress}
-                  </p>
+                  <p className="text-gray-600">To: {order.deliveryAddress}</p>
                   <p className="text-sm text-gray-500 mt-2">
                     Ordered on {order.createdAt.toLocaleDateString()}
                   </p>
                 </div>
                 <div className="text-right">
-                  <span className="text-2xl">→</span>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      to={`/track/${order.id}`}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-cyan-100 text-cyan-700 hover:bg-cyan-200"
+                    >
+                      Live Track
+                    </Link>
+                    <Link
+                      to={`/orders/${order.id}`}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200"
+                    >
+                      View
+                    </Link>
+                  </div>
                 </div>
               </div>
-            </Link>
+            </div>
           ))}
         </div>
       )}

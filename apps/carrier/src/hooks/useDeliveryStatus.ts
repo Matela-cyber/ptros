@@ -41,6 +41,16 @@ export const useDeliveryStatus = () => {
     deliveryId: string,
     status: "picked_up" | "in_transit" | "stuck" | "delivered",
     currentStatus?: string,
+    routeContext?: {
+      reason?: string;
+      note?: string;
+      shortcut?: {
+        start: { lat: number; lng: number };
+        end: { lat: number; lng: number };
+        vehicleTypeSpecific?: boolean;
+        note?: string;
+      };
+    },
   ) => {
     setLoading(true);
     setError(null);
@@ -54,7 +64,12 @@ export const useDeliveryStatus = () => {
         }
       }
 
-      await updateDeliveryStatus(deliveryId, status, currentLocation);
+      await updateDeliveryStatus(
+        deliveryId,
+        status,
+        currentLocation,
+        routeContext,
+      );
       setLoading(false);
       return { success: true, message: `Status updated to ${status}` };
     } catch (err: any) {

@@ -5,10 +5,7 @@ import { db } from "@config";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
 import { format } from "date-fns";
-import {
-  writeTimestamp,
-  getTimeServiceStatus,
-} from "./services/timeService";
+import { writeTimestamp, getTimeServiceStatus } from "./services/timeService";
 
 interface CustomerProfile {
   id: string;
@@ -65,8 +62,11 @@ export default function DeliveryDetails() {
   const navigate = useNavigate();
   const [delivery, setDelivery] = useState<DeliveryDetails | null>(null);
   const [loading, setLoading] = useState(true);
-  const [customerProfile, setCustomerProfile] = useState<CustomerProfile | null>(null);
-  const [carrierProfile, setCarrierProfile] = useState<CarrierProfile | null>(null);
+  const [customerProfile, setCustomerProfile] =
+    useState<CustomerProfile | null>(null);
+  const [carrierProfile, setCarrierProfile] = useState<CarrierProfile | null>(
+    null,
+  );
   const [loadingProfiles, setLoadingProfiles] = useState(false);
 
   useEffect(() => {
@@ -184,7 +184,7 @@ export default function DeliveryDetails() {
 
     try {
       const timestamp = await writeTimestamp(
-        `deliveries/${delivery.id}/status`
+        `deliveries/${delivery.id}/status`,
       );
       const timeServiceStatus = getTimeServiceStatus();
 
@@ -233,7 +233,7 @@ export default function DeliveryDetails() {
   ];
 
   const currentStepIndex = statusSteps.findIndex(
-    (step) => step.key === delivery.status
+    (step) => step.key === delivery.status,
   );
 
   return (
@@ -259,6 +259,12 @@ export default function DeliveryDetails() {
             </p>
           </div>
           <div className="flex space-x-3">
+            <button
+              onClick={() => navigate(`/deliveries/${delivery.id}/track`)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium flex items-center gap-2"
+            >
+              🗺️ Live Track
+            </button>
             <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
               Print
             </button>
@@ -337,12 +343,12 @@ export default function DeliveryDetails() {
                 delivery.status === "pending"
                   ? "bg-yellow-100 text-yellow-800"
                   : delivery.status === "assigned"
-                  ? "bg-blue-100 text-blue-800"
-                  : delivery.status === "picked_up"
-                  ? "bg-purple-100 text-purple-800"
-                  : delivery.status === "in_transit"
-                  ? "bg-indigo-100 text-indigo-800"
-                  : "bg-green-100 text-green-800"
+                    ? "bg-blue-100 text-blue-800"
+                    : delivery.status === "picked_up"
+                      ? "bg-purple-100 text-purple-800"
+                      : delivery.status === "in_transit"
+                        ? "bg-indigo-100 text-indigo-800"
+                        : "bg-green-100 text-green-800"
               }`}
             >
               {delivery.status.replace("_", " ").toUpperCase()}
@@ -373,36 +379,54 @@ export default function DeliveryDetails() {
           ) : customerProfile ? (
             <div className="space-y-4">
               <div className="pb-4 border-b border-gray-200">
-                <p className="text-2xl font-bold text-gray-800">{customerProfile.fullName}</p>
+                <p className="text-2xl font-bold text-gray-800">
+                  {customerProfile.fullName}
+                </p>
                 <p className="text-sm text-gray-500">{customerProfile.id}</p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase">Email</label>
-                  <p className="mt-1 text-sm text-gray-800 truncate">{customerProfile.email}</p>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase">
+                    Email
+                  </label>
+                  <p className="mt-1 text-sm text-gray-800 truncate">
+                    {customerProfile.email}
+                  </p>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase">Phone</label>
-                  <p className="mt-1 text-sm text-gray-800">{customerProfile.phone}</p>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase">
+                    Phone
+                  </label>
+                  <p className="mt-1 text-sm text-gray-800">
+                    {customerProfile.phone}
+                  </p>
                 </div>
               </div>
               {(customerProfile.address || customerProfile.city) && (
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase">Location</label>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase">
+                    Location
+                  </label>
                   <p className="mt-1 text-sm text-gray-800">
-                    {[customerProfile.address, customerProfile.city].filter(Boolean).join(", ")}
+                    {[customerProfile.address, customerProfile.city]
+                      .filter(Boolean)
+                      .join(", ")}
                   </p>
                 </div>
               )}
               <div className="pt-3 flex space-x-2">
                 <button
-                  onClick={() => window.location.href = `mailto:${customerProfile.email}`}
+                  onClick={() =>
+                    (window.location.href = `mailto:${customerProfile.email}`)
+                  }
                   className="flex-1 px-3 py-2 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 text-sm font-medium"
                 >
                   ✉️ Email
                 </button>
                 <button
-                  onClick={() => window.location.href = `tel:${customerProfile.phone}`}
+                  onClick={() =>
+                    (window.location.href = `tel:${customerProfile.phone}`)
+                  }
                   className="flex-1 px-3 py-2 bg-green-50 text-green-600 rounded hover:bg-green-100 text-sm font-medium"
                 >
                   📞 Call
@@ -434,36 +458,58 @@ export default function DeliveryDetails() {
           ) : carrierProfile ? (
             <div className="space-y-4">
               <div className="pb-4 border-b border-gray-200">
-                <p className="text-2xl font-bold text-gray-800">{carrierProfile.fullName}</p>
+                <p className="text-2xl font-bold text-gray-800">
+                  {carrierProfile.fullName}
+                </p>
                 <p className="text-sm text-gray-500">{carrierProfile.id}</p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase">Email</label>
-                  <p className="mt-1 text-sm text-gray-800 truncate">{carrierProfile.email}</p>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase">
+                    Email
+                  </label>
+                  <p className="mt-1 text-sm text-gray-800 truncate">
+                    {carrierProfile.email}
+                  </p>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase">Phone</label>
-                  <p className="mt-1 text-sm text-gray-800">{carrierProfile.phone}</p>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase">
+                    Phone
+                  </label>
+                  <p className="mt-1 text-sm text-gray-800">
+                    {carrierProfile.phone}
+                  </p>
                 </div>
               </div>
               {carrierProfile.vehicleType && (
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase">Vehicle Type</label>
-                  <p className="mt-1 text-sm text-gray-800 capitalize">{carrierProfile.vehicleType}</p>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase">
+                    Vehicle Type
+                  </label>
+                  <p className="mt-1 text-sm text-gray-800 capitalize">
+                    {carrierProfile.vehicleType}
+                  </p>
                 </div>
               )}
               {carrierProfile.licensePlate && (
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase">License Plate</label>
-                  <p className="mt-1 text-sm text-gray-800">{carrierProfile.licensePlate}</p>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase">
+                    License Plate
+                  </label>
+                  <p className="mt-1 text-sm text-gray-800">
+                    {carrierProfile.licensePlate}
+                  </p>
                 </div>
               )}
               {carrierProfile.status && (
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase">Status</label>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase">
+                    Status
+                  </label>
                   <p className="mt-1">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${carrierProfile.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-semibold ${carrierProfile.status === "active" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}`}
+                    >
                       {carrierProfile.status}
                     </span>
                   </p>
@@ -471,13 +517,17 @@ export default function DeliveryDetails() {
               )}
               <div className="pt-3 flex space-x-2">
                 <button
-                  onClick={() => window.location.href = `mailto:${carrierProfile.email}`}
+                  onClick={() =>
+                    (window.location.href = `mailto:${carrierProfile.email}`)
+                  }
                   className="flex-1 px-3 py-2 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 text-sm font-medium"
                 >
                   ✉️ Email
                 </button>
                 <button
-                  onClick={() => window.location.href = `tel:${carrierProfile.phone}`}
+                  onClick={() =>
+                    (window.location.href = `tel:${carrierProfile.phone}`)
+                  }
                   className="flex-1 px-3 py-2 bg-green-50 text-green-600 rounded hover:bg-green-100 text-sm font-medium"
                 >
                   📞 Call
@@ -581,7 +631,7 @@ export default function DeliveryDetails() {
                   <p className="mt-1 font-medium">
                     {format(
                       delivery.pickupDateTime,
-                      "MMMM d, yyyy 'at' h:mm a"
+                      "MMMM d, yyyy 'at' h:mm a",
                     )}
                   </p>
                 </div>
@@ -660,14 +710,20 @@ export default function DeliveryDetails() {
                   Current Status
                 </label>
                 <p className="mt-1">
-                  <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                    delivery.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                    delivery.status === 'assigned' ? 'bg-blue-100 text-blue-800' :
-                    delivery.status === 'picked_up' ? 'bg-purple-100 text-purple-800' :
-                    delivery.status === 'in_transit' ? 'bg-indigo-100 text-indigo-800' :
-                    'bg-green-100 text-green-800'
-                  }`}>
-                    {delivery.status.replace('_', ' ').toUpperCase()}
+                  <span
+                    className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                      delivery.status === "pending"
+                        ? "bg-yellow-100 text-yellow-800"
+                        : delivery.status === "assigned"
+                          ? "bg-blue-100 text-blue-800"
+                          : delivery.status === "picked_up"
+                            ? "bg-purple-100 text-purple-800"
+                            : delivery.status === "in_transit"
+                              ? "bg-indigo-100 text-indigo-800"
+                              : "bg-green-100 text-green-800"
+                    }`}
+                  >
+                    {delivery.status.replace("_", " ").toUpperCase()}
                   </span>
                 </p>
               </div>
@@ -676,7 +732,8 @@ export default function DeliveryDetails() {
                   Created
                 </label>
                 <p className="mt-1 text-sm text-gray-700">
-                  {delivery.createdAt && format(delivery.createdAt, "MMM d, yyyy h:mm a")}
+                  {delivery.createdAt &&
+                    format(delivery.createdAt, "MMM d, yyyy h:mm a")}
                 </p>
               </div>
               <div>
@@ -684,7 +741,8 @@ export default function DeliveryDetails() {
                   Last Updated
                 </label>
                 <p className="mt-1 text-sm text-gray-700">
-                  {delivery.updatedAt && format(delivery.updatedAt, "MMM d, yyyy h:mm a")}
+                  {delivery.updatedAt &&
+                    format(delivery.updatedAt, "MMM d, yyyy h:mm a")}
                 </p>
               </div>
             </div>

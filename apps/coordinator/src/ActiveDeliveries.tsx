@@ -14,10 +14,7 @@ import {
 import { toast, Toaster } from "react-hot-toast";
 import { Link, useSearchParams } from "react-router-dom";
 import { format } from "date-fns";
-import {
-  writeTimestamp,
-  getTimeServiceStatus,
-} from "./services/timeService";
+import { writeTimestamp, getTimeServiceStatus } from "./services/timeService";
 
 interface Delivery {
   id: string;
@@ -106,7 +103,7 @@ export default function ActiveDeliveries() {
         console.error("Error loading deliveries:", error);
         toast.error("Failed to load deliveries");
         setLoading(false);
-      }
+      },
     );
 
     return () => unsubscribe();
@@ -146,9 +143,7 @@ export default function ActiveDeliveries() {
   const updateStatus = async (deliveryId: string, newStatus: string) => {
     try {
       // Get server timestamp (from Realtime DB with Firestore fallback)
-      const timestamp = await writeTimestamp(
-        `deliveries/${deliveryId}/status`
-      );
+      const timestamp = await writeTimestamp(`deliveries/${deliveryId}/status`);
       const timeServiceStatus = getTimeServiceStatus();
 
       await updateDoc(doc(db, "deliveries", deliveryId), {
@@ -176,7 +171,7 @@ export default function ActiveDeliveries() {
         collection(db, "users"),
         where("role", "==", "carrier"),
         where("isApproved", "==", true),
-        where("status", "==", "active")
+        where("status", "==", "active"),
       );
       const carriersSnapshot = await getDocs(carriersQuery);
 
@@ -186,10 +181,10 @@ export default function ActiveDeliveries() {
       }
 
       const firstCarrier = carriersSnapshot.docs[0];
-      
+
       // Get server timestamp (from Realtime DB with Firestore fallback)
       const timestamp = await writeTimestamp(
-        `deliveries/${deliveryId}/assigned`
+        `deliveries/${deliveryId}/assigned`,
       );
       const timeServiceStatus = getTimeServiceStatus();
 
@@ -481,7 +476,7 @@ export default function ActiveDeliveries() {
                     <td className="px-6 py-4">
                       <span
                         className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(
-                          delivery.status
+                          delivery.status,
                         )}`}
                       >
                         {delivery.status.replace("_", " ").toUpperCase()}
@@ -517,6 +512,12 @@ export default function ActiveDeliveries() {
                             className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200"
                           >
                             View
+                          </Link>
+                          <Link
+                            to={`/deliveries/${delivery.id}/track`}
+                            className="px-3 py-1 bg-cyan-100 text-cyan-700 rounded text-sm hover:bg-cyan-200"
+                          >
+                            Live Track
                           </Link>
 
                           {delivery.status === "pending" && (

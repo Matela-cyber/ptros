@@ -47,6 +47,10 @@ service cloud.firestore {
     // Main delivery records with status, location, OTP, assignments, milestones
     match /deliveries/{deliveryId} {
       
+      // GUEST: Public read access for guest tracking (trackingCode must match - verified client-side)
+      // Guests can view basic delivery info by knowing the tracking code
+      allow read: if request.auth == null;
+
       // COORDINATOR: Full access - create, read, update all deliveries
       allow read: if isCoordinator();
       allow write: if isCoordinator();
@@ -59,9 +63,53 @@ service cloud.firestore {
       // CARRIER: Read available (pending & unassigned) deliveries
       allow read: if request.auth != null && resource.data.status == 'pending' && resource.data.carrierId == null;
 
-      // CARRIER: Update own delivery status, location, OTP, pickup/delivery times
-      allow update: if isCarrier() && resource.data.carrierId == request.auth.uid &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'location', 'otp', 'pickupTime', 'deliveryTime', 'updatedAt', 'statusHistory']);
+      // CARRIER: Claim a pending, unassigned delivery
+      allow update: if isCarrier()
+        && resource.data.status == 'pending'
+        && resource.data.carrierId == null
+        && request.resource.data.carrierId == request.auth.uid
+        && request.resource.data.status in ['assigned', 'accepted']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'carrierId',
+          'carrierEmail',
+          'carrierName',
+          'carrierPhone',
+          'status',
+          'assignedAt',
+          'acceptedAt',
+          'updatedAt'
+        ]);
+
+      // CARRIER: Update an already-assigned own delivery (status, timing, OTP verification, live location)
+      allow update: if isCarrier()
+        && resource.data.carrierId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'currentLocation',
+          'location',
+          'otpCode',
+          'otpVerified',
+          'pickupTime',
+          'deliveryTime',
+          'acceptedAt',
+          'updatedAt',
+          'statusHistory'
+        ]);
+
+      // CARRIER: Decline/unassign their currently assigned delivery back to pending
+      allow update: if isCarrier()
+        && resource.data.carrierId == request.auth.uid
+        && request.resource.data.carrierId == null
+        && request.resource.data.status == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'carrierId',
+          'carrierEmail',
+          'carrierName',
+          'carrierPhone',
+          'assignedAt',
+          'updatedAt'
+        ]);
 
       // CUSTOMER: Read own deliveries (order history, tracking)
       allow read: if isCustomer() && resource.data.customerId == request.auth.uid;

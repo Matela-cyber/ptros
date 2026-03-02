@@ -20,6 +20,12 @@ export default function CurrentJobDetails({
     useDeliveryStatus();
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [showMoreDetails, setShowMoreDetails] = useState(false);
+  const [showDeliveryRouteModal, setShowDeliveryRouteModal] = useState(false);
+  const [deviationReason, setDeviationReason] = useState("normal_route");
+  const [deviationNote, setDeviationNote] = useState("");
+  const [shortcutStart, setShortcutStart] = useState("");
+  const [shortcutEnd, setShortcutEnd] = useState("");
+  const [vehicleSpecificShortcut, setVehicleSpecificShortcut] = useState(false);
 
   if (!delivery) {
     return (
@@ -42,6 +48,11 @@ export default function CurrentJobDetails({
     status: "picked_up" | "in_transit" | "stuck" | "delivered",
   ) => {
     try {
+      if (status === "delivered") {
+        setShowDeliveryRouteModal(true);
+        return;
+      }
+
       await updateStatus(delivery.id, status, delivery.status);
       const statusLabels = {
         picked_up: "Picked Up",
@@ -56,6 +67,48 @@ export default function CurrentJobDetails({
     } catch (err) {
       console.error("Status update failed:", err);
     }
+  };
+
+  const parsePoint = (raw: string): { lat: number; lng: number } | null => {
+    const parts = raw.split(",").map((part) => part.trim());
+    if (parts.length !== 2) return null;
+    const lat = Number(parts[0]);
+    const lng = Number(parts[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+    return { lat, lng };
+  };
+
+  const confirmDeliveredWithRouteContext = async () => {
+    const start = parsePoint(shortcutStart);
+    const end = parsePoint(shortcutEnd);
+
+    const shortcut =
+      deviationReason === "shortcut" && start && end
+        ? {
+            start,
+            end,
+            vehicleTypeSpecific: vehicleSpecificShortcut,
+            note: deviationNote || undefined,
+          }
+        : undefined;
+
+    await updateStatus(delivery.id, "delivered", delivery.status, {
+      reason: deviationReason,
+      note: deviationNote || undefined,
+      shortcut,
+    });
+
+    setShowDeliveryRouteModal(false);
+    setDeviationReason("normal_route");
+    setDeviationNote("");
+    setShortcutStart("");
+    setShortcutEnd("");
+    setVehicleSpecificShortcut(false);
+
+    setStatusMessage("✅ Delivery marked as Delivered");
+    setTimeout(() => setStatusMessage(null), 3000);
+    onStatusUpdate?.(delivery.id, "delivered");
   };
 
   const distanceKm = (delivery as any)?.distance ?? delivery.route?.distance;
@@ -450,6 +503,104 @@ export default function CurrentJobDetails({
           </div>
         )}
       </div>
+
+      {showDeliveryRouteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+            <div className="border-b px-6 py-4">
+              <h3 className="text-lg font-bold text-gray-800">
+                Delivery Complete • Route Feedback
+              </h3>
+              <p className="text-sm text-gray-600">
+                If you deviated, add details so route optimization improves over
+                time.
+              </p>
+            </div>
+
+            <div className="space-y-4 px-6 py-5">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Route outcome
+                </label>
+                <select
+                  value={deviationReason}
+                  onChange={(e) => setDeviationReason(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 p-2 text-sm"
+                >
+                  <option value="normal_route">Normal route (no issues)</option>
+                  <option value="shortcut">I took a shortcut</option>
+                  <option value="blocked_route">
+                    Road blocked/unavailable
+                  </option>
+                  <option value="traffic">Heavy traffic detour</option>
+                  <option value="other">Other deviation</option>
+                </select>
+              </div>
+
+              {deviationReason === "shortcut" && (
+                <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 space-y-3">
+                  <p className="text-xs text-blue-700">
+                    Add two points from the journey (lat,lng) to record the
+                    shortcut segment.
+                  </p>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <input
+                      value={shortcutStart}
+                      onChange={(e) => setShortcutStart(e.target.value)}
+                      className="rounded-lg border border-gray-300 p-2 text-sm"
+                      placeholder="Start point: -29.3100, 27.4800"
+                    />
+                    <input
+                      value={shortcutEnd}
+                      onChange={(e) => setShortcutEnd(e.target.value)}
+                      className="rounded-lg border border-gray-300 p-2 text-sm"
+                      placeholder="End point: -29.3000, 27.4900"
+                    />
+                  </div>
+                  <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={vehicleSpecificShortcut}
+                      onChange={(e) =>
+                        setVehicleSpecificShortcut(e.target.checked)
+                      }
+                    />
+                    Specific to my vehicle type
+                  </label>
+                </div>
+              )}
+
+              <textarea
+                value={deviationNote}
+                onChange={(e) => setDeviationNote(e.target.value)}
+                rows={3}
+                className="w-full rounded-lg border border-gray-300 p-2 text-sm"
+                placeholder="Extra note (optional): temporary closure reason, safer path, time saved, etc."
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 border-t px-6 py-4">
+              <button
+                onClick={() => setShowDeliveryRouteModal(false)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeliveredWithRouteContext}
+                disabled={
+                  loading ||
+                  (deviationReason === "shortcut" &&
+                    (!parsePoint(shortcutStart) || !parsePoint(shortcutEnd)))
+                }
+                className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                Confirm Delivered
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

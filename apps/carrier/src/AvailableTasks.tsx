@@ -13,6 +13,10 @@ export default function AvailableTasks() {
   const [showLocationModal, setShowLocationModal] = useState(false);
   const { isSharing, startSharing } = useGPSLocation();
 
+  const openLiveTrack = (deliveryId: string) => {
+    window.open(`/g/track/${deliveryId}`, "_blank", "noopener,noreferrer");
+  };
+
   useEffect(() => {
     setLoading(true);
 
@@ -362,6 +366,12 @@ export default function AvailableTasks() {
                     {job.status === "assigned" ? (
                       <div className="flex gap-2">
                         <button
+                          onClick={() => openLiveTrack(job.id)}
+                          className="px-3 py-3 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 font-semibold rounded-lg transition"
+                        >
+                          Live Track
+                        </button>
+                        <button
                           onClick={() => handleAcceptAssignedJob(job.id)}
                           disabled={accepting === job.id || !isSharing}
                           className="flex-1 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold rounded-lg transition flex items-center justify-center gap-2"
@@ -387,10 +397,18 @@ export default function AvailableTasks() {
                       </div>
                     ) : (
                       <div className="bg-green-50 p-3 rounded border border-green-200 text-center">
-                        <p className="text-sm text-green-900 font-semibold inline-flex items-center gap-2">
-                          <i className="fa-solid fa-circle-check" />
-                          You have accepted this job
-                        </p>
+                        <div className="flex items-center justify-center gap-2 mb-2">
+                          <p className="text-sm text-green-900 font-semibold inline-flex items-center gap-2">
+                            <i className="fa-solid fa-circle-check" />
+                            You have accepted this job
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => openLiveTrack(job.id)}
+                          className="px-3 py-1.5 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 font-semibold rounded-lg text-sm"
+                        >
+                          Live Track
+                        </button>
                       </div>
                     )}
                   </div>
@@ -511,20 +529,28 @@ export default function AvailableTasks() {
                     </div>
 
                     {/* Accept Button */}
-                    <button
-                      onClick={() => handleAcceptAvailableTask(task.id)}
-                      disabled={accepting === task.id}
-                      className="w-full py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold rounded-lg transition flex items-center justify-center gap-2"
-                    >
-                      {accepting === task.id ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                          Accepting...
-                        </>
-                      ) : (
-                        <>Accept Task</>
-                      )}
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => openLiveTrack(task.id)}
+                        className="px-3 py-3 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 font-semibold rounded-lg transition"
+                      >
+                        Live Track
+                      </button>
+                      <button
+                        onClick={() => handleAcceptAvailableTask(task.id)}
+                        disabled={accepting === task.id}
+                        className="flex-1 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold rounded-lg transition flex items-center justify-center gap-2"
+                      >
+                        {accepting === task.id ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            Accepting...
+                          </>
+                        ) : (
+                          <>Accept Task</>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

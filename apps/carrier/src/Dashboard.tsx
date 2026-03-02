@@ -543,6 +543,21 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
                     </div>
                   </div>
 
+                  <div className="mt-4">
+                    <button
+                      onClick={() =>
+                        window.open(
+                          `/g/track/${activeDelivery.id}`,
+                          "_blank",
+                          "noopener,noreferrer",
+                        )
+                      }
+                      className="px-4 py-2 bg-cyan-500/90 text-white rounded-lg text-sm font-semibold hover:bg-cyan-500"
+                    >
+                      Live Track
+                    </button>
+                  </div>
+
                   {/* Progress Bar */}
                   <div className="mt-6">
                     <div className="flex justify-between text-sm mb-2">
