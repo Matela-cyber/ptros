@@ -1,15 +1,19 @@
 // apps/coordinator/src/LiveMap.tsx
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { db, realtimeDb } from "@config";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
-import { ref as rtdbRef, onValue } from "firebase/database";
+import {
+  ref as rtdbRef,
+  onChildAdded,
+  onChildChanged,
+  onChildRemoved,
+} from "firebase/database";
 import { Toaster } from "react-hot-toast";
 
 declare global {
   interface Window {
     google: any;
     mapsReady?: boolean;
-    MarkerClusterer?: any;
   }
 }
 
@@ -39,6 +43,32 @@ interface Delivery {
   };
 }
 
+interface CarrierProfile {
+  id: string;
+  name: string;
+  phone: string;
+  vehicleType: string;
+  status: string;
+  currentLocation?: {
+    lat: number;
+    lng: number;
+    timestamp: Date;
+  };
+}
+
+interface ActiveDelivery {
+  id: string;
+  trackingCode: string;
+  status: string;
+  pickupAddress: string;
+  deliveryAddress: string;
+  carrierName?: string;
+  currentLocation?: {
+    lat: number;
+    lng: number;
+  };
+}
+
 interface MarkerData {
   id: string;
   type: "carrier" | "delivery";
@@ -55,10 +85,14 @@ interface MapStyle {
 }
 
 export default function LiveMap() {
-  const [carriers, setCarriers] = useState<CarrierLocation[]>([]);
-  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
+  const [carrierProfiles, setCarrierProfiles] = useState<CarrierProfile[]>([]);
+  const [activeDeliveries, setActiveDeliveries] = useState<ActiveDelivery[]>(
+    [],
+  );
   const [tracksMap, setTracksMap] = useState<Record<string, any>>({});
-  const [deliveryTracksMap, setDeliveryTracksMap] = useState<Record<string, any>>({});
+  const [deliveryTracksMap, setDeliveryTracksMap] = useState<
+    Record<string, any>
+  >({});
   const [googleMapsLoaded, setGoogleMapsLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<
@@ -74,11 +108,68 @@ export default function LiveMap() {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
   const markersRef = useRef<Map<string, any>>(new Map());
-  const markersUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const markerUpdateRafRef = useRef<number | null>(null);
   const sharedInfoWindowRef = useRef<any>(null);
-  const clusterRef = useRef<any>(null);
   const trafficLayerRef = useRef<any>(null);
   const transitLayerRef = useRef<any>(null);
+  const hasAutoFittedRef = useRef(false);
+
+  const getTrackEpochMs = (track: any): number => {
+    const raw = track?.timestampMs ?? track?.timestamp;
+    const numeric = typeof raw === "number" ? raw : Number(raw);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric;
+    }
+
+    const parsed = Date.parse(
+      track?.timestampISO || track?.timestampUtcISO || "",
+    );
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+
+    return Date.now();
+  };
+
+  const carriers = useMemo<CarrierLocation[]>(() => {
+    return carrierProfiles
+      .map((carrier) => {
+        const rtdbLoc = tracksMap[carrier.id];
+        const location = rtdbLoc
+          ? {
+              lat: rtdbLoc.lat,
+              lng: rtdbLoc.lng,
+              timestamp: new Date(getTrackEpochMs(rtdbLoc)),
+            }
+          : carrier.currentLocation;
+
+        if (!location) {
+          return null;
+        }
+
+        return {
+          id: carrier.id,
+          name: carrier.name,
+          phone: carrier.phone,
+          vehicleType: carrier.vehicleType,
+          status: carrier.status,
+          location,
+        };
+      })
+      .filter(Boolean) as CarrierLocation[];
+  }, [carrierProfiles, tracksMap]);
+
+  const deliveries = useMemo<Delivery[]>(() => {
+    return activeDeliveries.map((delivery) => {
+      const rtdbLoc = deliveryTracksMap[delivery.id];
+      return {
+        ...delivery,
+        currentLocation: rtdbLoc
+          ? { lat: rtdbLoc.lat, lng: rtdbLoc.lng }
+          : delivery.currentLocation,
+      };
+    });
+  }, [activeDeliveries, deliveryTracksMap]);
 
   // Default center (Maseru, Lesotho)
   const defaultCenter = { lat: -29.31, lng: 27.48 };
@@ -130,42 +221,42 @@ export default function LiveMap() {
     };
   }, []);
 
-  // Load carriers with real-time location updates
+  // Load carrier metadata and active deliveries from Firestore
   useEffect(() => {
     const carriersQuery = query(
       collection(db, "users"),
       where("role", "==", "carrier"),
-      where("isApproved", "==", true)
+      where("isApproved", "==", true),
     );
     const unsubscribeCarriers = onSnapshot(
       carriersQuery,
       (snapshot) => {
-        const carrierLocations: CarrierLocation[] = [];
+        const carrierData: CarrierProfile[] = [];
 
         snapshot.forEach((doc) => {
           const data = doc.data();
-          const rtdbLoc = tracksMap[doc.id];
-          if (rtdbLoc || data.currentLocation) {
-            const loc = rtdbLoc
-              ? { lat: rtdbLoc.lat, lng: rtdbLoc.lng, timestamp: new Date(rtdbLoc.timestamp) }
-              : { lat: data.currentLocation.lat, lng: data.currentLocation.lng, timestamp: data.currentLocation.timestamp?.toDate() || new Date() };
-
-            carrierLocations.push({
-              id: doc.id,
-              name: data.fullName || "Unknown Carrier",
-              phone: data.phone || "",
-              vehicleType: data.vehicleType || "Vehicle",
-              status: data.status || "active",
-              location: loc,
-            });
-          }
+          carrierData.push({
+            id: doc.id,
+            name: data.fullName || "Unknown Carrier",
+            phone: data.phone || "",
+            vehicleType: data.vehicleType || "Vehicle",
+            status: data.status || "active",
+            currentLocation: data.currentLocation
+              ? {
+                  lat: data.currentLocation.lat,
+                  lng: data.currentLocation.lng,
+                  timestamp:
+                    data.currentLocation.timestamp?.toDate() || new Date(),
+                }
+              : undefined,
+          });
         });
 
-        setCarriers(carrierLocations);
+        setCarrierProfiles(carrierData);
       },
       (error) => {
         console.error("Error loading carriers:", error);
-      }
+      },
     );
 
     // Load active deliveries
@@ -176,17 +267,15 @@ export default function LiveMap() {
         "picked_up",
         "in_transit",
         "out_for_delivery",
-      ])
+      ]),
     );
     const unsubscribeDeliveries = onSnapshot(
       deliveriesQuery,
       (snapshot) => {
-        const deliveryList: Delivery[] = [];
+        const deliveryList: ActiveDelivery[] = [];
 
         snapshot.forEach((doc) => {
           const data = doc.data();
-          const rtdbLoc = deliveryTracksMap[doc.id];
-          const loc = rtdbLoc ? { lat: rtdbLoc.lat, lng: rtdbLoc.lng } : data.currentLocation;
           deliveryList.push({
             id: doc.id,
             trackingCode: data.trackingCode,
@@ -194,35 +283,109 @@ export default function LiveMap() {
             pickupAddress: data.pickupAddress,
             deliveryAddress: data.deliveryAddress,
             carrierName: data.carrierName,
-            currentLocation: loc,
+            currentLocation: data.currentLocation,
           });
         });
 
-        setDeliveries(deliveryList);
+        setActiveDeliveries(deliveryList);
       },
       (error) => {
         console.error("Error loading deliveries:", error);
-      }
+      },
     );
-
-    // Listen to RTDB tracks and merge into carriers/deliveries
-    const tracksRef = rtdbRef(realtimeDb, 'tracks')
-    const tracksUnsub = onValue(tracksRef, (snap) => {
-      const val = snap.val() || {}
-      setTracksMap(val)
-    })
-
-    const dTracksRef = rtdbRef(realtimeDb, 'deliveryTracks')
-    const dTracksUnsub = onValue(dTracksRef, (snap) => {
-      const val = snap.val() || {}
-      setDeliveryTracksMap(val)
-    })
 
     return () => {
       unsubscribeCarriers();
       unsubscribeDeliveries();
-      try { tracksUnsub && tracksUnsub() } catch (e) {}
-      try { dTracksUnsub && dTracksUnsub() } catch (e) {}
+    };
+  }, []);
+
+  // Listen to RTDB tracks incrementally for low-latency updates
+  useEffect(() => {
+    const tracksRef = rtdbRef(realtimeDb, "tracks");
+    const deliveryTracksRef = rtdbRef(realtimeDb, "deliveryTracks");
+
+    const upsertTrack = (key: string | null, value: any) => {
+      if (!key) return;
+      setTracksMap((prev) => {
+        const prevTs = getTrackEpochMs(prev[key]);
+        const nextTs = getTrackEpochMs(value);
+
+        if (nextTs < prevTs) {
+          return prev;
+        }
+
+        if (
+          prev[key]?.lat === value?.lat &&
+          prev[key]?.lng === value?.lng &&
+          prevTs === nextTs
+        ) {
+          return prev;
+        }
+        return { ...prev, [key]: value };
+      });
+    };
+
+    const upsertDeliveryTrack = (key: string | null, value: any) => {
+      if (!key) return;
+      setDeliveryTracksMap((prev) => {
+        const prevTs = getTrackEpochMs(prev[key]);
+        const nextTs = getTrackEpochMs(value);
+
+        if (nextTs < prevTs) {
+          return prev;
+        }
+
+        if (
+          prev[key]?.lat === value?.lat &&
+          prev[key]?.lng === value?.lng &&
+          prevTs === nextTs
+        ) {
+          return prev;
+        }
+        return { ...prev, [key]: value };
+      });
+    };
+
+    const unsubTracksAdded = onChildAdded(tracksRef, (snap) => {
+      upsertTrack(snap.key, snap.val());
+    });
+    const unsubTracksChanged = onChildChanged(tracksRef, (snap) => {
+      upsertTrack(snap.key, snap.val());
+    });
+    const unsubTracksRemoved = onChildRemoved(tracksRef, (snap) => {
+      if (!snap.key) return;
+      setTracksMap((prev) => {
+        if (!(snap.key! in prev)) return prev;
+        const next = { ...prev };
+        delete next[snap.key!];
+        return next;
+      });
+    });
+
+    const unsubDeliveryAdded = onChildAdded(deliveryTracksRef, (snap) => {
+      upsertDeliveryTrack(snap.key, snap.val());
+    });
+    const unsubDeliveryChanged = onChildChanged(deliveryTracksRef, (snap) => {
+      upsertDeliveryTrack(snap.key, snap.val());
+    });
+    const unsubDeliveryRemoved = onChildRemoved(deliveryTracksRef, (snap) => {
+      if (!snap.key) return;
+      setDeliveryTracksMap((prev) => {
+        if (!(snap.key! in prev)) return prev;
+        const next = { ...prev };
+        delete next[snap.key!];
+        return next;
+      });
+    });
+
+    return () => {
+      unsubTracksAdded();
+      unsubTracksChanged();
+      unsubTracksRemoved();
+      unsubDeliveryAdded();
+      unsubDeliveryChanged();
+      unsubDeliveryRemoved();
     };
   }, []);
 
@@ -246,8 +409,8 @@ export default function LiveMap() {
             window.google.maps.MapTypeId.ROADMAP,
             window.google.maps.MapTypeId.SATELLITE,
             window.google.maps.MapTypeId.HYBRID,
-            window.google.maps.MapTypeId.TERRAIN
-          ]
+            window.google.maps.MapTypeId.TERRAIN,
+          ],
         },
         scaleControl: true,
         streetViewControl: true,
@@ -264,9 +427,9 @@ export default function LiveMap() {
       // Initialize layers
       trafficLayerRef.current = new window.google.maps.TrafficLayer();
       transitLayerRef.current = new window.google.maps.TransitLayer();
-      
+
       // Listen for satellite tiles loaded
-      window.google.maps.event.addListenerOnce(map, 'tilesloaded', () => {
+      window.google.maps.event.addListenerOnce(map, "tilesloaded", () => {
         console.log("Map tiles loaded");
         setSatelliteLoaded(true);
       });
@@ -276,9 +439,10 @@ export default function LiveMap() {
       setMapError(null);
     } catch (error) {
       console.error("❌ Error initializing map:", error);
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       setMapError(
-        `Failed to initialize map: ${errorMessage}. Please check console for details.`
+        `Failed to initialize map: ${errorMessage}. Please check console for details.`,
       );
     }
   }, [googleMapsLoaded, is3DEnabled]);
@@ -298,22 +462,28 @@ export default function LiveMap() {
       };
 
       const mapTypeId = mapTypeIds[mapStyle as keyof typeof mapTypeIds];
-      
+
       if (mapTypeId) {
         // Force a refresh of the map
         mapInstance.current.setMapTypeId(mapTypeId);
-        
+
         // Add event listener for when tiles are loaded (especially for satellite)
         if (mapStyle === "satellite") {
-          window.google.maps.event.addListenerOnce(mapInstance.current, 'tilesloaded', () => {
-            console.log("Satellite tiles loaded");
-            setSatelliteLoaded(true);
-          });
-          
+          window.google.maps.event.addListenerOnce(
+            mapInstance.current,
+            "tilesloaded",
+            () => {
+              console.log("Satellite tiles loaded");
+              setSatelliteLoaded(true);
+            },
+          );
+
           // Show a message if satellite takes time to load
           setTimeout(() => {
             if (!satelliteLoaded) {
-              console.log("Satellite view might be loading slowly. Zooming in/out may help.");
+              console.log(
+                "Satellite view might be loading slowly. Zooming in/out may help.",
+              );
             }
           }, 3000);
         }
@@ -348,7 +518,6 @@ export default function LiveMap() {
 
     // Update map styles
     mapInstance.current.setOptions({ styles: getMapStyles() });
-
   }, [showTraffic, showRoadNames, showPlaces, is3DEnabled]);
 
   // Helper function to get map styles based on settings
@@ -505,8 +674,8 @@ export default function LiveMap() {
     }
 
     // Add or update markers
-    const markersForClustering: any[] = [];
-    
+    const visibleMarkers: any[] = [];
+
     newMarkerData.forEach((markerData) => {
       const existingMarker = markersRef.current.get(markerData.id);
       const position = { lat: markerData.lat, lng: markerData.lng };
@@ -514,7 +683,8 @@ export default function LiveMap() {
       // Update position if changed
       if (existingMarker) {
         existingMarker.setPosition(position);
-        markersForClustering.push(existingMarker);
+        existingMarker.setMap(mapInstance.current);
+        visibleMarkers.push(existingMarker);
       } else {
         // Create new marker only if it doesn't exist
         try {
@@ -525,9 +695,9 @@ export default function LiveMap() {
                   markerData.content.includes("delivered")
                 ? "#10B981"
                 : markerData.type === "delivery" &&
-                  markerData.content.includes("in_transit")
-                ? "#8B5CF6"
-                : "#F59E0B";
+                    markerData.content.includes("in_transit")
+                  ? "#8B5CF6"
+                  : "#F59E0B";
 
           const icon = {
             path: window.google.maps.SymbolPath.CIRCLE,
@@ -554,45 +724,26 @@ export default function LiveMap() {
           });
 
           markersRef.current.set(markerData.id, marker);
-          markersForClustering.push(marker);
+          marker.setMap(mapInstance.current);
+          visibleMarkers.push(marker);
         } catch (error) {
-          console.error(
-            `Error creating ${markerData.type} marker:`,
-            error
-          );
+          console.error(`Error creating ${markerData.type} marker:`, error);
         }
       }
     });
 
-    // Update clustering
-    if (markersForClustering.length > 0) {
+    if (visibleMarkers.length > 0) {
       try {
-        // Destroy existing cluster
-        if (clusterRef.current) {
-          clusterRef.current.clearMarkers();
-        }
-
-        // Load MarkerClusterer if available and we have many markers
-        if (markersForClustering.length > 5 && window.MarkerClusterer) {
-          clusterRef.current = new window.MarkerClusterer({
-            markers: markersForClustering,
-            map: mapInstance.current,
+        // Fit bounds once for initial view/filter changes only.
+        if (!hasAutoFittedRef.current) {
+          const bounds = new window.google.maps.LatLngBounds();
+          visibleMarkers.forEach((marker) => {
+            bounds.extend(marker.getPosition());
           });
-          console.log("📍 Marker clustering enabled for", markersForClustering.length, "markers");
-        } else {
-          // Add all markers directly to map if clustering not available or too few markers
-          markersForClustering.forEach((marker) => {
-            marker.setMap(mapInstance.current);
-          });
-        }
-
-        // Fit bounds to show all markers
-        const bounds = new window.google.maps.LatLngBounds();
-        markersForClustering.forEach((marker) => {
-          bounds.extend(marker.getPosition());
-        });
-        if (!bounds.isEmpty()) {
-          mapInstance.current.fitBounds(bounds);
+          if (!bounds.isEmpty()) {
+            mapInstance.current.fitBounds(bounds);
+            hasAutoFittedRef.current = true;
+          }
         }
       } catch (error) {
         console.error("Error managing markers/clustering:", error);
@@ -600,21 +751,24 @@ export default function LiveMap() {
     }
   }, [carriers, deliveries, selectedType, googleMapsLoaded]);
 
-  // Debounced marker updates
+  // Keep auto-fit behavior only for initial load and marker-type filter changes.
   useEffect(() => {
-    // Clear pending update
-    if (markersUpdateTimeoutRef.current) {
-      clearTimeout(markersUpdateTimeoutRef.current);
+    hasAutoFittedRef.current = false;
+  }, [selectedType]);
+
+  // Schedule marker updates on next animation frame for lower visual latency.
+  useEffect(() => {
+    if (markerUpdateRafRef.current !== null) {
+      cancelAnimationFrame(markerUpdateRafRef.current);
     }
 
-    // Schedule new update with 300ms debounce
-    markersUpdateTimeoutRef.current = setTimeout(() => {
+    markerUpdateRafRef.current = requestAnimationFrame(() => {
       updateMarkers();
-    }, 300);
+    });
 
     return () => {
-      if (markersUpdateTimeoutRef.current) {
-        clearTimeout(markersUpdateTimeoutRef.current);
+      if (markerUpdateRafRef.current !== null) {
+        cancelAnimationFrame(markerUpdateRafRef.current);
       }
     };
   }, [carriers, deliveries, selectedType, googleMapsLoaded, updateMarkers]);
@@ -657,7 +811,9 @@ export default function LiveMap() {
     };
     newScript.onerror = () => {
       console.error("Failed to load Google Maps script");
-      setMapError("Failed to load Google Maps. Please check your API key and billing status.");
+      setMapError(
+        "Failed to load Google Maps. Please check your API key and billing status.",
+      );
     };
     document.head.appendChild(newScript);
   };
@@ -665,8 +821,9 @@ export default function LiveMap() {
   // Force refresh satellite tiles
   const refreshSatelliteView = () => {
     if (mapInstance.current && window.google) {
-      const currentZoom = mapInstance.current.getZoom();
-      mapInstance.current.setZoom(currentZoom - 0.1);
+      const currentZoom = Number(mapInstance.current.getZoom()) || 14;
+      const bumpZoom = Math.min(21, currentZoom + 1);
+      mapInstance.current.setZoom(bumpZoom);
       setTimeout(() => {
         mapInstance.current.setZoom(currentZoom);
         console.log("Satellite view refreshed");
@@ -718,7 +875,7 @@ export default function LiveMap() {
    • Try "Test Satellite" to zoom into Maseru city center
    • Switch to "Hybrid" view for labels on satellite
 
-Current Status: ${satelliteLoaded ? 'Satellite tiles loaded' : 'Waiting for satellite tiles...'}
+Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for satellite tiles..."}
 `);
   };
 
@@ -799,7 +956,9 @@ Current Status: ${satelliteLoaded ? 'Satellite tiles loaded' : 'Waiting for sate
         <div className="bg-white p-4 rounded-xl shadow">
           <div className="text-sm text-gray-500">Map Status</div>
           <div className="text-2xl font-bold text-green-600">
-            {satelliteLoaded || mapStyle !== "satellite" ? "✅ Live" : "🔄 Loading..."}
+            {satelliteLoaded || mapStyle !== "satellite"
+              ? "✅ Live"
+              : "🔄 Loading..."}
           </div>
         </div>
       </div>
@@ -866,7 +1025,9 @@ Current Status: ${satelliteLoaded ? 'Satellite tiles loaded' : 'Waiting for sate
         <div className="mt-4 pt-4 border-t">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h4 className="text-sm font-medium text-gray-700 mb-2">Map Features</h4>
+              <h4 className="text-sm font-medium text-gray-700 mb-2">
+                Map Features
+              </h4>
             </div>
             <div className="flex flex-wrap gap-4">
               <div className="flex items-center gap-2">
@@ -879,7 +1040,9 @@ Current Status: ${satelliteLoaded ? 'Satellite tiles loaded' : 'Waiting for sate
                   />
                   <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                 </label>
-                <span className="text-sm font-medium text-gray-700">Road Names</span>
+                <span className="text-sm font-medium text-gray-700">
+                  Road Names
+                </span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -892,7 +1055,9 @@ Current Status: ${satelliteLoaded ? 'Satellite tiles loaded' : 'Waiting for sate
                   />
                   <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                 </label>
-                <span className="text-sm font-medium text-gray-700">Place Names</span>
+                <span className="text-sm font-medium text-gray-700">
+                  Place Names
+                </span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -905,7 +1070,9 @@ Current Status: ${satelliteLoaded ? 'Satellite tiles loaded' : 'Waiting for sate
                   />
                   <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                 </label>
-                <span className="text-sm font-medium text-gray-700">Traffic</span>
+                <span className="text-sm font-medium text-gray-700">
+                  Traffic
+                </span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -918,7 +1085,9 @@ Current Status: ${satelliteLoaded ? 'Satellite tiles loaded' : 'Waiting for sate
                   />
                   <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                 </label>
-                <span className="text-sm font-medium text-gray-700">3D View</span>
+                <span className="text-sm font-medium text-gray-700">
+                  3D View
+                </span>
               </div>
             </div>
           </div>
@@ -930,7 +1099,8 @@ Current Status: ${satelliteLoaded ? 'Satellite tiles loaded' : 'Waiting for sate
         <div className="border-b px-6 py-4 bg-gray-50">
           <div className="flex items-center justify-between">
             <h3 className="font-medium text-gray-700">
-              Real-time Tracking View • {mapStyles.find(s => s.id === mapStyle)?.name}
+              Real-time Tracking View •{" "}
+              {mapStyles.find((s) => s.id === mapStyle)?.name}
             </h3>
             <div className="flex items-center space-x-4">
               <div className="flex items-center">
@@ -956,18 +1126,20 @@ Current Status: ${satelliteLoaded ? 'Satellite tiles loaded' : 'Waiting for sate
         <div className="border-b px-6 py-3 bg-gray-50">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-gray-700">Map Style</span>
+              <span className="text-sm font-medium text-gray-700">
+                Map Style
+              </span>
               {mapStyles.map((style) => (
                 <button
                   key={style.id}
                   onClick={() => setMapStyle(style.id)}
                   className={`px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm ${
                     mapStyle === style.id
-                      ? style.id === "satellite" 
+                      ? style.id === "satellite"
                         ? "bg-green-600 text-white"
                         : style.id === "hybrid"
-                        ? "bg-purple-600 text-white"
-                        : "bg-blue-600 text-white"
+                          ? "bg-purple-600 text-white"
+                          : "bg-blue-600 text-white"
                       : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                   }`}
                 >
@@ -982,9 +1154,13 @@ Current Status: ${satelliteLoaded ? 'Satellite tiles loaded' : 'Waiting for sate
             <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-yellow-700">🛰️ Satellite View Active</span>
+                  <span className="text-yellow-700">
+                    🛰️ Satellite View Active
+                  </span>
                   {!satelliteLoaded && (
-                    <span className="text-sm text-yellow-600">(Loading satellite imagery...)</span>
+                    <span className="text-sm text-yellow-600">
+                      (Loading satellite imagery...)
+                    </span>
                   )}
                 </div>
                 <div className="flex gap-2">
@@ -1009,7 +1185,8 @@ Current Status: ${satelliteLoaded ? 'Satellite tiles loaded' : 'Waiting for sate
                 </div>
               </div>
               <p className="text-sm text-yellow-600 mt-2">
-                Tip: Zoom in closer to see buildings clearly. Some areas may have limited satellite resolution.
+                Tip: Zoom in closer to see buildings clearly. Some areas may
+                have limited satellite resolution.
               </p>
             </div>
           )}
@@ -1023,10 +1200,13 @@ Current Status: ${satelliteLoaded ? 'Satellite tiles loaded' : 'Waiting for sate
 
         <div className="border-t px-6 py-4 bg-gray-50">
           <div className="text-sm text-gray-500">
-            Current map: <strong>{mapStyles.find(s => s.id === mapStyle)?.name}</strong>
+            Current map:{" "}
+            <strong>{mapStyles.find((s) => s.id === mapStyle)?.name}</strong>
             {showTraffic && " • Traffic enabled"}
             {is3DEnabled && " • 3D View enabled"}
-            {mapStyle === "satellite" && !satelliteLoaded && " • Loading satellite imagery..."}
+            {mapStyle === "satellite" &&
+              !satelliteLoaded &&
+              " • Loading satellite imagery..."}
             <button
               onClick={reloadGoogleMaps}
               className="ml-2 text-blue-600 hover:text-blue-800 underline"
@@ -1040,13 +1220,22 @@ Current Status: ${satelliteLoaded ? 'Satellite tiles loaded' : 'Waiting for sate
       {/* Additional Help for Satellite View */}
       {mapStyle === "satellite" && (
         <div className="mb-8 p-4 bg-blue-50 rounded-xl border border-blue-200">
-          <h4 className="font-medium text-blue-800 mb-2">Satellite View Tips:</h4>
+          <h4 className="font-medium text-blue-800 mb-2">
+            Satellite View Tips:
+          </h4>
           <ul className="text-sm text-blue-700 list-disc pl-5 space-y-1">
-            <li>Zoom in (use mouse wheel or +/- buttons) to see buildings clearly</li>
+            <li>
+              Zoom in (use mouse wheel or +/- buttons) to see buildings clearly
+            </li>
             <li>Satellite imagery may take a few seconds to load fully</li>
             <li>Try "Test Satellite" button to zoom into Maseru city center</li>
-            <li>Switch to "Hybrid" view to see labels on top of satellite imagery</li>
-            <li>Ensure your Google Maps API key has proper permissions and billing is enabled</li>
+            <li>
+              Switch to "Hybrid" view to see labels on top of satellite imagery
+            </li>
+            <li>
+              Ensure your Google Maps API key has proper permissions and billing
+              is enabled
+            </li>
           </ul>
         </div>
       )}
@@ -1087,7 +1276,7 @@ Current Status: ${satelliteLoaded ? 'Satellite tiles loaded' : 'Waiting for sate
                     onClick={() =>
                       centerOnLocation(
                         carrier.location.lat,
-                        carrier.location.lng
+                        carrier.location.lng,
                       )
                     }
                     className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200"

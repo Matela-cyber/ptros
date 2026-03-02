@@ -13,10 +13,7 @@ import {
 import { toast, Toaster } from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import { useGeocoder } from "./hooks/useGeocoder";
-import {
-  writeTimestamp,
-  getTimeServiceStatus,
-} from "./services/timeService";
+import { writeTimestamp, getTimeServiceStatus } from "./services/timeService";
 
 declare global {
   interface Window {
@@ -41,12 +38,25 @@ interface Carrier {
   vehicleType?: string;
   status: string;
   isApproved: boolean;
+  currentLocation?: {
+    lat: number;
+    lng: number;
+  };
 }
 
 interface Coordinates {
   lat: number;
   lng: number;
   address: string;
+}
+
+interface CarrierRecommendation extends Carrier {
+  recommendationScore: number;
+  distanceToPickupKm: number;
+  estimatedDetourKm: number;
+  activeDeliveries: number;
+  recommendationReason: string;
+  autoAssignable: boolean;
 }
 
 export default function CreateDelivery() {
@@ -100,6 +110,10 @@ export default function CreateDelivery() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
+  const [recommendedCarriers, setRecommendedCarriers] = useState<
+    CarrierRecommendation[]
+  >([]);
 
   // Load customers and carriers
   useEffect(() => {
@@ -111,7 +125,7 @@ export default function CreateDelivery() {
       // Load customers
       const customersQuery = query(
         collection(db, "users"),
-        where("role", "==", "customer")
+        where("role", "==", "customer"),
       );
       const customersSnapshot = await getDocs(customersQuery);
       const customersList: Customer[] = [];
@@ -133,7 +147,6 @@ export default function CreateDelivery() {
         collection(db, "users"),
         where("role", "==", "carrier"),
         where("isApproved", "==", true),
-        where("status", "==", "active")
       );
       const carriersSnapshot = await getDocs(carriersQuery);
       const carriersList: Carrier[] = [];
@@ -147,6 +160,12 @@ export default function CreateDelivery() {
           vehicleType: data.vehicleType,
           status: data.status,
           isApproved: data.isApproved,
+          currentLocation: data.currentLocation
+            ? {
+                lat: data.currentLocation.lat,
+                lng: data.currentLocation.lng,
+              }
+            : undefined,
         });
       });
       setCarriers(carriersList);
@@ -159,7 +178,9 @@ export default function CreateDelivery() {
   };
 
   // Geocode an address to get coordinates
-  const handleGeocodeAddress = async (address: string): Promise<Coordinates | null> => {
+  const handleGeocodeAddress = async (
+    address: string,
+  ): Promise<Coordinates | null> => {
     const result = await geocodeAddress(address, "ls");
     if (result) {
       return {
@@ -174,7 +195,7 @@ export default function CreateDelivery() {
   const handleChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    >
+    >,
   ) => {
     const { name, value, type } = e.target;
 
@@ -193,18 +214,18 @@ export default function CreateDelivery() {
 
   // Handle pickup address change with geocoding
   const handlePickupAddressChange = async (address: string) => {
-    setFormData((prev) => ({ 
-      ...prev, 
+    setFormData((prev) => ({
+      ...prev,
       pickupAddress: address,
-      pickupCoordinates: null
+      pickupCoordinates: null,
     }));
 
     if (address.length > 10) {
       const coords = await geocodeAddress(address);
       if (coords) {
-        setFormData((prev) => ({ 
-          ...prev, 
-          pickupCoordinates: coords 
+        setFormData((prev) => ({
+          ...prev,
+          pickupCoordinates: coords,
         }));
       }
     }
@@ -212,18 +233,18 @@ export default function CreateDelivery() {
 
   // Handle delivery address change with geocoding
   const handleDeliveryAddressChange = async (address: string) => {
-    setFormData((prev) => ({ 
-      ...prev, 
+    setFormData((prev) => ({
+      ...prev,
       deliveryAddress: address,
-      deliveryCoordinates: null
+      deliveryCoordinates: null,
     }));
 
     if (address.length > 10) {
       const coords = await geocodeAddress(address);
       if (coords) {
-        setFormData((prev) => ({ 
-          ...prev, 
-          deliveryCoordinates: coords 
+        setFormData((prev) => ({
+          ...prev,
+          deliveryCoordinates: coords,
         }));
       }
     }
@@ -268,15 +289,22 @@ export default function CreateDelivery() {
     return true;
   };
 
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const calculateDistance = (
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number,
+  ): number => {
     const R = 6371; // Earth's radius in km
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   };
 
@@ -286,12 +314,217 @@ export default function CreateDelivery() {
     return "1-2 days";
   };
 
-  const calculateEarnings = (packageValue: number, distance: number): number => {
+  const calculateEarnings = (
+    packageValue: number,
+    distance: number,
+  ): number => {
     const baseValue = packageValue || 100;
     const distanceFee = distance * 10; // M10 per km
     const valueFee = Math.round(baseValue * 0.15);
     return Math.max(50, valueFee + distanceFee);
   };
+
+  const getVehicleCapacityKg = (vehicleType?: string): number => {
+    const type = (vehicleType || "").toLowerCase();
+    if (type.includes("bike") || type.includes("bicycle")) return 10;
+    if (type.includes("motor") || type.includes("scooter")) return 25;
+    if (type.includes("sedan") || type.includes("car")) return 120;
+    if (type.includes("pickup") || type.includes("van")) return 800;
+    if (type.includes("truck")) return 3000;
+    return 150;
+  };
+
+  const toRad = (value: number) => (value * Math.PI) / 180;
+
+  const haversineKm = (
+    lat1: number,
+    lng1: number,
+    lat2: number,
+    lng2: number,
+  ) => {
+    const R = 6371;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) *
+        Math.cos(toRad(lat2)) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  const generateCarrierRecommendations = async (
+    pickup: Coordinates,
+    packageWeight?: number,
+  ) => {
+    setRecommendationLoading(true);
+    try {
+      const activeDeliveriesQuery = query(
+        collection(db, "deliveries"),
+        where("status", "in", [
+          "assigned",
+          "accepted",
+          "picked_up",
+          "in_transit",
+          "out_for_delivery",
+        ]),
+      );
+      const activeDeliveriesSnapshot = await getDocs(activeDeliveriesQuery);
+
+      const activeByCarrier: Record<
+        string,
+        { count: number; destination?: { lat: number; lng: number } }
+      > = {};
+
+      activeDeliveriesSnapshot.forEach((activeDoc) => {
+        const data = activeDoc.data();
+        if (!data.carrierId) return;
+        if (!activeByCarrier[data.carrierId]) {
+          activeByCarrier[data.carrierId] = {
+            count: 0,
+            destination: undefined,
+          };
+        }
+        activeByCarrier[data.carrierId].count += 1;
+
+        if (
+          !activeByCarrier[data.carrierId].destination &&
+          data.deliveryLocation?.lat &&
+          data.deliveryLocation?.lng
+        ) {
+          activeByCarrier[data.carrierId].destination = {
+            lat: data.deliveryLocation.lat,
+            lng: data.deliveryLocation.lng,
+          };
+        }
+      });
+
+      const weighted = carriers
+        .filter(
+          (carrier) =>
+            carrier.currentLocation?.lat && carrier.currentLocation?.lng,
+        )
+        .map((carrier) => {
+          const loc = carrier.currentLocation!;
+          const activeInfo = activeByCarrier[carrier.id] || { count: 0 };
+          const distanceToPickupKm = haversineKm(
+            loc.lat,
+            loc.lng,
+            pickup.lat,
+            pickup.lng,
+          );
+
+          const vehicleCapacityKg = getVehicleCapacityKg(carrier.vehicleType);
+          const weightKg = packageWeight || 0;
+          const overweight = weightKg > 0 && weightKg > vehicleCapacityKg;
+
+          const availabilityPenalty =
+            carrier.status === "active"
+              ? 0
+              : carrier.status === "busy"
+                ? 12
+                : 25;
+
+          const workloadPenalty = activeInfo.count * 14;
+
+          let estimatedDetourKm = 0;
+          if (carrier.status === "busy" && activeInfo.destination) {
+            const directToCurrentDestination = haversineKm(
+              loc.lat,
+              loc.lng,
+              activeInfo.destination.lat,
+              activeInfo.destination.lng,
+            );
+            const viaPickupToCurrentDestination =
+              haversineKm(loc.lat, loc.lng, pickup.lat, pickup.lng) +
+              haversineKm(
+                pickup.lat,
+                pickup.lng,
+                activeInfo.destination.lat,
+                activeInfo.destination.lng,
+              );
+            estimatedDetourKm = Math.max(
+              0,
+              viaPickupToCurrentDestination - directToCurrentDestination,
+            );
+          }
+
+          const directionPenalty = estimatedDetourKm * 2.8;
+          const capacityPenalty = overweight ? 999 : 0;
+          const distancePenalty = distanceToPickupKm * 2.3;
+
+          const recommendationScore =
+            distancePenalty +
+            availabilityPenalty +
+            workloadPenalty +
+            directionPenalty +
+            capacityPenalty;
+
+          const reasonParts = [
+            `${distanceToPickupKm.toFixed(1)}km from pickup`,
+            carrier.status === "active"
+              ? "available now"
+              : `status: ${carrier.status}`,
+            `${activeInfo.count} active deliveries`,
+          ];
+
+          if (estimatedDetourKm > 0.5) {
+            reasonParts.push(`detour ~${estimatedDetourKm.toFixed(1)}km`);
+          }
+
+          if (overweight) {
+            reasonParts.push(`package exceeds ${vehicleCapacityKg}kg capacity`);
+          }
+
+          const autoAssignable =
+            !overweight &&
+            (carrier.status === "active" ||
+              (carrier.status === "busy" && estimatedDetourKm <= 4));
+
+          return {
+            ...carrier,
+            activeDeliveries: activeInfo.count,
+            distanceToPickupKm,
+            estimatedDetourKm,
+            recommendationScore,
+            recommendationReason: reasonParts.join(" • "),
+            autoAssignable,
+          } as CarrierRecommendation;
+        })
+        .sort((a, b) => a.recommendationScore - b.recommendationScore)
+        .slice(0, 5);
+
+      setRecommendedCarriers(weighted);
+    } catch (error) {
+      console.error("Error generating carrier recommendations:", error);
+      setRecommendedCarriers([]);
+    } finally {
+      setRecommendationLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (
+      !formData.pickupCoordinates ||
+      !formData.deliveryCoordinates ||
+      carriers.length === 0
+    ) {
+      setRecommendedCarriers([]);
+      return;
+    }
+
+    generateCarrierRecommendations(
+      formData.pickupCoordinates,
+      formData.packageWeight ? Number(formData.packageWeight) : undefined,
+    );
+  }, [
+    formData.pickupCoordinates,
+    formData.deliveryCoordinates,
+    formData.packageWeight,
+    carriers,
+  ]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -317,9 +550,12 @@ export default function CreateDelivery() {
       setGeocoding(false);
 
       if (!pickupCoords || !deliveryCoords) {
-        toast.error("Unable to get coordinates for addresses. Delivery will be created without location data.", {
-          duration: 5000,
-        });
+        toast.error(
+          "Unable to get coordinates for addresses. Delivery will be created without location data.",
+          {
+            duration: 5000,
+          },
+        );
       }
 
       const trackingCode = generateTrackingCode();
@@ -334,25 +570,35 @@ export default function CreateDelivery() {
           pickupCoords.lat,
           pickupCoords.lng,
           deliveryCoords.lat,
-          deliveryCoords.lng
+          deliveryCoords.lng,
         );
         estimatedDeliveryTime = getEstimatedDeliveryTime(distance);
         estimatedEarnings = calculateEarnings(
           formData.packageValue ? Number(formData.packageValue) : 0,
-          distance
+          distance,
         );
       }
 
       // Get selected customer
-      const selectedCustomer = customers.find(c => c.id === formData.customerId);
+      const selectedCustomer = customers.find(
+        (c) => c.id === formData.customerId,
+      );
+
+      const bestRecommendedCarrier = recommendedCarriers[0] || null;
+      const selectedCarrierId =
+        formData.carrierId ||
+        (bestRecommendedCarrier?.autoAssignable
+          ? bestRecommendedCarrier.id
+          : "");
 
       // Get selected carrier if assigned
-      const selectedCarrier = formData.carrierId ? 
-        carriers.find(c => c.id === formData.carrierId) : null;
+      const selectedCarrier = selectedCarrierId
+        ? carriers.find((c) => c.id === selectedCarrierId)
+        : null;
 
       // Get server timestamp from Realtime DB with Firestore fallback
       const createdTimestamp = await writeTimestamp(
-        `deliveries/${trackingCode}/created`
+        `deliveries/${trackingCode}/created`,
       );
       const timeServiceStatus = getTimeServiceStatus();
 
@@ -360,7 +606,7 @@ export default function CreateDelivery() {
       const deliveryData = {
         // Basic Info
         trackingCode,
-        status: formData.carrierId ? "assigned" : "pending",
+        status: selectedCarrierId ? "assigned" : "pending",
         priority: formData.priority,
 
         // Customer Info
@@ -371,33 +617,41 @@ export default function CreateDelivery() {
 
         // Package Details
         packageDescription: formData.packageDescription,
-        packageWeight: formData.packageWeight ? Number(formData.packageWeight) : null,
-        packageValue: formData.packageValue ? Number(formData.packageValue) : null,
+        packageWeight: formData.packageWeight
+          ? Number(formData.packageWeight)
+          : null,
+        packageValue: formData.packageValue
+          ? Number(formData.packageValue)
+          : null,
         packageDimensions: formData.packageDimensions,
 
         // Pickup Details
         pickupAddress: formData.pickupAddress,
-        pickupLocation: pickupCoords ? {
-          lat: pickupCoords.lat,
-          lng: pickupCoords.lng,
-          address: pickupCoords.address,
-          timestamp: createdTimestamp
-        } : null,
+        pickupLocation: pickupCoords
+          ? {
+              lat: pickupCoords.lat,
+              lng: pickupCoords.lng,
+              address: pickupCoords.address,
+              timestamp: createdTimestamp,
+            }
+          : null,
         pickupContactName: formData.pickupContactName,
         pickupContactPhone: formData.pickupContactPhone,
         pickupInstructions: formData.pickupInstructions,
         pickupDateTime: Timestamp.fromDate(
-          new Date(`${formData.pickupDate}T${formData.pickupTime}`)
+          new Date(`${formData.pickupDate}T${formData.pickupTime}`),
         ),
 
         // Delivery Details
         deliveryAddress: formData.deliveryAddress,
-        deliveryLocation: deliveryCoords ? {
-          lat: deliveryCoords.lat,
-          lng: deliveryCoords.lng,
-          address: deliveryCoords.address,
-          timestamp: createdTimestamp
-        } : null,
+        deliveryLocation: deliveryCoords
+          ? {
+              lat: deliveryCoords.lat,
+              lng: deliveryCoords.lng,
+              address: deliveryCoords.address,
+              timestamp: createdTimestamp,
+            }
+          : null,
         deliveryContactName: formData.deliveryContactName,
         deliveryContactPhone: formData.deliveryContactPhone,
         deliveryInstructions: formData.deliveryInstructions,
@@ -410,15 +664,30 @@ export default function CreateDelivery() {
         estimatedEarnings,
 
         // Carrier Assignment
-        carrierId: formData.carrierId || null,
+        carrierId: selectedCarrierId || null,
         carrierEmail: selectedCarrier?.email || null,
         carrierName: selectedCarrier?.fullName || null,
-        assignedAt: formData.carrierId ? createdTimestamp : null,
+        assignedAt: selectedCarrierId ? createdTimestamp : null,
+
+        // Recommendation telemetry
+        carrierRecommendations: recommendedCarriers.map((carrier, index) => ({
+          rank: index + 1,
+          carrierId: carrier.id,
+          carrierName: carrier.fullName,
+          score: Number(carrier.recommendationScore.toFixed(2)),
+          distanceToPickupKm: Number(carrier.distanceToPickupKm.toFixed(2)),
+          estimatedDetourKm: Number(carrier.estimatedDetourKm.toFixed(2)),
+          activeDeliveries: carrier.activeDeliveries,
+          status: carrier.status,
+          autoAssignable: carrier.autoAssignable,
+          reason: carrier.recommendationReason,
+        })),
 
         // Payment Info
         paymentMethod: formData.paymentMethod,
-        paymentAmount: formData.paymentAmount ? 
-          Number(formData.paymentAmount) : estimatedEarnings,
+        paymentAmount: formData.paymentAmount
+          ? Number(formData.paymentAmount)
+          : estimatedEarnings,
         paymentStatus: formData.paymentStatus,
 
         // Special Requirements
@@ -443,23 +712,29 @@ export default function CreateDelivery() {
         },
 
         // 🚨 CRITICAL: Current Location starts at PICKUP location
-        currentLocation: pickupCoords ? {
-          lat: pickupCoords.lat,
-          lng: pickupCoords.lng,
-          timestamp: createdTimestamp,
-          address: formData.pickupAddress,
-          locationType: "pickup_point",
-          status: "waiting_for_pickup"
-        } : null,
+        currentLocation: pickupCoords
+          ? {
+              lat: pickupCoords.lat,
+              lng: pickupCoords.lng,
+              timestamp: createdTimestamp,
+              address: formData.pickupAddress,
+              locationType: "pickup_point",
+              status: "waiting_for_pickup",
+            }
+          : null,
 
         // Location History (for tracking route)
-        locationHistory: pickupCoords ? [{
-          lat: pickupCoords.lat,
-          lng: pickupCoords.lng,
-          timestamp: createdTimestamp,
-          status: "created_at_pickup",
-          address: formData.pickupAddress
-        }] : [],
+        locationHistory: pickupCoords
+          ? [
+              {
+                lat: pickupCoords.lat,
+                lng: pickupCoords.lng,
+                timestamp: createdTimestamp,
+                status: "created_at_pickup",
+                address: formData.pickupAddress,
+              },
+            ]
+          : [],
 
         // Milestones
         milestones: {
@@ -468,12 +743,19 @@ export default function CreateDelivery() {
           pickedUp: null,
           inTransit: null,
           outForDelivery: null,
-          delivered: null
-        }
+          delivered: null,
+        },
       };
 
       // Save to Firestore
       const docRef = await addDoc(collection(db, "deliveries"), deliveryData);
+
+      if (!formData.carrierId && bestRecommendedCarrier?.autoAssignable) {
+        toast.success(
+          `Auto-assigned to ${bestRecommendedCarrier.fullName} (best route fit)`,
+          { duration: 3500 },
+        );
+      }
 
       // Show success message with details
       const successMessage = (
@@ -481,11 +763,13 @@ export default function CreateDelivery() {
           <p className="font-bold">✅ Delivery Created Successfully!</p>
           <div className="mt-2 space-y-1">
             <p className="text-sm">
-              <span className="font-semibold">Tracking Code:</span> {trackingCode}
+              <span className="font-semibold">Tracking Code:</span>{" "}
+              {trackingCode}
             </p>
             {distance > 0 && (
               <p className="text-sm">
-                <span className="font-semibold">Distance:</span> {distance.toFixed(1)} km
+                <span className="font-semibold">Distance:</span>{" "}
+                {distance.toFixed(1)} km
               </p>
             )}
             {pickupCoords && deliveryCoords && (
@@ -494,7 +778,8 @@ export default function CreateDelivery() {
               </p>
             )}
             <p className="text-xs text-gray-500 mt-1">
-              Package location is set to pickup address until carrier picks it up.
+              Package location is set to pickup address until carrier picks it
+              up.
             </p>
           </div>
         </div>
@@ -538,7 +823,6 @@ export default function CreateDelivery() {
       setTimeout(() => {
         navigate(`/deliveries/${docRef.id}`);
       }, 2000);
-
     } catch (error: any) {
       console.error("Error creating delivery:", error);
       toast.error(`Failed to create delivery: ${error.message}`);
@@ -569,7 +853,8 @@ export default function CreateDelivery() {
               Create New Delivery
             </h1>
             <p className="text-gray-600 mt-2">
-              Fill in delivery details. Package location will start at pickup address.
+              Fill in delivery details. Package location will start at pickup
+              address.
             </p>
           </div>
           <button
@@ -590,7 +875,8 @@ export default function CreateDelivery() {
           <div>
             <h3 className="font-semibold text-blue-800">Location Tracking</h3>
             <p className="text-sm text-blue-700">
-              Package location will be initialized at the pickup address and updated as the carrier moves.
+              Package location will be initialized at the pickup address and
+              updated as the carrier moves.
             </p>
           </div>
         </div>
@@ -631,7 +917,8 @@ export default function CreateDelivery() {
               {customers.length === 0 && (
                 <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                   <p className="text-sm text-yellow-700">
-                    No customers found. Customers must register through the customer portal first.
+                    No customers found. Customers must register through the
+                    customer portal first.
                   </p>
                 </div>
               )}
@@ -747,7 +1034,8 @@ export default function CreateDelivery() {
                 <div className="mt-2 flex items-center text-sm text-green-600">
                   <span className="mr-2">✓</span>
                   <span>
-                    Coordinates ready: {formData.pickupCoordinates.lat.toFixed(6)},{" "}
+                    Coordinates ready:{" "}
+                    {formData.pickupCoordinates.lat.toFixed(6)},{" "}
                     {formData.pickupCoordinates.lng.toFixed(6)}
                   </span>
                 </div>
@@ -848,7 +1136,8 @@ export default function CreateDelivery() {
                 <div className="mt-2 flex items-center text-sm text-green-600">
                   <span className="mr-2">✓</span>
                   <span>
-                    Coordinates ready: {formData.deliveryCoordinates.lat.toFixed(6)},{" "}
+                    Coordinates ready:{" "}
+                    {formData.deliveryCoordinates.lat.toFixed(6)},{" "}
                     {formData.deliveryCoordinates.lng.toFixed(6)}
                   </span>
                 </div>
@@ -960,18 +1249,72 @@ export default function CreateDelivery() {
                   <option value="">Auto-assign later (recommended)</option>
                   {carriers.map((carrier) => (
                     <option key={carrier.id} value={carrier.id}>
-                      {carrier.fullName} • {carrier.vehicleType || "Vehicle"} • {carrier.phone}
+                      {carrier.fullName} • {carrier.vehicleType || "Vehicle"} •{" "}
+                      {carrier.phone}
                     </option>
                   ))}
                 </select>
                 {carriers.length === 0 && (
                   <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                     <p className="text-sm text-yellow-700">
-                      No active carriers available. Approve carriers in the Carrier Management section.
+                      No active carriers available. Approve carriers in the
+                      Carrier Management section.
                     </p>
                   </div>
                 )}
               </div>
+
+              {formData.pickupCoordinates && formData.deliveryCoordinates && (
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Top 5 Optimized Carriers
+                    </label>
+                    {recommendationLoading && (
+                      <span className="text-xs text-blue-600">Computing…</span>
+                    )}
+                  </div>
+
+                  {recommendedCarriers.length === 0 ? (
+                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
+                      Add valid pickup and delivery coordinates to generate
+                      recommendations.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {recommendedCarriers.map((carrier, index) => (
+                        <div
+                          key={carrier.id}
+                          className="p-3 rounded-lg border border-gray-200 bg-gray-50"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-semibold text-gray-800">
+                                #{index + 1} {carrier.fullName}
+                              </div>
+                              <div className="text-xs text-gray-600 mt-1">
+                                {carrier.recommendationReason}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  carrierId: carrier.id,
+                                }))
+                              }
+                              className="px-3 py-1.5 text-xs font-semibold rounded-md bg-blue-100 text-blue-700 hover:bg-blue-200"
+                            >
+                              Use
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1004,10 +1347,13 @@ export default function CreateDelivery() {
                     className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                     placeholder="Enter amount or leave blank for auto-calculation"
                   />
-                  <span className="absolute right-3 top-3 text-gray-500">M</span>
+                  <span className="absolute right-3 top-3 text-gray-500">
+                    M
+                  </span>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Leave blank to auto-calculate based on distance and package value
+                  Leave blank to auto-calculate based on distance and package
+                  value
                 </p>
               </div>
             </div>
@@ -1030,7 +1376,9 @@ export default function CreateDelivery() {
                   />
                   <label htmlFor="isFragile" className="ml-3 text-gray-700">
                     <span className="font-medium">Fragile items</span>
-                    <span className="block text-sm text-gray-500">Handle with care</span>
+                    <span className="block text-sm text-gray-500">
+                      Handle with care
+                    </span>
                   </label>
                 </div>
 
@@ -1043,9 +1391,14 @@ export default function CreateDelivery() {
                     onChange={handleChange}
                     className="h-5 w-5 text-blue-600 rounded focus:ring-blue-500"
                   />
-                  <label htmlFor="requiresSignature" className="ml-3 text-gray-700">
+                  <label
+                    htmlFor="requiresSignature"
+                    className="ml-3 text-gray-700"
+                  >
                     <span className="font-medium">Signature required</span>
-                    <span className="block text-sm text-gray-500">Upon delivery</span>
+                    <span className="block text-sm text-gray-500">
+                      Upon delivery
+                    </span>
                   </label>
                 </div>
 
@@ -1058,9 +1411,14 @@ export default function CreateDelivery() {
                     onChange={handleChange}
                     className="h-5 w-5 text-blue-600 rounded focus:ring-blue-500"
                   />
-                  <label htmlFor="insuranceRequired" className="ml-3 text-gray-700">
+                  <label
+                    htmlFor="insuranceRequired"
+                    className="ml-3 text-gray-700"
+                  >
                     <span className="font-medium">Insurance required</span>
-                    <span className="block text-sm text-gray-500">For high-value items</span>
+                    <span className="block text-sm text-gray-500">
+                      For high-value items
+                    </span>
                   </label>
                 </div>
               </div>
@@ -1092,29 +1450,36 @@ export default function CreateDelivery() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {formData.pickupCoordinates && (
                 <div className="bg-white p-4 rounded-lg border border-green-200">
-                  <div className="font-medium text-green-700 mb-1">📍 Pickup Location</div>
+                  <div className="font-medium text-green-700 mb-1">
+                    📍 Pickup Location
+                  </div>
                   <div className="text-sm text-gray-600">
                     <div className="truncate">{formData.pickupAddress}</div>
                     <div className="text-xs font-mono mt-1">
-                      {formData.pickupCoordinates.lat.toFixed(6)}, {formData.pickupCoordinates.lng.toFixed(6)}
+                      {formData.pickupCoordinates.lat.toFixed(6)},{" "}
+                      {formData.pickupCoordinates.lng.toFixed(6)}
                     </div>
                   </div>
                 </div>
               )}
               {formData.deliveryCoordinates && (
                 <div className="bg-white p-4 rounded-lg border border-green-200">
-                  <div className="font-medium text-green-700 mb-1">🎯 Delivery Location</div>
+                  <div className="font-medium text-green-700 mb-1">
+                    🎯 Delivery Location
+                  </div>
                   <div className="text-sm text-gray-600">
                     <div className="truncate">{formData.deliveryAddress}</div>
                     <div className="text-xs font-mono mt-1">
-                      {formData.deliveryCoordinates.lat.toFixed(6)}, {formData.deliveryCoordinates.lng.toFixed(6)}
+                      {formData.deliveryCoordinates.lat.toFixed(6)},{" "}
+                      {formData.deliveryCoordinates.lng.toFixed(6)}
                     </div>
                   </div>
                 </div>
               )}
             </div>
             <p className="text-sm text-green-700 mt-4">
-              Package location will start at pickup coordinates and update as the carrier moves.
+              Package location will start at pickup coordinates and update as
+              the carrier moves.
             </p>
           </div>
         )}
@@ -1124,7 +1489,8 @@ export default function CreateDelivery() {
           <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
             <div>
               <p className="text-sm text-gray-600">
-                {customers.length} customers available • {carriers.length} active carriers
+                {customers.length} customers available • {carriers.length}{" "}
+                active carriers
               </p>
               {formData.pickupCoordinates && formData.deliveryCoordinates && (
                 <p className="text-sm text-green-600 mt-1">
@@ -1150,7 +1516,9 @@ export default function CreateDelivery() {
                 {submitting ? (
                   <>
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
-                    {geocoding ? 'Getting coordinates...' : 'Creating Delivery...'}
+                    {geocoding
+                      ? "Getting coordinates..."
+                      : "Creating Delivery..."}
                   </>
                 ) : (
                   <>
@@ -1172,7 +1540,8 @@ export default function CreateDelivery() {
             Location Tracking
           </div>
           <p className="text-sm text-gray-700">
-            Package location starts at pickup address and updates automatically as the carrier moves.
+            Package location starts at pickup address and updates automatically
+            as the carrier moves.
           </p>
         </div>
 
@@ -1182,7 +1551,8 @@ export default function CreateDelivery() {
             Pricing
           </div>
           <p className="text-sm text-gray-700">
-            Distance-based calculation: M10 per km + 15% of package value (minimum M50).
+            Distance-based calculation: M10 per km + 15% of package value
+            (minimum M50).
           </p>
         </div>
 
@@ -1192,7 +1562,8 @@ export default function CreateDelivery() {
             Carrier Assignment
           </div>
           <p className="text-sm text-gray-700">
-            Auto-assigns nearest available carrier if not manually assigned. OTP verification included.
+            Auto-assigns nearest available carrier if not manually assigned. OTP
+            verification included.
           </p>
         </div>
       </div>

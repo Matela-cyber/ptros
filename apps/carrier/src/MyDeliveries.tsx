@@ -278,6 +278,10 @@ export default function MyDeliveries() {
     }
   };
 
+  const openLiveTrack = (deliveryId: string) => {
+    window.open(`/g/track/${deliveryId}`, "_blank", "noopener,noreferrer");
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -624,15 +628,23 @@ export default function MyDeliveries() {
 
                 {/* Card Footer */}
                 <div className="px-4 py-3 bg-gray-50 border-t flex justify-between items-center">
-                  <button
-                    onClick={() =>
-                      setExpandedCardId(isExpanded ? null : delivery.id)
-                    }
-                    className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
-                  >
-                    <span>{isExpanded ? "▲" : "▼"}</span>
-                    {isExpanded ? "Show Less" : "More Details"}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() =>
+                        setExpandedCardId(isExpanded ? null : delivery.id)
+                      }
+                      className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+                    >
+                      <span>{isExpanded ? "▲" : "▼"}</span>
+                      {isExpanded ? "Show Less" : "More Details"}
+                    </button>
+                    <button
+                      onClick={() => openLiveTrack(delivery.id)}
+                      className="text-sm px-2.5 py-1.5 rounded-md bg-cyan-100 text-cyan-700 hover:bg-cyan-200 font-semibold"
+                    >
+                      Live Track
+                    </button>
+                  </div>
 
                   <div className="text-xs text-gray-500">
                     {delivery.assignedAt &&

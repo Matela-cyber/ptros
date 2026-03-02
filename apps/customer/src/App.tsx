@@ -11,6 +11,8 @@ import AppRouter from "./AppRouter";
 import Login from "./Login";
 import CustomerRegister from "./CustomerRegister";
 import ForgotPassword from "./ForgotPassword";
+import GuestTrack from "./GuestTrack";
+import PackageTracking from "./components/PackageTracking";
 import { Toaster } from "react-hot-toast";
 
 const REQUIRED_ROLE = "customer";
@@ -50,37 +52,60 @@ function App() {
           </div>
         )}
 
-        {!loading && !user && (
+        {!loading && (
           <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<CustomerRegister />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="*" element={<Navigate to="/login" replace />} />
+            {/* Guest tracking routes - accessible to everyone */}
+            <Route path="/g/track" element={<GuestTrack />} />
+            <Route
+              path="/g/track/:id"
+              element={<PackageTracking isGuest={true} />}
+            />
+
+            {/* Authenticated routes */}
+            {!user && (
+              <>
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<CustomerRegister />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="*" element={<Navigate to="/login" replace />} />
+              </>
+            )}
+
+            {user && userRole !== REQUIRED_ROLE && (
+              <Route
+                path="*"
+                element={
+                  <div className="min-h-screen flex items-center justify-center bg-red-50">
+                    <div className="text-center p-10">
+                      <h1 className="text-4xl font-bold text-red-600 mb-4">
+                        Access Denied
+                      </h1>
+                      <p className="text-xl mb-4">
+                        This portal is for customers only.
+                      </p>
+                      <p className="text-lg">
+                        You are logged in as: <strong>{userRole}</strong>
+                      </p>
+                      <button
+                        onClick={() => auth.signOut()}
+                        className="mt-8 px-8 py-4 bg-red-600 text-white rounded-lg text-lg hover:bg-red-700"
+                      >
+                        Logout
+                      </button>
+                    </div>
+                  </div>
+                }
+              />
+            )}
+
+            {user && userRole === REQUIRED_ROLE && (
+              <Route path="/*" element={<AppRouter user={user} />} />
+            )}
+
+            {!loading && !user && (
+              <Route path="*" element={<Navigate to="/login" replace />} />
+            )}
           </Routes>
-        )}
-
-        {!loading && user && userRole !== REQUIRED_ROLE && (
-          <div className="min-h-screen flex items-center justify-center bg-red-50">
-            <div className="text-center p-10">
-              <h1 className="text-4xl font-bold text-red-600 mb-4">
-                Access Denied
-              </h1>
-              <p className="text-xl mb-4">This portal is for customers only.</p>
-              <p className="text-lg">
-                You are logged in as: <strong>{userRole}</strong>
-              </p>
-              <button
-                onClick={() => auth.signOut()}
-                className="mt-8 px-8 py-4 bg-red-600 text-white rounded-lg text-lg hover:bg-red-700"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-        )}
-
-        {!loading && user && userRole === REQUIRED_ROLE && (
-          <AppRouter user={user} />
         )}
       </GoogleMapsLoader>
       <Toaster />

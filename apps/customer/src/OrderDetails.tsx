@@ -85,7 +85,13 @@ export default function OrderDetails() {
   }
 
   const getStatusSteps = () => {
-    const steps = ["pending", "assigned", "picked_up", "in_transit", "delivered"];
+    const steps = [
+      "pending",
+      "assigned",
+      "picked_up",
+      "in_transit",
+      "delivered",
+    ];
     return steps.map((step, index) => ({
       step,
       completed: steps.indexOf(order.status) >= index,
@@ -114,17 +120,25 @@ export default function OrderDetails() {
                   Ordered on {order.createdAt.toLocaleDateString()}
                 </p>
               </div>
-              <span
-                className={`px-4 py-2 rounded-full text-lg font-medium ${
-                  order.status === "delivered"
-                    ? "bg-green-100 text-green-800"
-                    : order.status === "in_transit"
-                    ? "bg-blue-100 text-blue-800"
-                    : "bg-yellow-100 text-yellow-800"
-                }`}
-              >
-                {order.status}
-              </span>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => navigate(`/track/${order.id}`)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium flex items-center gap-2"
+                >
+                  🗺️ Live Track
+                </button>
+                <span
+                  className={`px-4 py-2 rounded-full text-lg font-medium text-center ${
+                    order.status === "delivered"
+                      ? "bg-green-100 text-green-800"
+                      : order.status === "in_transit"
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-yellow-100 text-yellow-800"
+                  }`}
+                >
+                  {order.status}
+                </span>
+              </div>
             </div>
           </div>
 

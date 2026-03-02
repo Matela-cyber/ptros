@@ -11,6 +11,7 @@ import OrderDetails from "./OrderDetails.tsx";
 import CreateOrder from "./CreateOrder";
 import TrackOrder from "./TrackOrder.tsx";
 import TrackingMap from "./TrackingMap";
+import PackageTracking from "./components/PackageTracking.tsx";
 import Profile from "./Profile.tsx";
 import Settings from "./Settings.tsx";
 
@@ -49,7 +50,7 @@ export default function AppRouter({ user }: Props) {
   return (
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar />
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 min-w-0 flex flex-col">
         <Header user={user} userProfile={userProfile} />
         <main className="flex-1 p-6">
           <Routes>
@@ -61,9 +62,16 @@ export default function AppRouter({ user }: Props) {
             <Route path="/orders" element={<OrderHistory />} />
             <Route path="/orders/new" element={<CreateOrder user={user} />} />
             <Route path="/orders/:id" element={<OrderDetails />} />
+            <Route
+              path="/track/:id"
+              element={<PackageTracking isGuest={false} />}
+            />
             <Route path="/track" element={<TrackOrder />} />
             <Route path="/track-map" element={<TrackingMap user={user} />} />
-            <Route path="/profile" element={<Profile user={user} userProfile={userProfile} />} />
+            <Route
+              path="/profile"
+              element={<Profile user={user} userProfile={userProfile} />}
+            />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>

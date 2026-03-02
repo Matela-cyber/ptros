@@ -35,6 +35,15 @@
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     },
+    {
+      "collectionGroup": "deliveries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "deliveredAt", "order": "ASCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
 
     {
       "collectionGroup": "users",

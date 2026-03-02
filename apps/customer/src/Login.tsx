@@ -23,7 +23,7 @@ export default function Login() {
       const userCredential = await signInWithEmailAndPassword(
         auth,
         email,
-        password
+        password,
       );
 
       const user = userCredential.user;
@@ -44,7 +44,7 @@ export default function Login() {
       // 3. Check if this is a customer account
       if (userData.role !== "customer") {
         setError(
-          "This account is not a customer account. Please use the correct portal."
+          "This account is not a customer account. Please use the correct portal.",
         );
         await auth.signOut();
         setLoading(false);
@@ -236,6 +236,14 @@ export default function Login() {
           <span className="mx-4 text-gray-500 text-sm">OR</span>
           <div className="flex-grow border-t border-gray-300"></div>
         </div>
+
+        {/* Guest Tracking */}
+        <Link
+          to="/g/track"
+          className="w-full py-3 bg-cyan-500 text-white rounded-lg font-semibold hover:bg-cyan-600 transition flex items-center justify-center gap-2 mb-4"
+        >
+          📦 Track Without Account
+        </Link>
 
         {/* Registration Link */}
         <div className="text-center">

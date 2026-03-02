@@ -12,6 +12,7 @@ import CarrierDetails from "./CarrierDetails";
 import CreateDelivery from "./CreateDelivery";
 import ActiveDeliveries from "./ActiveDeliveries";
 import DeliveryDetails from "./DeliveryDetails";
+import DeliveryTrackingMap from "./DeliveryTrackingMap";
 import DeliveryHistory from "./DeliveryHistory";
 import CustomerList from "./CustomerList";
 import CustomerDetails from "./CustomerDetails";
@@ -69,6 +70,10 @@ export default function AppRouter({ user }: Props) {
             <Route path="/deliveries/create" element={<CreateDelivery />} />
             <Route path="/deliveries/active" element={<ActiveDeliveries />} />
             <Route path="/deliveries/:id" element={<DeliveryDetails />} />
+            <Route
+              path="/deliveries/:id/track"
+              element={<DeliveryTrackingMap />}
+            />
             <Route path="/deliveries/history" element={<DeliveryHistory />} />
             <Route path="/customers" element={<CustomerList />} />
             <Route path="/customers/:id" element={<CustomerDetails />} />

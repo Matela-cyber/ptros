@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useJsApiLoader } from "@react-google-maps/api";
 
 declare global {
   interface Window {
@@ -13,95 +14,29 @@ interface GoogleMapsLoaderProps {
 }
 
 export default function GoogleMapsLoader({ children }: GoogleMapsLoaderProps) {
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   const API_KEY = "AIzaSyAwX-3N2xv84NUElCJRpKMh7UJpQEQnNH0";
+  const { isLoaded, loadError } = useJsApiLoader({
+    googleMapsApiKey: API_KEY,
+    libraries: ["places", "geometry"],
+    id: "ptros-google-maps-script",
+  });
 
   useEffect(() => {
-    // Check if already loaded
-    if (window.google && window.google.maps) {
-      setIsLoaded(true);
+    if (isLoaded && window.google?.maps) {
       window.mapsReady = true;
-      // Emit ready event for other components
-      window.dispatchEvent(new CustomEvent("mapsReady"));
-      return;
-    }
-
-    if (!API_KEY) {
-      setError("Google Maps API key is missing");
-      return;
-    }
-
-    console.log("Loading Google Maps with API key...");
-
-    // Define the callback
-    const initMapCallback = () => {
       console.log("✅ Google Maps loaded successfully");
-      window.mapsReady = true;
-      setIsLoaded(true);
-      setError(null);
-      // Emit ready event for other components listening
       window.dispatchEvent(new CustomEvent("mapsReady"));
-    };
+    }
+  }, [isLoaded]);
 
-    // Assign to window
-    window.initMap = initMapCallback;
-
-    // Load Google Maps script with Marker Clustering library
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&libraries=places,geometry&callback=initMap`;
-    script.async = true;
-    script.defer = true;
-
-    script.onerror = () => {
-      console.error("❌ Failed to load Google Maps");
-      setError(
-        "Failed to load Google Maps. Check your API key and internet connection."
-      );
-    };
-
-    document.head.appendChild(script);
-
-    // Load MarkerClusterer separately after Maps API loads
-    script.onload = () => {
-      const clusterScript = document.createElement("script");
-      clusterScript.src = "https://cdn.jsdelivr.net/npm/@googlemaps/markerclusterer@2.5.3/dist/index.min.js";
-      clusterScript.async = true;
-      clusterScript.onload = () => {
-        console.log("✅ MarkerClusterer loaded");
-      };
-      clusterScript.onerror = () => {
-        console.warn("⚠️ Failed to load MarkerClusterer - clustering disabled");
-      };
-      document.head.appendChild(clusterScript);
-    };
-
-    return () => {
-      // Cleanup - remove script only if exists
-      const existingScript = document.querySelector(
-        'script[src*="maps.googleapis.com"]'
-      );
-      if (existingScript && document.head.contains(existingScript)) {
-        try {
-          document.head.removeChild(existingScript);
-        } catch (e) {
-          console.warn("Failed to remove script:", e);
-        }
-      }
-      // Only delete if it exists
-      if (window.initMap) {
-        delete window.initMap;
-      }
-      window.mapsReady = false;
-    };
-  }, []);
-
-  if (error) {
+  if (loadError) {
     return (
       <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
         <p className="text-red-700">⚠️ Google Maps Error</p>
-        <p className="text-sm text-red-600 mt-1">{error}</p>
+        <p className="text-sm text-red-600 mt-1">
+          Failed to load Google Maps. Check your API key and internet
+          connection.
+        </p>
         <p className="text-xs text-gray-500 mt-2">
           API Key: {API_KEY ? "Present" : "Missing"}
         </p>
