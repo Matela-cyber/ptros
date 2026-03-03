@@ -43,6 +43,12 @@ interface DeliveryData {
   };
   packageValue?: number;
   paymentMethod?: string;
+  otpCode?: string;
+  otpVerified?: boolean;
+  proofOfDelivery?: {
+    otp?: string;
+    verified?: boolean;
+  };
 }
 
 interface CarrierLocation {
@@ -64,7 +70,9 @@ export default function PackageTrackingPage({
   const [delivery, setDelivery] = useState<DeliveryData | null>(null);
   const [carrierLocation, setCarrierLocation] =
     useState<CarrierLocation | null>(null);
-  const [directions, setDirections] = useState<any>(null);
+  const [toPickupDirections, setToPickupDirections] = useState<any>(null);
+  const [toDropoffDirections, setToDropoffDirections] = useState<any>(null);
+  const [fullPlanDirections, setFullPlanDirections] = useState<any>(null);
   const [routeMeta, setRouteMeta] = useState<{
     distanceText?: string;
     durationText?: string;
@@ -109,6 +117,9 @@ export default function PackageTrackingPage({
           deliveryLocation: data.deliveryLocation,
           packageValue: data.packageValue,
           paymentMethod: data.paymentMethod,
+          otpCode: data.otpCode,
+          otpVerified: data.otpVerified,
+          proofOfDelivery: data.proofOfDelivery,
         });
         setLoading(false);
       } else {
@@ -155,7 +166,9 @@ export default function PackageTrackingPage({
 
   useEffect(() => {
     if (!window.google?.maps || !delivery?.deliveryLocation) {
-      setDirections(null);
+      setToPickupDirections(null);
+      setToDropoffDirections(null);
+      setFullPlanDirections(null);
       setRouteMeta(null);
       return;
     }
@@ -181,65 +194,81 @@ export default function PackageTrackingPage({
           }
         : null;
 
-    let origin: { lat: number; lng: number } | null = null;
-    const waypoints: Array<{
-      location: { lat: number; lng: number };
-      stopover: boolean;
-    }> = [];
-
-    if (livePoint && delivery.status !== "delivered") {
-      origin = livePoint;
-      if (
-        pickupPoint &&
-        ["pending", "assigned", "accepted"].includes(delivery.status)
-      ) {
-        waypoints.push({ location: pickupPoint, stopover: true });
-      }
-    } else if (pickupPoint) {
-      origin = pickupPoint;
-    }
-
-    if (!origin) {
-      setDirections(null);
-      setRouteMeta(null);
-      return;
-    }
-
     const service = new window.google.maps.DirectionsService();
-    service.route(
-      {
-        origin,
-        destination: deliveryPoint,
-        travelMode: window.google.maps.TravelMode.DRIVING,
-        waypoints,
-        optimizeWaypoints: false,
-      },
-      (result: any, status: any) => {
-        if (status === "OK" && result) {
-          setDirections(result);
-          const route = result.routes?.[0];
-          if (route?.legs?.length) {
-            const totalMeters = route.legs.reduce(
-              (sum: number, leg: any) => sum + (leg.distance?.value || 0),
-              0,
-            );
-            const totalSeconds = route.legs.reduce(
-              (sum: number, leg: any) => sum + (leg.duration?.value || 0),
-              0,
-            );
-            setRouteMeta({
-              distanceText: `${(totalMeters / 1000).toFixed(1)} km`,
-              durationText: `${Math.max(1, Math.round(totalSeconds / 60))} min`,
-            });
-          } else {
-            setRouteMeta(null);
-          }
-        } else {
-          setDirections(null);
-          setRouteMeta(null);
-        }
-      },
-    );
+    let cancelled = false;
+
+    const getRoute = (
+      origin: { lat: number; lng: number },
+      destination: { lat: number; lng: number },
+    ) =>
+      new Promise<any | null>((resolve) => {
+        service.route(
+          {
+            origin,
+            destination,
+            travelMode: window.google.maps.TravelMode.DRIVING,
+          },
+          (result: any, status: any) => {
+            if (status === "OK" && result) {
+              resolve(result);
+              return;
+            }
+            resolve(null);
+          },
+        );
+      });
+
+    (async () => {
+      const isBeforePickup = ["pending", "assigned", "accepted"].includes(
+        delivery.status,
+      );
+
+      const [pickupResult, dropoffResult, fullPlanResult] = await Promise.all([
+        isBeforePickup && livePoint && pickupPoint
+          ? getRoute(livePoint, pickupPoint)
+          : Promise.resolve(null),
+        isBeforePickup
+          ? pickupPoint
+            ? getRoute(pickupPoint, deliveryPoint)
+            : Promise.resolve(null)
+          : livePoint
+            ? getRoute(livePoint, deliveryPoint)
+            : pickupPoint
+              ? getRoute(pickupPoint, deliveryPoint)
+              : Promise.resolve(null),
+        pickupPoint
+          ? getRoute(pickupPoint, deliveryPoint)
+          : Promise.resolve(null),
+      ]);
+
+      if (cancelled) return;
+
+      setToPickupDirections(pickupResult);
+      setToDropoffDirections(dropoffResult);
+      setFullPlanDirections(fullPlanResult);
+
+      const route = dropoffResult?.routes?.[0];
+      if (route?.legs?.length) {
+        const totalMeters = route.legs.reduce(
+          (sum: number, leg: any) => sum + (leg.distance?.value || 0),
+          0,
+        );
+        const totalSeconds = route.legs.reduce(
+          (sum: number, leg: any) => sum + (leg.duration?.value || 0),
+          0,
+        );
+        setRouteMeta({
+          distanceText: `${(totalMeters / 1000).toFixed(1)} km`,
+          durationText: `${Math.max(1, Math.round(totalSeconds / 60))} min`,
+        });
+      } else {
+        setRouteMeta(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     delivery?.status,
     delivery?.pickupLocation,
@@ -280,6 +309,11 @@ export default function PackageTrackingPage({
     };
     return labels[status] || status;
   };
+
+  const displayOtp = delivery?.proofOfDelivery?.otp || delivery?.otpCode;
+  const shouldShowOtp =
+    !!delivery &&
+    ["picked_up", "in_transit", "out_for_delivery"].includes(delivery.status);
 
   if (loading) {
     return (
@@ -366,15 +400,54 @@ export default function PackageTrackingPage({
                       ],
                     }}
                   >
-                    {directions && (
+                    {fullPlanDirections && (
                       <DirectionsRenderer
-                        directions={directions}
+                        directions={fullPlanDirections}
                         options={{
                           suppressMarkers: true,
                           polylineOptions: {
-                            strokeColor: "#2563eb",
-                            strokeOpacity: 0.9,
-                            strokeWeight: 5,
+                            strokeColor: "#94a3b8",
+                            strokeOpacity: 0.45,
+                            strokeWeight: 4,
+                            icons: [
+                              {
+                                icon: {
+                                  path: "M 0,-1 0,1",
+                                  strokeOpacity: 1,
+                                  scale: 2,
+                                },
+                                offset: "0",
+                                repeat: "14px",
+                              },
+                            ],
+                          },
+                        }}
+                      />
+                    )}
+
+                    {toPickupDirections && (
+                      <DirectionsRenderer
+                        directions={toPickupDirections}
+                        options={{
+                          suppressMarkers: true,
+                          polylineOptions: {
+                            strokeColor: "#8b5cf6",
+                            strokeOpacity: 0.95,
+                            strokeWeight: 6,
+                          },
+                        }}
+                      />
+                    )}
+
+                    {toDropoffDirections && (
+                      <DirectionsRenderer
+                        directions={toDropoffDirections}
+                        options={{
+                          suppressMarkers: true,
+                          polylineOptions: {
+                            strokeColor: "#f59e0b",
+                            strokeOpacity: 0.95,
+                            strokeWeight: 6,
                           },
                         }}
                       />
@@ -445,7 +518,7 @@ export default function PackageTrackingPage({
                 <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                     <p className="text-xs text-blue-700 font-semibold uppercase">
-                      Planned Route
+                      Active Route
                     </p>
                     <p className="text-sm text-blue-900 mt-1">
                       {routeMeta?.distanceText
@@ -456,12 +529,12 @@ export default function PackageTrackingPage({
 
                   <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
                     <p className="text-xs text-slate-600 font-semibold uppercase">
-                      Checkpoints
+                      Route colors
                     </p>
                     <ul className="text-sm text-slate-800 mt-1 space-y-1">
-                      <li>1. Pickup point</li>
-                      <li>2. Current carrier position</li>
-                      <li>3. Delivery destination</li>
+                      <li>⬤ Purple: Current → Pickup</li>
+                      <li>⬤ Orange: Current/Pickup → Dropoff</li>
+                      <li>⬤ Gray dashed: Planned baseline</li>
                     </ul>
                   </div>
                 </div>
@@ -539,6 +612,30 @@ export default function PackageTrackingPage({
                 )}
               </div>
             </div>
+
+            {/* Delivery OTP */}
+            {shouldShowOtp && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-amber-900 mb-2">
+                  Delivery OTP
+                </h3>
+                {displayOtp ? (
+                  <>
+                    <p className="text-2xl font-bold tracking-widest text-amber-800">
+                      {displayOtp}
+                    </p>
+                    <p className="text-xs text-amber-700 mt-2">
+                      Share this OTP with the carrier only when your package is
+                      physically delivered.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-amber-800">
+                    OTP is generated after pickup.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Customer Info */}
             <div className="bg-white rounded-lg shadow p-6">

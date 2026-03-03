@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { GoogleMap, Marker, Polyline } from "@react-google-maps/api";
 import { Delivery } from "./types";
 import { formatCurrency, formatDate } from "./utils";
 import { useDeliveryStatus } from "./hooks/useDeliveryStatus";
+import MapLegend from "./components/MapLegend";
 import "./Dashboard.css"; // Assuming you have some custom styles for the dashboard
 interface CurrentJobDetailsProps {
   delivery: Delivery | null;
@@ -23,8 +25,9 @@ export default function CurrentJobDetails({
   const [showDeliveryRouteModal, setShowDeliveryRouteModal] = useState(false);
   const [deviationReason, setDeviationReason] = useState("normal_route");
   const [deviationNote, setDeviationNote] = useState("");
-  const [shortcutStart, setShortcutStart] = useState("");
-  const [shortcutEnd, setShortcutEnd] = useState("");
+  const [shortcutPoints, setShortcutPoints] = useState<
+    Array<{ lat: number; lng: number }>
+  >([]);
   const [vehicleSpecificShortcut, setVehicleSpecificShortcut] = useState(false);
 
   if (!delivery) {
@@ -69,19 +72,109 @@ export default function CurrentJobDetails({
     }
   };
 
-  const parsePoint = (raw: string): { lat: number; lng: number } | null => {
-    const parts = raw.split(",").map((part) => part.trim());
-    if (parts.length !== 2) return null;
-    const lat = Number(parts[0]);
-    const lng = Number(parts[1]);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
-    return { lat, lng };
+  const decodePolyline = (
+    encoded?: string,
+  ): Array<{ lat: number; lng: number }> => {
+    if (!encoded) return [];
+
+    let index = 0;
+    let lat = 0;
+    let lng = 0;
+    const points: Array<{ lat: number; lng: number }> = [];
+
+    while (index < encoded.length) {
+      let result = 0;
+      let shift = 0;
+      let b: number;
+
+      do {
+        b = encoded.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+
+      const dLat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+      lat += dLat;
+
+      result = 0;
+      shift = 0;
+
+      do {
+        b = encoded.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+
+      const dLng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+      lng += dLng;
+
+      points.push({ lat: lat / 1e5, lng: lng / 1e5 });
+    }
+
+    return points;
+  };
+
+  const routePath = decodePolyline(delivery.route?.polyline);
+  const activeRoutePath = decodePolyline(
+    (delivery as any)?.routeHistory?.activePolyline,
+  );
+  const pickupPoint = (delivery as any)?.pickupLocation
+    ? {
+        lat: (delivery as any).pickupLocation.lat,
+        lng: (delivery as any).pickupLocation.lng,
+      }
+    : undefined;
+  const deliveryPoint = (delivery as any)?.deliveryLocation
+    ? {
+        lat: (delivery as any).deliveryLocation.lat,
+        lng: (delivery as any).deliveryLocation.lng,
+      }
+    : undefined;
+  const currentPoint = delivery.currentLocation
+    ? {
+        lat: delivery.currentLocation.lat,
+        lng: delivery.currentLocation.lng,
+      }
+    : undefined;
+
+  const carrierToPickupPath =
+    currentPoint &&
+    pickupPoint &&
+    (delivery.status === "assigned" || delivery.status === "accepted")
+      ? [currentPoint, pickupPoint]
+      : [];
+
+  const pickupToDropoffPath =
+    pickupPoint && deliveryPoint ? [pickupPoint, deliveryPoint] : [];
+
+  const activeProgressPath =
+    activeRoutePath.length > 1
+      ? activeRoutePath
+      : pickupPoint && currentPoint
+        ? [pickupPoint, currentPoint]
+        : [];
+
+  const mapCenter =
+    shortcutPoints[shortcutPoints.length - 1] ||
+    routePath[0] ||
+    (delivery.currentLocation
+      ? {
+          lat: delivery.currentLocation.lat,
+          lng: delivery.currentLocation.lng,
+        }
+      : { lat: -29.31, lng: 27.48 });
+
+  const onShortcutMapClick = (event: google.maps.MapMouseEvent) => {
+    if (!event.latLng) return;
+    const point = { lat: event.latLng.lat(), lng: event.latLng.lng() };
+    setShortcutPoints((prev) =>
+      prev.length >= 2 ? [point] : [...prev, point],
+    );
   };
 
   const confirmDeliveredWithRouteContext = async () => {
-    const start = parsePoint(shortcutStart);
-    const end = parsePoint(shortcutEnd);
+    const start = shortcutPoints[0];
+    const end = shortcutPoints[1];
 
     const shortcut =
       deviationReason === "shortcut" && start && end
@@ -102,8 +195,7 @@ export default function CurrentJobDetails({
     setShowDeliveryRouteModal(false);
     setDeviationReason("normal_route");
     setDeviationNote("");
-    setShortcutStart("");
-    setShortcutEnd("");
+    setShortcutPoints([]);
     setVehicleSpecificShortcut(false);
 
     setStatusMessage("✅ Delivery marked as Delivered");
@@ -540,23 +632,181 @@ export default function CurrentJobDetails({
               {deviationReason === "shortcut" && (
                 <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 space-y-3">
                   <p className="text-xs text-blue-700">
-                    Add two points from the journey (lat,lng) to record the
-                    shortcut segment.
+                    Click two points on the map to record the shortcut segment.
                   </p>
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <input
-                      value={shortcutStart}
-                      onChange={(e) => setShortcutStart(e.target.value)}
-                      className="rounded-lg border border-gray-300 p-2 text-sm"
-                      placeholder="Start point: -29.3100, 27.4800"
-                    />
-                    <input
-                      value={shortcutEnd}
-                      onChange={(e) => setShortcutEnd(e.target.value)}
-                      className="rounded-lg border border-gray-300 p-2 text-sm"
-                      placeholder="End point: -29.3000, 27.4900"
+                  <div className="h-64 overflow-hidden rounded-lg border border-gray-300 bg-white relative">
+                    <GoogleMap
+                      zoom={14}
+                      center={mapCenter}
+                      onClick={onShortcutMapClick}
+                      mapContainerStyle={{ width: "100%", height: "100%" }}
+                      options={{ disableDefaultUI: false }}
+                    >
+                      {carrierToPickupPath.length > 1 && (
+                        <Polyline
+                          path={carrierToPickupPath}
+                          options={{
+                            strokeColor: "#fbbf24",
+                            strokeOpacity: 0.4,
+                            strokeWeight: 5,
+                          }}
+                        />
+                      )}
+
+                      {pickupToDropoffPath.length > 1 && (
+                        <Polyline
+                          path={pickupToDropoffPath}
+                          options={{
+                            strokeColor: "#fb923c",
+                            strokeOpacity: 0.4,
+                            strokeWeight: 5,
+                          }}
+                        />
+                      )}
+
+                      {routePath.length > 1 && (
+                        <Polyline
+                          path={routePath}
+                          options={{
+                            strokeColor: "#f59e0b",
+                            strokeOpacity: 0.85,
+                            strokeWeight: 3,
+                            icons: [
+                              {
+                                icon: {
+                                  path: "M 0,-1 0,1",
+                                  strokeOpacity: 1,
+                                  scale: 2,
+                                },
+                                offset: "0",
+                                repeat: "14px",
+                              },
+                            ],
+                          }}
+                        />
+                      )}
+
+                      {activeProgressPath.length > 1 && (
+                        <Polyline
+                          path={activeProgressPath}
+                          options={{
+                            strokeColor: "#0ea5e9",
+                            strokeOpacity: 1,
+                            strokeWeight: 5,
+                          }}
+                        />
+                      )}
+
+                      {pickupPoint && (
+                        <Marker
+                          position={pickupPoint}
+                          title="Pickup"
+                          icon={{
+                            path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
+                            scale: 5,
+                            fillColor: "#fbbf24",
+                            fillOpacity: 1,
+                            strokeColor: "#fff",
+                            strokeWeight: 2,
+                          }}
+                        />
+                      )}
+
+                      {deliveryPoint && (
+                        <Marker
+                          position={deliveryPoint}
+                          title="Dropoff"
+                          icon={{
+                            path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                            scale: 5,
+                            fillColor: "#fb923c",
+                            fillOpacity: 1,
+                            strokeColor: "#fff",
+                            strokeWeight: 2,
+                          }}
+                        />
+                      )}
+
+                      {currentPoint && (
+                        <Marker
+                          position={currentPoint}
+                          title="Current position"
+                          icon={{
+                            path: google.maps.SymbolPath.CIRCLE,
+                            scale: 7,
+                            fillColor: "#22c55e",
+                            fillOpacity: 1,
+                            strokeColor: "#fff",
+                            strokeWeight: 2,
+                          }}
+                        />
+                      )}
+
+                      {shortcutPoints.map((point, index) => (
+                        <Marker
+                          key={`${point.lat}-${point.lng}-${index}`}
+                          position={point}
+                          title={`Shortcut point ${index + 1}`}
+                          label={`${index + 1}`}
+                        />
+                      ))}
+
+                      {shortcutPoints.length === 2 && (
+                        <Polyline
+                          path={shortcutPoints}
+                          options={{
+                            strokeColor: "#ef4444",
+                            strokeOpacity: 1,
+                            strokeWeight: 4,
+                          }}
+                        />
+                      )}
+                    </GoogleMap>
+
+                    <MapLegend
+                      title="Route key"
+                      className="top-2 right-2 max-w-[220px]"
+                      items={[
+                        {
+                          color: "#fbbf24",
+                          opacity: 0.4,
+                          label: "Carrier → Pickup",
+                        },
+                        {
+                          color: "#fb923c",
+                          opacity: 0.4,
+                          label: "Pickup → Dropoff",
+                        },
+                        {
+                          color: "#0ea5e9",
+                          opacity: 1,
+                          label: "Active progress",
+                        },
+                        {
+                          color: "#f59e0b",
+                          opacity: 0.85,
+                          label: "Planned route",
+                        },
+                        {
+                          color: "#ef4444",
+                          opacity: 1,
+                          label: "Shortcut segment",
+                        },
+                      ]}
                     />
                   </div>
+
+                  <div className="flex items-center justify-between text-xs text-gray-600">
+                    <span>Selected points: {shortcutPoints.length}/2</span>
+                    <button
+                      type="button"
+                      onClick={() => setShortcutPoints([])}
+                      className="rounded border border-gray-300 px-2 py-1 hover:bg-gray-100"
+                    >
+                      Reset points
+                    </button>
+                  </div>
+
                   <label className="inline-flex items-center gap-2 text-sm text-gray-700">
                     <input
                       type="checkbox"
@@ -591,7 +841,7 @@ export default function CurrentJobDetails({
                 disabled={
                   loading ||
                   (deviationReason === "shortcut" &&
-                    (!parsePoint(shortcutStart) || !parsePoint(shortcutEnd)))
+                    shortcutPoints.length !== 2)
                 }
                 className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >

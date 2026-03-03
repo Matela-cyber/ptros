@@ -12,6 +12,12 @@ interface TrackedOrder {
   deliveryAddress: string;
   carrierName?: string;
   estimatedDelivery?: Date;
+  otpCode?: string;
+  otpVerified?: boolean;
+  proofOfDelivery?: {
+    otp?: string;
+    verified?: boolean;
+  };
 }
 
 export default function TrackOrder() {
@@ -31,7 +37,7 @@ export default function TrackOrder() {
     try {
       const q = query(
         collection(db, "deliveries"),
-        where("trackingCode", "==", trackingCode.toUpperCase())
+        where("trackingCode", "==", trackingCode.toUpperCase()),
       );
 
       const snapshot = await getDocs(q);
@@ -49,6 +55,9 @@ export default function TrackOrder() {
           deliveryAddress: data.deliveryAddress,
           carrierName: data.carrierName,
           estimatedDelivery: data.estimatedDelivery?.toDate(),
+          otpCode: data.otpCode,
+          otpVerified: data.otpVerified,
+          proofOfDelivery: data.proofOfDelivery,
         });
         toast.success("Order found!");
       }
@@ -59,6 +68,11 @@ export default function TrackOrder() {
       setLoading(false);
     }
   };
+
+  const displayOtp = order?.proofOfDelivery?.otp || order?.otpCode;
+  const shouldShowOtp =
+    !!order &&
+    ["picked_up", "in_transit", "out_for_delivery"].includes(order.status);
 
   return (
     <div>
@@ -136,8 +150,8 @@ export default function TrackOrder() {
                   order.status === "delivered"
                     ? "bg-green-100 text-green-800"
                     : order.status === "in_transit"
-                    ? "bg-blue-100 text-blue-800"
-                    : "bg-yellow-100 text-yellow-800"
+                      ? "bg-blue-100 text-blue-800"
+                      : "bg-yellow-100 text-yellow-800"
                 }`}
               >
                 {order.status}
@@ -161,9 +175,7 @@ export default function TrackOrder() {
               <div className="flex items-start">
                 <div
                   className={`w-10 h-10 rounded-full flex items-center justify-center mr-4 flex-shrink-0 ${
-                    order.status !== "pending"
-                      ? "bg-blue-100"
-                      : "bg-gray-200"
+                    order.status !== "pending" ? "bg-blue-100" : "bg-gray-200"
                   }`}
                 >
                   <span
@@ -178,7 +190,9 @@ export default function TrackOrder() {
                 </div>
                 <div>
                   <p className="font-medium">
-                    {order.carrierName ? `Assigned to ${order.carrierName}` : "Waiting for Carrier"}
+                    {order.carrierName
+                      ? `Assigned to ${order.carrierName}`
+                      : "Waiting for Carrier"}
                   </p>
                   <p className="text-sm text-gray-500">
                     {order.carrierName
@@ -191,7 +205,8 @@ export default function TrackOrder() {
               <div className="flex items-start">
                 <div
                   className={`w-10 h-10 rounded-full flex items-center justify-center mr-4 flex-shrink-0 ${
-                    order.status === "in_transit" || order.status === "delivered"
+                    order.status === "in_transit" ||
+                    order.status === "delivered"
                       ? "bg-blue-100"
                       : "bg-gray-200"
                   }`}
@@ -246,6 +261,28 @@ export default function TrackOrder() {
                 </div>
               </div>
             </div>
+
+            {shouldShowOtp && (
+              <div className="mt-6 p-4 rounded-lg border border-amber-200 bg-amber-50">
+                <p className="text-sm font-semibold text-amber-900 mb-1">
+                  Delivery OTP
+                </p>
+                {displayOtp ? (
+                  <>
+                    <p className="text-2xl font-bold tracking-widest text-amber-800">
+                      {displayOtp}
+                    </p>
+                    <p className="text-xs text-amber-700 mt-1">
+                      Share this OTP with the carrier only at handover.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-amber-800">
+                    OTP will appear after pickup.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Support */}

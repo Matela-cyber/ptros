@@ -36,10 +36,25 @@ interface Delivery {
   status: string;
   pickupAddress: string;
   deliveryAddress: string;
+  carrierId?: string;
   carrierName?: string;
   currentLocation?: {
     lat: number;
     lng: number;
+  };
+  pickupLocation?: {
+    lat: number;
+    lng: number;
+  };
+  deliveryLocation?: {
+    lat: number;
+    lng: number;
+  };
+  route?: {
+    polyline?: string;
+  };
+  routeHistory?: {
+    activePolyline?: string;
   };
 }
 
@@ -62,10 +77,25 @@ interface ActiveDelivery {
   status: string;
   pickupAddress: string;
   deliveryAddress: string;
+  carrierId?: string;
   carrierName?: string;
   currentLocation?: {
     lat: number;
     lng: number;
+  };
+  pickupLocation?: {
+    lat: number;
+    lng: number;
+  };
+  deliveryLocation?: {
+    lat: number;
+    lng: number;
+  };
+  route?: {
+    polyline?: string;
+  };
+  routeHistory?: {
+    activePolyline?: string;
   };
 }
 
@@ -282,8 +312,13 @@ export default function LiveMap() {
             status: data.status,
             pickupAddress: data.pickupAddress,
             deliveryAddress: data.deliveryAddress,
+            carrierId: data.carrierId,
             carrierName: data.carrierName,
             currentLocation: data.currentLocation,
+            pickupLocation: data.pickupLocation,
+            deliveryLocation: data.deliveryLocation,
+            route: data.route,
+            routeHistory: data.routeHistory,
           });
         });
 
@@ -1192,11 +1227,13 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
           )}
         </div>
 
-        <div
-          ref={mapRef}
-          className="w-full h-[600px] bg-gray-100"
-          style={{ minHeight: "600px" }}
-        />
+        <div className="relative">
+          <div
+            ref={mapRef}
+            className="w-full h-[600px] bg-gray-100"
+            style={{ minHeight: "600px" }}
+          />
+        </div>
 
         <div className="border-t px-6 py-4 bg-gray-50">
           <div className="text-sm text-gray-500">

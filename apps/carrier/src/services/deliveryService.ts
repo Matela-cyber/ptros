@@ -29,9 +29,13 @@ export class DeliveryService {
       };
 
       if (status === "picked_up") {
-        updates.pickupTime = Timestamp.now();
-        updates.otpCode =
+        const generatedOtp =
           otpCode || Math.floor(1000 + Math.random() * 9000).toString();
+        updates.pickupTime = Timestamp.now();
+        updates.otpCode = generatedOtp;
+        updates["proofOfDelivery.otp"] = generatedOtp;
+        updates["proofOfDelivery.verified"] = false;
+        updates["proofOfDelivery.verifiedAt"] = null;
       }
 
       if (status === "in_transit") {
@@ -207,7 +211,12 @@ export const updateDeliveryStatus = async (
 
     // Add timestamp for specific statuses
     if (status === "picked_up") {
+      const generatedOtp = Math.floor(1000 + Math.random() * 9000).toString();
       updateData.pickupTime = serverTimestamp();
+      updateData.otpCode = generatedOtp;
+      updateData["proofOfDelivery.otp"] = generatedOtp;
+      updateData["proofOfDelivery.verified"] = false;
+      updateData["proofOfDelivery.verifiedAt"] = null;
     } else if (status === "delivered") {
       updateData.deliveryTime = serverTimestamp();
     }
