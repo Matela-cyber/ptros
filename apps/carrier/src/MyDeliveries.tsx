@@ -29,7 +29,10 @@ interface Delivery {
   estimatedEarnings?: number;
   proofOfDelivery?: {
     otp?: string;
+    verified?: boolean;
   };
+  otpCode?: string;
+  otpVerified?: boolean;
   trackingCode?: string;
   packageDescription?: string;
   packageWeight: number; // Changed to non-optional with default value
@@ -93,6 +96,8 @@ export default function MyDeliveries() {
             estimatedEarnings: data.estimatedEarnings || 0,
             earnings: data.earnings || 0,
             proofOfDelivery: data.proofOfDelivery,
+            otpCode: data.otpCode,
+            otpVerified: data.otpVerified,
             trackingCode:
               data.trackingCode || `TRK${doc.id.slice(0, 8).toUpperCase()}`,
             packageDescription: data.packageDescription || "No description",
@@ -161,25 +166,41 @@ export default function MyDeliveries() {
       return;
     }
 
-    if (!selectedDelivery.proofOfDelivery?.otp) {
-      toast.error("No OTP set for this delivery");
-      return;
-    }
-
-    if (otpInput !== selectedDelivery.proofOfDelivery.otp) {
-      toast.error("Invalid OTP. Please try again.");
-      setOtpInput("");
-      return;
-    }
-
     setVerifying(true);
     try {
-      await handleStatusUpdate(selectedDelivery.id, "delivered");
+      const verified = await CarrierService.verifyOTP(
+        selectedDelivery.id,
+        otpInput,
+      );
+
+      if (!verified) {
+        toast.error(
+          "Invalid OTP or OTP not generated yet. Ask customer for the OTP shown in their tracking page.",
+        );
+        setOtpInput("");
+        return;
+      }
 
       toast.success("Delivery completed successfully.");
       setShowOtpModal(false);
       setOtpInput("");
       setSelectedDelivery(null);
+
+      setDeliveries((prev) =>
+        prev.map((d) =>
+          d.id === selectedDelivery.id
+            ? {
+                ...d,
+                status: "delivered",
+                otpVerified: true,
+                proofOfDelivery: {
+                  ...(d.proofOfDelivery || {}),
+                  verified: true,
+                },
+              }
+            : d,
+        ),
+      );
 
       // Check if carrier has more active deliveries
       const activeCount = deliveries.filter(
@@ -704,8 +725,8 @@ export default function MyDeliveries() {
                   autoFocus
                 />
                 <p className="text-xs text-gray-500 mt-2">
-                  The customer will provide this code from their delivery
-                  notification
+                  Customer gets this OTP in Customer App → Track Orders → Order
+                  Summary (shown after pickup).
                 </p>
               </div>
 

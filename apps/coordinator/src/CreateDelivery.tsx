@@ -683,6 +683,46 @@ export default function CreateDelivery() {
           reason: carrier.recommendationReason,
         })),
 
+        // Optimization Reasons for tracking
+        optimizationReasons: selectedCarrierId
+          ? [
+              {
+                type: "carrier_assignment",
+                reason:
+                  selectedCarrier &&
+                  bestRecommendedCarrier?.id === selectedCarrierId
+                    ? `Auto-assigned to ${selectedCarrier.fullName} (Top recommendation): ${bestRecommendedCarrier.recommendationReason}`
+                    : selectedCarrier
+                      ? `Manually assigned to ${selectedCarrier.fullName} by coordinator`
+                      : "Carrier assignment",
+                timestamp: createdTimestamp,
+                carrierId: selectedCarrierId,
+                carrierName: selectedCarrier?.fullName || "Unknown",
+                details:
+                  bestRecommendedCarrier?.id === selectedCarrierId &&
+                  bestRecommendedCarrier
+                    ? {
+                        distanceKm: bestRecommendedCarrier.distanceToPickupKm,
+                        estimatedDetourKm:
+                          bestRecommendedCarrier.estimatedDetourKm,
+                        carrierStatus: bestRecommendedCarrier.status,
+                        activeDeliveries:
+                          bestRecommendedCarrier.activeDeliveries,
+                        score: bestRecommendedCarrier.recommendationScore,
+                        factors: [
+                          `${bestRecommendedCarrier.distanceToPickupKm.toFixed(1)}km from pickup`,
+                          `Status: ${bestRecommendedCarrier.status}`,
+                          `${bestRecommendedCarrier.activeDeliveries} active deliveries`,
+                          bestRecommendedCarrier.estimatedDetourKm > 0.5
+                            ? `Detour: ${bestRecommendedCarrier.estimatedDetourKm.toFixed(1)}km`
+                            : "No significant detour",
+                        ],
+                      }
+                    : undefined,
+              },
+            ]
+          : [],
+
         // Payment Info
         paymentMethod: formData.paymentMethod,
         paymentAmount: formData.paymentAmount

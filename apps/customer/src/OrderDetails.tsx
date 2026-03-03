@@ -20,6 +20,12 @@ interface OrderDetail {
     lat: number;
     lng: number;
   };
+  otpCode?: string;
+  otpVerified?: boolean;
+  proofOfDelivery?: {
+    otp?: string;
+    verified?: boolean;
+  };
 }
 
 export default function OrderDetails() {
@@ -49,6 +55,9 @@ export default function OrderDetails() {
             estimatedDelivery: data.estimatedDelivery?.toDate(),
             actualDelivery: data.actualDelivery?.toDate(),
             currentLocation: data.currentLocation,
+            otpCode: data.otpCode,
+            otpVerified: data.otpVerified,
+            proofOfDelivery: data.proofOfDelivery,
           });
         } else {
           toast.error("Order not found");
@@ -97,6 +106,13 @@ export default function OrderDetails() {
       completed: steps.indexOf(order.status) >= index,
     }));
   };
+
+  const displayOtp = order.proofOfDelivery?.otp || order.otpCode;
+  const shouldShowOtp = [
+    "picked_up",
+    "in_transit",
+    "out_for_delivery",
+  ].includes(order.status);
 
   return (
     <div>
@@ -214,6 +230,27 @@ export default function OrderDetails() {
                   <p className="text-gray-800 font-medium">
                     {order.estimatedDelivery.toLocaleDateString()}
                   </p>
+                </div>
+              )}
+
+              {shouldShowOtp && (
+                <div>
+                  <p className="text-sm text-gray-500 mb-1">Delivery OTP</p>
+                  {displayOtp ? (
+                    <div>
+                      <span className="inline-flex items-center px-3 py-1 rounded-lg bg-amber-50 text-amber-800 font-bold tracking-widest border border-amber-200">
+                        {displayOtp}
+                      </span>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Give this OTP to the carrier only when your package is
+                        delivered.
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">
+                      OTP is generated after pickup.
+                    </p>
+                  )}
                 </div>
               )}
             </div>

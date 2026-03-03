@@ -4,6 +4,7 @@ import { db, realtimeDb } from "@config";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { ref as rtdbRef, onValue } from "firebase/database";
 import { Toaster } from "react-hot-toast";
+import MapLegend from "./components/MapLegend";
 
 declare global {
   interface Window {
@@ -40,6 +41,18 @@ interface Delivery {
   carrierName?: string;
   deliveryContactName?: string;
   deliveryDate?: any;
+  route?: {
+    polyline?: string;
+  };
+  routeHistory?: {
+    activePolyline?: string;
+  };
+  otpCode?: string;
+  otpVerified?: boolean;
+  proofOfDelivery?: {
+    otp?: string;
+    verified?: boolean;
+  };
 }
 
 interface MarkerData {
@@ -56,7 +69,9 @@ type Props = { user: any };
 
 export default function TrackingMap({ user }: Props) {
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
-  const [deliveryTracksMap, setDeliveryTracksMap] = useState<Record<string, any>>({});
+  const [deliveryTracksMap, setDeliveryTracksMap] = useState<
+    Record<string, any>
+  >({});
   const [googleMapsLoaded, setGoogleMapsLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [selectedDelivery, setSelectedDelivery] = useState<string | null>(null);
@@ -67,7 +82,10 @@ export default function TrackingMap({ user }: Props) {
   const markersRef = useRef<Map<string, any>>(new Map());
   const markersUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const sharedInfoWindowRef = useRef<any>(null);
-  const polylineRef = useRef<any>(null);
+  const carrierToPickupPolylineRef = useRef<any>(null);
+  const pickupToDropoffPolylineRef = useRef<any>(null);
+  const activePolylineRef = useRef<any>(null);
+  const plannedPolylineRef = useRef<any>(null);
 
   // Default center (Maseru, Lesotho)
   const defaultCenter = { lat: -29.31, lng: 27.48 };
@@ -108,6 +126,48 @@ export default function TrackingMap({ user }: Props) {
     };
   }, []);
 
+  const decodePolyline = (
+    encoded?: string,
+  ): Array<{ lat: number; lng: number }> => {
+    if (!encoded) return [];
+
+    let index = 0;
+    let lat = 0;
+    let lng = 0;
+    const points: Array<{ lat: number; lng: number }> = [];
+
+    while (index < encoded.length) {
+      let result = 0;
+      let shift = 0;
+      let b: number;
+
+      do {
+        b = encoded.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+
+      const dLat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+      lat += dLat;
+
+      result = 0;
+      shift = 0;
+
+      do {
+        b = encoded.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+
+      const dLng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+      lng += dLng;
+
+      points.push({ lat: lat / 1e5, lng: lng / 1e5 });
+    }
+
+    return points;
+  };
+
   // Load only customer's deliveries
   useEffect(() => {
     if (!user?.uid) return;
@@ -123,7 +183,7 @@ export default function TrackingMap({ user }: Props) {
         "in_transit",
         "out_for_delivery",
         "delivered",
-      ])
+      ]),
     );
 
     const unsubscribeDeliveries = onSnapshot(
@@ -135,7 +195,11 @@ export default function TrackingMap({ user }: Props) {
           const data = doc.data();
           const rtdbLoc = deliveryTracksMap[doc.id];
           const loc = rtdbLoc
-            ? { lat: rtdbLoc.lat, lng: rtdbLoc.lng, timestamp: new Date(rtdbLoc.timestamp) }
+            ? {
+                lat: rtdbLoc.lat,
+                lng: rtdbLoc.lng,
+                timestamp: new Date(rtdbLoc.timestamp),
+              }
             : data.currentLocation;
 
           deliveryList.push({
@@ -152,6 +216,11 @@ export default function TrackingMap({ user }: Props) {
             carrierName: data.carrierName,
             deliveryContactName: data.deliveryContactName,
             deliveryDate: data.deliveryDate,
+            route: data.route,
+            routeHistory: data.routeHistory,
+            otpCode: data.otpCode,
+            otpVerified: data.otpVerified,
+            proofOfDelivery: data.proofOfDelivery,
           });
         });
 
@@ -166,7 +235,7 @@ export default function TrackingMap({ user }: Props) {
       (error) => {
         console.error("Error loading deliveries:", error);
         setLoading(false);
-      }
+      },
     );
 
     // Listen to RTDB delivery tracks for real-time location updates
@@ -218,13 +287,20 @@ export default function TrackingMap({ user }: Props) {
       setMapError(null);
     } catch (error) {
       console.error("❌ Error initializing map:", error);
-      setMapError("Failed to initialize map. Please check console for details.");
+      setMapError(
+        "Failed to initialize map. Please check console for details.",
+      );
     }
   }, [googleMapsLoaded]);
 
   // Update markers and route line
   const updateMarkers = useCallback(() => {
-    if (!mapInstance.current || !window.google || !googleMapsLoaded || !selectedDelivery)
+    if (
+      !mapInstance.current ||
+      !window.google ||
+      !googleMapsLoaded ||
+      !selectedDelivery
+    )
       return;
 
     const delivery = deliveries.find((d) => d.id === selectedDelivery);
@@ -346,8 +422,8 @@ export default function TrackingMap({ user }: Props) {
             markerData.type === "pickup"
               ? "#059669"
               : markerData.type === "delivery"
-              ? "#DC2626"
-              : "#3B82F6";
+                ? "#DC2626"
+                : "#3B82F6";
 
           const icon = {
             path: window.google.maps.SymbolPath.CIRCLE,
@@ -384,8 +460,17 @@ export default function TrackingMap({ user }: Props) {
     });
 
     // Draw route line if we have all locations
-    if (polylineRef.current) {
-      polylineRef.current.setMap(null);
+    if (carrierToPickupPolylineRef.current) {
+      carrierToPickupPolylineRef.current.setMap(null);
+    }
+    if (pickupToDropoffPolylineRef.current) {
+      pickupToDropoffPolylineRef.current.setMap(null);
+    }
+    if (activePolylineRef.current) {
+      activePolylineRef.current.setMap(null);
+    }
+    if (plannedPolylineRef.current) {
+      plannedPolylineRef.current.setMap(null);
     }
 
     if (
@@ -393,30 +478,72 @@ export default function TrackingMap({ user }: Props) {
       delivery.currentLocation &&
       delivery.deliveryLocation
     ) {
-      const pathCoordinates = [
-        { lat: delivery.pickupLocation.lat, lng: delivery.pickupLocation.lng },
-      ];
-
-      if (delivery.currentLocation) {
-        pathCoordinates.push({
-          lat: delivery.currentLocation.lat,
-          lng: delivery.currentLocation.lng,
-        });
-      }
-
-      pathCoordinates.push({
+      const pickupPoint = {
+        lat: delivery.pickupLocation.lat,
+        lng: delivery.pickupLocation.lng,
+      };
+      const currentPoint = {
+        lat: delivery.currentLocation.lat,
+        lng: delivery.currentLocation.lng,
+      };
+      const dropoffPoint = {
         lat: delivery.deliveryLocation.lat,
         lng: delivery.deliveryLocation.lng,
-      });
+      };
 
-      polylineRef.current = new window.google.maps.Polyline({
-        path: pathCoordinates,
+      const plannedPath = decodePolyline(delivery.route?.polyline);
+      const activePath = decodePolyline(delivery.routeHistory?.activePolyline);
+
+      plannedPolylineRef.current = new window.google.maps.Polyline({
+        path:
+          plannedPath.length > 1 ? plannedPath : [pickupPoint, dropoffPoint],
         geodesic: true,
-        strokeColor: "#3B82F6",
-        strokeOpacity: 0.7,
+        strokeColor: "#f59e0b",
+        strokeOpacity: 0.75,
         strokeWeight: 3,
+        icons: [
+          {
+            icon: {
+              path: "M 0,-1 0,1",
+              strokeOpacity: 1,
+              scale: 2,
+            },
+            offset: "0",
+            repeat: "14px",
+          },
+        ],
         map: mapInstance.current,
       });
+
+      pickupToDropoffPolylineRef.current = new window.google.maps.Polyline({
+        path: [pickupPoint, dropoffPoint],
+        geodesic: true,
+        strokeColor: "#fb923c",
+        strokeOpacity: 0.4,
+        strokeWeight: 5,
+        map: mapInstance.current,
+      });
+
+      if (delivery.status === "assigned") {
+        carrierToPickupPolylineRef.current = new window.google.maps.Polyline({
+          path: [currentPoint, pickupPoint],
+          geodesic: true,
+          strokeColor: "#fbbf24",
+          strokeOpacity: 0.4,
+          strokeWeight: 5,
+          map: mapInstance.current,
+        });
+      } else {
+        activePolylineRef.current = new window.google.maps.Polyline({
+          path:
+            activePath.length > 1 ? activePath : [pickupPoint, currentPoint],
+          geodesic: true,
+          strokeColor: "#0ea5e9",
+          strokeOpacity: 0.95,
+          strokeWeight: 5,
+          map: mapInstance.current,
+        });
+      }
     }
 
     // Fit bounds to all markers
@@ -601,15 +728,48 @@ export default function TrackingMap({ user }: Props) {
               </div>
             </div>
 
-            <div
-              ref={mapRef}
-              className="w-full h-[500px] bg-gray-100"
-              style={{ minHeight: "500px" }}
-            />
+            <div className="relative">
+              <div
+                ref={mapRef}
+                className="w-full h-[500px] bg-gray-100"
+                style={{ minHeight: "500px" }}
+              />
+
+              <MapLegend
+                title="Route key"
+                items={[
+                  {
+                    color: "#fbbf24",
+                    opacity: 0.4,
+                    label: "Carrier → Pickup",
+                    description: "Expected first leg before pickup",
+                  },
+                  {
+                    color: "#fb923c",
+                    opacity: 0.4,
+                    label: "Pickup → Dropoff",
+                    description: "Expected delivery path",
+                  },
+                  {
+                    color: "#0ea5e9",
+                    opacity: 0.95,
+                    label: "Active route",
+                    description: "Current trip progress",
+                  },
+                  {
+                    color: "#f59e0b",
+                    opacity: 0.75,
+                    label: "Planned route",
+                    description: "Original optimized route",
+                  },
+                ]}
+              />
+            </div>
 
             <div className="border-t px-6 py-4 bg-gray-50">
               <div className="text-sm text-gray-500">
-                Click on markers for details. Your package location updates in real-time.
+                Click on markers for details. Your package location updates in
+                real-time.
               </div>
             </div>
           </div>
@@ -638,8 +798,11 @@ export default function TrackingMap({ user }: Props) {
                         <div className="font-bold text-gray-800">
                           {delivery.trackingCode}
                         </div>
-                        <div className={`text-xs mt-1 inline-block px-2 py-1 rounded ${getStatusColor(delivery.status)}`}>
-                          {getStatusIcon(delivery.status)} {delivery.status.replace(/_/g, " ")}
+                        <div
+                          className={`text-xs mt-1 inline-block px-2 py-1 rounded ${getStatusColor(delivery.status)}`}
+                        >
+                          {getStatusIcon(delivery.status)}{" "}
+                          {delivery.status.replace(/_/g, " ")}
                         </div>
                       </div>
                     </div>
@@ -655,122 +818,166 @@ export default function TrackingMap({ user }: Props) {
 
             {/* Order Details */}
             <div className="lg:col-span-2">
-              {selectedDelivery && deliveries.find((d) => d.id === selectedDelivery) ? (
-                (() => {
-                  const delivery = deliveries.find((d) => d.id === selectedDelivery)!;
-                  return (
-                    <div className="space-y-6">
-                      {/* Order Summary */}
-                      <div className="bg-white rounded-xl shadow p-6">
-                        <h4 className="text-lg font-bold text-gray-800 mb-4">
-                          Order Summary
-                        </h4>
-                        <div className="space-y-3">
-                          <div>
-                            <div className="text-sm text-gray-600">Tracking Code</div>
-                            <div className="font-bold text-gray-800">
-                              {delivery.trackingCode}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-sm text-gray-600">Status</div>
-                            <div className={`inline-block px-3 py-1 rounded-lg text-sm font-medium ${getStatusColor(delivery.status)}`}>
-                              {getStatusIcon(delivery.status)} {delivery.status.replace(/_/g, " ")}
-                            </div>
-                          </div>
-                          {delivery.carrierName && (
+              {selectedDelivery &&
+              deliveries.find((d) => d.id === selectedDelivery)
+                ? (() => {
+                    const delivery = deliveries.find(
+                      (d) => d.id === selectedDelivery,
+                    )!;
+                    const displayOtp =
+                      delivery.proofOfDelivery?.otp || delivery.otpCode;
+                    return (
+                      <div className="space-y-6">
+                        {/* Order Summary */}
+                        <div className="bg-white rounded-xl shadow p-6">
+                          <h4 className="text-lg font-bold text-gray-800 mb-4">
+                            Order Summary
+                          </h4>
+                          <div className="space-y-3">
                             <div>
-                              <div className="text-sm text-gray-600">Carrier</div>
-                              <div className="font-medium text-gray-800">
-                                {delivery.carrierName}
+                              <div className="text-sm text-gray-600">
+                                Tracking Code
+                              </div>
+                              <div className="font-bold text-gray-800">
+                                {delivery.trackingCode}
                               </div>
                             </div>
-                          )}
-                          {delivery.distance && (
                             <div>
-                              <div className="text-sm text-gray-600">Distance</div>
-                              <div className="font-medium text-gray-800">
-                                {delivery.distance} km
+                              <div className="text-sm text-gray-600">
+                                Status
+                              </div>
+                              <div
+                                className={`inline-block px-3 py-1 rounded-lg text-sm font-medium ${getStatusColor(delivery.status)}`}
+                              >
+                                {getStatusIcon(delivery.status)}{" "}
+                                {delivery.status.replace(/_/g, " ")}
                               </div>
                             </div>
-                          )}
-                          {delivery.estimatedDeliveryTime && (
-                            <div>
-                              <div className="text-sm text-gray-600">Estimated Delivery</div>
-                              <div className="font-medium text-green-600">
-                                {delivery.estimatedDeliveryTime}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Route Details */}
-                      <div className="bg-white rounded-xl shadow p-6">
-                        <h4 className="text-lg font-bold text-gray-800 mb-4">
-                          Route Information
-                        </h4>
-                        <div className="space-y-4">
-                          {/* Pickup */}
-                          <div className="pb-4 border-b">
-                            <div className="flex items-start">
-                              <div className="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center text-green-600 font-bold">
-                                1
-                              </div>
-                              <div className="ml-3 flex-1">
-                                <div className="text-sm font-semibold text-gray-700">
-                                  Pickup Location
+                            {delivery.carrierName && (
+                              <div>
+                                <div className="text-sm text-gray-600">
+                                  Carrier
                                 </div>
-                                <div className="text-sm text-gray-600 mt-1">
-                                  {delivery.pickupAddress}
+                                <div className="font-medium text-gray-800">
+                                  {delivery.carrierName}
                                 </div>
                               </div>
-                            </div>
-                          </div>
-
-                          {/* Current Location */}
-                          <div className="pb-4 border-b">
-                            <div className="flex items-start">
-                              <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
-                                2
-                              </div>
-                              <div className="ml-3 flex-1">
-                                <div className="text-sm font-semibold text-gray-700">
-                                  Current Location
+                            )}
+                            {delivery.distance && (
+                              <div>
+                                <div className="text-sm text-gray-600">
+                                  Distance
                                 </div>
-                                <div className="text-sm text-gray-600 mt-1">
-                                  {delivery.currentLocation?.address ||
-                                    "In transit"}
+                                <div className="font-medium text-gray-800">
+                                  {delivery.distance} km
                                 </div>
                               </div>
-                            </div>
-                          </div>
-
-                          {/* Delivery */}
-                          <div>
-                            <div className="flex items-start">
-                              <div className="flex-shrink-0 w-8 h-8 bg-red-100 rounded-full flex items-center justify-center text-red-600 font-bold">
-                                3
-                              </div>
-                              <div className="ml-3 flex-1">
-                                <div className="text-sm font-semibold text-gray-700">
-                                  Delivery Location
+                            )}
+                            {delivery.estimatedDeliveryTime && (
+                              <div>
+                                <div className="text-sm text-gray-600">
+                                  Estimated Delivery
                                 </div>
-                                <div className="text-sm text-gray-600 mt-1">
-                                  {delivery.deliveryAddress}
-                                </div>
-                                <div className="text-xs text-gray-500 mt-2">
-                                  Recipient: {delivery.deliveryContactName}
+                                <div className="font-medium text-green-600">
+                                  {delivery.estimatedDeliveryTime}
                                 </div>
                               </div>
-                            </div>
+                            )}
+                            {[
+                              "picked_up",
+                              "in_transit",
+                              "out_for_delivery",
+                            ].includes(delivery.status) && (
+                              <div>
+                                <div className="text-sm text-gray-600">
+                                  Delivery OTP
+                                </div>
+                                <div className="mt-1">
+                                  {displayOtp ? (
+                                    <span className="inline-flex items-center px-3 py-1 rounded-lg bg-amber-50 text-amber-800 font-bold tracking-widest border border-amber-200">
+                                      {displayOtp}
+                                    </span>
+                                  ) : (
+                                    <span className="text-sm text-gray-500">
+                                      Generating after pickup…
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Share this OTP with the carrier only when your
+                                  package is delivered.
+                                </p>
+                              </div>
+                            )}
                           </div>
                         </div>
+
+                        {/* Route Details */}
+                        <div className="bg-white rounded-xl shadow p-6">
+                          <h4 className="text-lg font-bold text-gray-800 mb-4">
+                            Route Information
+                          </h4>
+                          <div className="space-y-4">
+                            {/* Pickup */}
+                            <div className="pb-4 border-b">
+                              <div className="flex items-start">
+                                <div className="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center text-green-600 font-bold">
+                                  1
+                                </div>
+                                <div className="ml-3 flex-1">
+                                  <div className="text-sm font-semibold text-gray-700">
+                                    Pickup Location
+                                  </div>
+                                  <div className="text-sm text-gray-600 mt-1">
+                                    {delivery.pickupAddress}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Current Location */}
+                            <div className="pb-4 border-b">
+                              <div className="flex items-start">
+                                <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
+                                  2
+                                </div>
+                                <div className="ml-3 flex-1">
+                                  <div className="text-sm font-semibold text-gray-700">
+                                    Current Location
+                                  </div>
+                                  <div className="text-sm text-gray-600 mt-1">
+                                    {delivery.currentLocation?.address ||
+                                      "In transit"}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Delivery */}
+                            <div>
+                              <div className="flex items-start">
+                                <div className="flex-shrink-0 w-8 h-8 bg-red-100 rounded-full flex items-center justify-center text-red-600 font-bold">
+                                  3
+                                </div>
+                                <div className="ml-3 flex-1">
+                                  <div className="text-sm font-semibold text-gray-700">
+                                    Delivery Location
+                                  </div>
+                                  <div className="text-sm text-gray-600 mt-1">
+                                    {delivery.deliveryAddress}
+                                  </div>
+                                  <div className="text-xs text-gray-500 mt-2">
+                                    Recipient: {delivery.deliveryContactName}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })()
-              ) : null}
+                    );
+                  })()
+                : null}
             </div>
           </div>
         </>
