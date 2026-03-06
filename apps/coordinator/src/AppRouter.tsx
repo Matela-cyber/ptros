@@ -80,6 +80,7 @@ export default function AppRouter({ user }: Props) {
             <Route path="/tracking/live" element={<LiveMap />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </main>
       </div>
