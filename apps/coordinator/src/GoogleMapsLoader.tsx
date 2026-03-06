@@ -1,5 +1,7 @@
 import { useEffect } from "react";
-import { useJsApiLoader } from "@react-google-maps/api";
+import { Libraries, useJsApiLoader } from "@react-google-maps/api";
+
+const GOOGLE_MAPS_LIBRARIES: Libraries = ["places", "geometry"];
 
 declare global {
   interface Window {
@@ -19,7 +21,7 @@ export default function GoogleMapsLoader({ children }: GoogleMapsLoaderProps) {
     typeof window !== "undefined" ? window.location.origin : "(unknown origin)";
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: apiKey,
-    libraries: ["places", "geometry"],
+    libraries: GOOGLE_MAPS_LIBRARIES,
     id: "ptros-google-maps-script",
   });
 
