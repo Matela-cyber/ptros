@@ -1,71 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-    sans-serif;
-  
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu",
+    "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+
   /* 🎨 Professional Delivery App Color Scheme */
-  
+
   /* Primary Colors - Blue (Trust & Reliability) */
-  --primary: #2563EB;
-  --primary-dark: #1E40AF;
-  --primary-light: #3B82F6;
-  --primary-lighter: #60A5FA;
-  --primary-bg: #EFF6FF;
-  
+  --primary: #2563eb;
+  --primary-dark: #1e40af;
+  --primary-light: #3b82f6;
+  --primary-lighter: #60a5fa;
+  --primary-bg: #eff6ff;
+
   /* Accent Colors - Orange (Speed & Action) */
-  --accent: #F59E0B;
-  --accent-dark: #D97706;
-  --accent-light: #FBBF24;
-  --accent-bg: #FEF3C7;
-  
+  --accent: #f59e0b;
+  --accent-dark: #d97706;
+  --accent-light: #fbbf24;
+  --accent-bg: #fef3c7;
+
   /* Success Colors - Green (Delivery & Completion) */
-  --success: #10B981;
+  --success: #10b981;
   --success-dark: #059669;
-  --success-light: #34D399;
-  --success-bg: #D1FAE5;
-  
+  --success-light: #34d399;
+  --success-bg: #d1fae5;
+
   /* Error Colors - Red (Warnings & Errors) */
-  --error: #EF4444;
-  --error-dark: #DC2626;
-  --error-light: #F87171;
-  --error-bg: #FEE2E2;
-  
+  --error: #ef4444;
+  --error-dark: #dc2626;
+  --error-light: #f87171;
+  --error-bg: #fee2e2;
+
   /* Warning Colors - Yellow */
-  --warning: #F59E0B;
-  --warning-dark: #D97706;
-  --warning-light: #FBBF24;
-  --warning-bg: #FEF3C7;
-  
+  --warning: #f59e0b;
+  --warning-dark: #d97706;
+  --warning-light: #fbbf24;
+  --warning-bg: #fef3c7;
+
   /* Info Colors - Light Blue */
-  --info: #3B82F6;
-  --info-dark: #2563EB;
-  --info-light: #60A5FA;
-  --info-bg: #DBEAFE;
-  
+  --info: #3b82f6;
+  --info-dark: #2563eb;
+  --info-light: #60a5fa;
+  --info-bg: #dbeafe;
+
   /* Neutral Colors (Clean UI) */
-  --bg: #F9FAFB;
-  --bg-dark: #F3F4F6;
-  --card-bg: #FFFFFF;
-  
+  --bg: #f9fafb;
+  --bg-dark: #f3f4f6;
+  --card-bg: #ffffff;
+
   --text: #111827;
-  --text-light: #6B7280;
-  --text-lighter: #9CA3AF;
-  
-  --border: #E5E7EB;
-  --border-light: #F3F4F6;
-  
+  --text-light: #6b7280;
+  --text-lighter: #9ca3af;
+
+  --border: #e5e7eb;
+  --border-light: #f3f4f6;
+
   /* Dark Mode Support */
   --dark-bg: #111827;
-  --dark-card: #1F2937;
-  --dark-text: #F9FAFB;
-  --dark-text-secondary: #9CA3AF;
-  
+  --dark-card: #1f2937;
+  --dark-text: #f9fafb;
+  --dark-text-secondary: #9ca3af;
+
   /* Shadows */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-md:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg:
+    0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl:
+    0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 
 /* Simple global styles */
