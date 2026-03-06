@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Libraries, useJsApiLoader } from "@react-google-maps/api";
 
 const GOOGLE_MAPS_LIBRARIES: Libraries = ["places", "geometry"];
@@ -8,6 +8,7 @@ declare global {
     google: any;
     initMap?: () => void;
     mapsReady?: boolean;
+    gm_authFailure?: () => void;
   }
 }
 
@@ -16,6 +17,7 @@ interface GoogleMapsLoaderProps {
 }
 
 export default function GoogleMapsLoader({ children }: GoogleMapsLoaderProps) {
+  const [authFailure, setAuthFailure] = useState(false);
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
   const currentOrigin =
     typeof window !== "undefined" ? window.location.origin : "(unknown origin)";
@@ -23,7 +25,22 @@ export default function GoogleMapsLoader({ children }: GoogleMapsLoaderProps) {
     googleMapsApiKey: apiKey,
     libraries: GOOGLE_MAPS_LIBRARIES,
     id: "ptros-google-maps-script",
+    authReferrerPolicy: "origin",
   });
+
+  useEffect(() => {
+    window.gm_authFailure = () => {
+      console.error(
+        "Google Maps authentication failed. Ensure this origin is whitelisted:",
+        `${currentOrigin}/*`,
+      );
+      setAuthFailure(true);
+    };
+
+    return () => {
+      delete window.gm_authFailure;
+    };
+  }, [currentOrigin]);
 
   useEffect(() => {
     if (isLoaded && window.google?.maps) {
@@ -45,7 +62,7 @@ export default function GoogleMapsLoader({ children }: GoogleMapsLoaderProps) {
     );
   }
 
-  if (loadError) {
+  if (authFailure || loadError) {
     return (
       <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
         <p className="text-red-700">⚠️ Google Maps Error</p>
