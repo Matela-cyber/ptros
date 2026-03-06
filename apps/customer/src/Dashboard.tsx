@@ -1,5 +1,6 @@
 // apps/customer/src/Dashboard.tsx
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { db } from "@config";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { createSampleNotifications } from "./services/notificationService";
@@ -24,7 +25,7 @@ export default function Dashboard({ user, userProfile }: Props) {
       try {
         const q = query(
           collection(db, "deliveries"),
-          where("customerId", "==", user.uid)
+          where("customerId", "==", user.uid),
         );
         const snapshot = await getDocs(q);
         const deliveryList: any[] = [];
@@ -47,12 +48,10 @@ export default function Dashboard({ user, userProfile }: Props) {
         // Calculate stats
         setStats({
           totalOrders: deliveryList.length,
-          activeOrders: deliveryList.filter(
-            (d) => d.status !== "delivered"
-          ).length,
-          completedOrders: deliveryList.filter(
-            (d) => d.status === "delivered"
-          ).length,
+          activeOrders: deliveryList.filter((d) => d.status !== "delivered")
+            .length,
+          completedOrders: deliveryList.filter((d) => d.status === "delivered")
+            .length,
           totalSpent: 0, // TODO: Calculate from actual data
         });
       } catch (error) {
@@ -167,14 +166,14 @@ export default function Dashboard({ user, userProfile }: Props) {
         <h3 className="text-2xl font-bold mb-6">Quick Actions</h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {quickActions.map((action, index) => (
-            <a
+            <Link
               key={index}
-              href={action.path}
+              to={action.path}
               className={`${action.color} text-white p-4 rounded-lg flex flex-col items-center justify-center text-center transition transform hover:scale-105`}
             >
               <span className="text-3xl mb-2">{action.icon}</span>
               <span className="font-medium">{action.label}</span>
-            </a>
+            </Link>
           ))}
         </div>
       </div>
@@ -183,7 +182,8 @@ export default function Dashboard({ user, userProfile }: Props) {
       {true && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-8">
           <p className="text-sm text-blue-700 mb-3">
-            <strong>Test Mode:</strong> Create sample notifications to test the notification system
+            <strong>Test Mode:</strong> Create sample notifications to test the
+            notification system
           </p>
           <button
             onClick={handleCreateSampleNotifications}
@@ -223,8 +223,8 @@ export default function Dashboard({ user, userProfile }: Props) {
                           delivery.status === "delivered"
                             ? "bg-green-100 text-green-800"
                             : delivery.status === "in_transit"
-                            ? "bg-blue-100 text-blue-800"
-                            : "bg-yellow-100 text-yellow-800"
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-yellow-100 text-yellow-800"
                         }`}
                       >
                         {delivery.status}

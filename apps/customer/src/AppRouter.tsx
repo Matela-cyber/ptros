@@ -73,6 +73,7 @@ export default function AppRouter({ user }: Props) {
               element={<Profile user={user} userProfile={userProfile} />}
             />
             <Route path="/settings" element={<Settings />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </main>
       </div>
