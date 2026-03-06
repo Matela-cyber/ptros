@@ -14,9 +14,11 @@ interface GoogleMapsLoaderProps {
 }
 
 export default function GoogleMapsLoader({ children }: GoogleMapsLoaderProps) {
-  const API_KEY = "AIzaSyAwX-3N2xv84NUElCJRpKMh7UJpQEQnNH0";
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
+  const currentOrigin =
+    typeof window !== "undefined" ? window.location.origin : "(unknown origin)";
   const { isLoaded, loadError } = useJsApiLoader({
-    googleMapsApiKey: API_KEY,
+    googleMapsApiKey: apiKey,
     libraries: ["places", "geometry"],
     id: "ptros-google-maps-script",
   });
@@ -29,15 +31,35 @@ export default function GoogleMapsLoader({ children }: GoogleMapsLoaderProps) {
     }
   }, [isLoaded]);
 
+  if (!apiKey) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-red-50">
+        <div className="text-center max-w-lg px-4">
+          <p className="text-red-600 font-medium">
+            ⚠️ Google Maps configuration is missing
+          </p>
+          <p className="text-gray-600 mt-2">
+            Set <code>VITE_GOOGLE_MAPS_API_KEY</code> for this environment and
+            redeploy.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (loadError) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-red-50">
-        <div className="text-center">
+        <div className="text-center max-w-xl px-4">
           <p className="text-red-600 font-medium">
             ⚠️ Failed to load Google Maps
           </p>
           <p className="text-gray-600 mt-2">
-            Please check your Google Maps API key configuration.
+            If you see <code>RefererNotAllowedMapError</code>, authorize this
+            URL in Google Cloud Console API key restrictions.
+          </p>
+          <p className="text-xs text-gray-700 mt-2">
+            Required authorized referrer: <code>{currentOrigin}/*</code>
           </p>
         </div>
       </div>

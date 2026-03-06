@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
 const firebaseConfig = {
@@ -14,10 +14,15 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig)
-export const auth = getAuth(app)
-export const db = getFirestore(app)
-export const storage = getStorage(app)
-export const realtimeDb = getDatabase(app)
+const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+export const db = initializeFirestore(app, {
+  // Helps on restrictive/proxy networks where streaming transports fail
+  // (e.g. intermittent Listen channel / QUIC timeout issues).
+  experimentalAutoDetectLongPolling: true,
+  ignoreUndefinedProperties: true,
+});
+export const storage = getStorage(app);
+export const realtimeDb = getDatabase(app);
 
-export default app
+export default app;
