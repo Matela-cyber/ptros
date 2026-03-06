@@ -1,4 +1,6 @@
-import { useJsApiLoader } from "@react-google-maps/api";
+import { Libraries, useJsApiLoader } from "@react-google-maps/api";
+
+const GOOGLE_MAPS_LIBRARIES: Libraries = ["places", "geometry"];
 
 interface GoogleMapsLoaderProps {
   children: React.ReactNode;
@@ -9,7 +11,7 @@ export default function GoogleMapsLoader({ children }: GoogleMapsLoaderProps) {
 
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: apiKey,
-    libraries: ["places", "geometry"],
+    libraries: GOOGLE_MAPS_LIBRARIES,
     id: "ptros-carrier-google-maps-script",
   });
 
