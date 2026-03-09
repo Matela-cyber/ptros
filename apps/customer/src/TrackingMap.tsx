@@ -538,9 +538,20 @@ export default function TrackingMap({ user }: Props) {
           path:
             activePath.length > 1 ? activePath : [pickupPoint, currentPoint],
           geodesic: true,
-          strokeColor: "#0ea5e9",
+          strokeColor: "#14b8a6",
           strokeOpacity: 0.95,
           strokeWeight: 5,
+          icons: [
+            {
+              icon: {
+                path: window.google.maps.SymbolPath.FORWARD_OPEN_ARROW,
+                scale: 2.2,
+                strokeOpacity: 0.9,
+              },
+              offset: "12px",
+              repeat: "40px",
+            },
+          ],
           map: mapInstance.current,
         });
       }
@@ -751,7 +762,7 @@ export default function TrackingMap({ user }: Props) {
                     description: "Expected delivery path",
                   },
                   {
-                    color: "#0ea5e9",
+                    color: "#14b8a6",
                     opacity: 0.95,
                     label: "Active route",
                     description: "Current trip progress",

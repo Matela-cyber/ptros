@@ -66,6 +66,29 @@ interface DeliveryData {
   };
   optimizationReasons?: OptimizationReason[];
   priority?: string;
+  routeReviews?: Array<{
+    type: string;
+    temporary?: boolean;
+    reason?: string;
+    start?: { lat: number; lng: number };
+    end?: { lat: number; lng: number };
+    status?: string;
+    createdAt?: any;
+    expiresAt?: any;
+  }>;
+  routeFeedback?: Array<{
+    type: string;
+    reason?: string;
+    note?: string;
+    source?: string;
+    reportedAt?: string;
+    shortcut?: {
+      start: { lat: number; lng: number };
+      end: { lat: number; lng: number };
+      vehicleTypeSpecific?: boolean;
+      note?: string;
+    };
+  }>;
 }
 
 interface CarrierLocation {
@@ -86,6 +109,15 @@ interface CarrierCandidate {
   id: string;
   fullName: string;
   distanceKm: number;
+  shortcutContributionScore: number;
+}
+
+interface LearnedSegment {
+  id: string;
+  encodedPolyline?: string;
+  reason?: string;
+  note?: string;
+  vehicleTypeSpecific?: boolean;
 }
 
 const ROUTE_COLORS = [
@@ -112,9 +144,13 @@ export default function DeliveryTrackingMap() {
   >([]);
   const [routeIssueReason, setRouteIssueReason] = useState("");
   const [routeIssueTemporary, setRouteIssueTemporary] = useState(true);
+  const [routeIssueCategory, setRouteIssueCategory] =
+    useState("blocked_segment");
+  const [routeIssueExpiresHours, setRouteIssueExpiresHours] = useState(6);
   const [recommending, setRecommending] = useState(false);
   const [recommendedCarrier, setRecommendedCarrier] =
     useState<CarrierCandidate | null>(null);
+  const [learnedSegments, setLearnedSegments] = useState<LearnedSegment[]>([]);
   const [carrierToPickupPath, setCarrierToPickupPath] = useState<
     google.maps.LatLng[] | null
   >(null);
@@ -165,6 +201,8 @@ export default function DeliveryTrackingMap() {
         routeHistory: data.routeHistory,
         optimizationReasons: data.optimizationReasons || [],
         priority: data.priority,
+        routeReviews: data.routeReviews || [],
+        routeFeedback: data.routeFeedback || [],
       });
       setLoading(false);
     });
@@ -191,6 +229,32 @@ export default function DeliveryTrackingMap() {
         };
       });
       setSnapshots(data);
+    });
+
+    return () => unsub();
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+
+    const q = query(
+      collection(db, "deliveries", id, "routeLearnedSegments"),
+      orderBy("createdAt", "desc"),
+      limit(20),
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      const data: LearnedSegment[] = snapshot.docs.map((d) => {
+        const row = d.data() as any;
+        return {
+          id: d.id,
+          encodedPolyline: row.encodedPolyline,
+          reason: row.reason,
+          note: row.note,
+          vehicleTypeSpecific: row.vehicleTypeSpecific,
+        };
+      });
+      setLearnedSegments(data);
     });
 
     return () => unsub();
@@ -329,11 +393,42 @@ export default function DeliveryTrackingMap() {
       ? decodePolyline(delivery.routeHistory.activePolyline)
       : [];
 
-    return { planned, snapshotSegments, active };
+    const blockedSegments = (delivery?.routeReviews || [])
+      .filter(
+        (review) =>
+          review?.start && review?.end && review?.status !== "resolved",
+      )
+      .map((review, idx) => ({
+        id: `review-${idx}`,
+        points: [review.start!, review.end!],
+        temporary: !!review.temporary,
+        reason: review.reason,
+      }));
+
+    const learnedShortcutSegments = learnedSegments
+      .filter((seg) => seg.encodedPolyline)
+      .map((seg) => ({
+        id: seg.id,
+        points: decodePolyline(seg.encodedPolyline || ""),
+        reason: seg.reason,
+        note: seg.note,
+        vehicleTypeSpecific: seg.vehicleTypeSpecific,
+      }))
+      .filter((seg) => seg.points.length > 1);
+
+    return {
+      planned,
+      snapshotSegments,
+      active,
+      blockedSegments,
+      learnedShortcutSegments,
+    };
   }, [
     delivery?.route?.polyline,
     delivery?.routeHistory?.activePolyline,
+    delivery?.routeReviews,
     snapshots,
+    learnedSegments,
   ]);
 
   const visibleSegmentCount = Math.max(
@@ -383,11 +478,16 @@ export default function DeliveryTrackingMap() {
     try {
       await updateDoc(doc(db, "deliveries", id), {
         routeReviews: arrayUnion({
-          type: "blocked_segment",
+          type: routeIssueCategory,
           temporary: routeIssueTemporary,
           reason: routeIssueReason.trim(),
           start: reviewPoints[0],
           end: reviewPoints[1],
+          expiresAt: routeIssueTemporary
+            ? Timestamp.fromMillis(
+                Date.now() + routeIssueExpiresHours * 60 * 60 * 1000,
+              )
+            : null,
           createdAt: Timestamp.now(),
           source: "coordinator",
           status: "active",
@@ -404,11 +504,29 @@ export default function DeliveryTrackingMap() {
       setReviewPoints([]);
       setRouteIssueReason("");
       setRouteIssueTemporary(true);
+      setRouteIssueCategory("blocked_segment");
+      setRouteIssueExpiresHours(6);
     } catch (error) {
       console.error(error);
       toast.error("Failed to save route review.");
     }
   };
+
+  const activeRouteColor = useMemo(() => {
+    switch (delivery?.status) {
+      case "assigned":
+      case "accepted":
+        return "#7c3aed";
+      case "picked_up":
+      case "in_transit":
+      case "out_for_delivery":
+        return "#14b8a6";
+      case "delivered":
+        return "#64748b";
+      default:
+        return "#0ea5e9";
+    }
+  }, [delivery?.status]);
 
   const recommendNextCarrier = async () => {
     if (!delivery || !carrierLocation) return;
@@ -430,6 +548,8 @@ export default function DeliveryTrackingMap() {
           const loc = data.currentLocation;
           if (!loc?.lat || !loc?.lng || d.id === delivery.carrierId)
             return null;
+          const learnedShortcutCount =
+            Number(data?.routeLearningStats?.shortcutsReported || 0) || 0;
           return {
             id: d.id,
             fullName: data.fullName || "Carrier",
@@ -437,13 +557,16 @@ export default function DeliveryTrackingMap() {
               { lat: carrierLocation.lat, lng: carrierLocation.lng },
               { lat: loc.lat, lng: loc.lng },
             ),
+            shortcutContributionScore: Math.min(learnedShortcutCount, 20),
           };
         })
         .filter(Boolean)
         .sort(
           (a, b) =>
             (a as CarrierCandidate).distanceKm -
-            (b as CarrierCandidate).distanceKm,
+            (b as CarrierCandidate).distanceKm -
+            ((a as CarrierCandidate).shortcutContributionScore * 0.06 -
+              (b as CarrierCandidate).shortcutContributionScore * 0.06),
         ) as CarrierCandidate[];
 
       if (!candidates.length) {
@@ -483,6 +606,7 @@ export default function DeliveryTrackingMap() {
             factors: [
               "In-transit reroute requested by coordinator",
               `${recommendedCarrier.distanceKm.toFixed(2)} km from active route`,
+              `${recommendedCarrier.shortcutContributionScore} learned shortcut contribution score`,
             ],
           },
         }),
@@ -589,6 +713,9 @@ export default function DeliveryTrackingMap() {
                 {recommendedCarrier.fullName} •{" "}
                 {recommendedCarrier.distanceKm.toFixed(2)} km away
               </p>
+              <p>
+                Learning score: {recommendedCarrier.shortcutContributionScore}
+              </p>
               <button
                 onClick={reassignToRecommendedCarrier}
                 className="mt-1 px-2 py-1 rounded bg-amber-500 text-white"
@@ -602,10 +729,19 @@ export default function DeliveryTrackingMap() {
 
       {reviewMode && (
         <div className="bg-red-50 border-b border-red-200 px-4 py-3 text-sm grid grid-cols-1 lg:grid-cols-4 gap-3">
+          <select
+            value={routeIssueCategory}
+            onChange={(e) => setRouteIssueCategory(e.target.value)}
+            className="border border-gray-300 rounded px-3 py-2"
+          >
+            <option value="blocked_segment">Blocked segment</option>
+            <option value="temporarily_unseeable">Temporarily unseeable</option>
+            <option value="unsafe_segment">Unsafe segment</option>
+          </select>
           <input
             value={routeIssueReason}
             onChange={(e) => setRouteIssueReason(e.target.value)}
-            className="border border-gray-300 rounded px-3 py-2 lg:col-span-2"
+            className="border border-gray-300 rounded px-3 py-2"
             placeholder="Why this route section should be rejected/unavailable"
           />
           <label className="inline-flex items-center gap-2">
@@ -616,6 +752,16 @@ export default function DeliveryTrackingMap() {
             />
             Temporary issue
           </label>
+          <input
+            type="number"
+            min={1}
+            max={48}
+            value={routeIssueExpiresHours}
+            onChange={(e) => setRouteIssueExpiresHours(Number(e.target.value))}
+            disabled={!routeIssueTemporary}
+            className="border border-gray-300 rounded px-3 py-2 disabled:opacity-50"
+            placeholder="Expires in hours"
+          />
           <button
             onClick={submitRouteReview}
             disabled={reviewPoints.length !== 2 || !routeIssueReason.trim()}
@@ -722,12 +868,69 @@ export default function DeliveryTrackingMap() {
                 <Polyline
                   path={routeSegments.active}
                   options={{
-                    strokeColor: "#0ea5e9",
+                    strokeColor: activeRouteColor,
                     strokeOpacity: 1,
                     strokeWeight: 6,
+                    icons: [
+                      {
+                        icon: {
+                          path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
+                          scale: 2.5,
+                          strokeOpacity: 0.9,
+                        },
+                        offset: "12px",
+                        repeat: "44px",
+                      },
+                    ],
                   }}
                 />
               )}
+
+              {routeSegments.learnedShortcutSegments.map((segment) => (
+                <Polyline
+                  key={`learned-${segment.id}`}
+                  path={segment.points}
+                  options={{
+                    strokeColor: "#ef4444",
+                    strokeOpacity: 0.9,
+                    strokeWeight: 4,
+                    icons: [
+                      {
+                        icon: {
+                          path: "M 0,-1 0,1",
+                          strokeOpacity: 1,
+                          scale: 3,
+                        },
+                        offset: "0",
+                        repeat: "10px",
+                      },
+                    ],
+                  }}
+                />
+              ))}
+
+              {routeSegments.blockedSegments.map((segment) => (
+                <Polyline
+                  key={segment.id}
+                  path={segment.points}
+                  options={{
+                    strokeColor: segment.temporary ? "#eab308" : "#dc2626",
+                    strokeOpacity: 1,
+                    strokeWeight: 5,
+                    icons: [
+                      {
+                        icon: {
+                          path: "M -2,-2 2,2 M 2,-2 -2,2",
+                          strokeOpacity: 1,
+                          scale: 2,
+                        },
+                        offset: "0",
+                        repeat: "14px",
+                      },
+                    ],
+                  }}
+                />
+              ))}
 
               {reviewPoints.map((point, index) => (
                 <Marker
@@ -848,10 +1051,22 @@ export default function DeliveryTrackingMap() {
                   description: "Expected path from pickup to delivery",
                 },
                 {
-                  color: "#0ea5e9",
+                  color: activeRouteColor,
                   opacity: 1,
                   label: "Active Route",
-                  description: "Current live tracking path",
+                  description: "Current live route in progress",
+                },
+                {
+                  color: "#ef4444",
+                  opacity: 0.9,
+                  label: "Learned Shortcut",
+                  description: "Carrier-reported shortcut candidates",
+                },
+                {
+                  color: "#dc2626",
+                  opacity: 1,
+                  label: "Rejected/Blocked Segment",
+                  description: "Coordinator-reviewed unavailable path",
                 },
                 ...ROUTE_COLORS.slice(
                   0,
@@ -873,6 +1088,37 @@ export default function DeliveryTrackingMap() {
           </>
         )}
       </div>
+
+      {(delivery.routeFeedback?.length || learnedSegments.length) && (
+        <div className="bg-white border-t px-4 py-3 text-xs text-gray-600 grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div>
+            <p className="font-semibold text-gray-700 mb-1">
+              Carrier Route Feedback
+            </p>
+            <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
+              {(delivery.routeFeedback || [])
+                .slice(0, 5)
+                .map((feedback, idx) => (
+                  <p key={`fb-${idx}`}>
+                    • {feedback.type}: {feedback.reason || "No reason"}
+                    {feedback.note ? ` — ${feedback.note}` : ""}
+                  </p>
+                ))}
+              {!delivery.routeFeedback?.length && <p>None yet.</p>}
+            </div>
+          </div>
+
+          <div>
+            <p className="font-semibold text-gray-700 mb-1">
+              Learned Shortcut Segments
+            </p>
+            <p>
+              {learnedSegments.length} segment(s) captured for future
+              optimization.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white shadow p-4 border-t">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
