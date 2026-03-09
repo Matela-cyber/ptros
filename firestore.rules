@@ -93,7 +93,13 @@ service cloud.firestore {
           'deliveryTime',
           'acceptedAt',
           'updatedAt',
-          'statusHistory'
+          'statusHistory',
+          'routeHistory',
+          'routeHistoryMeta',
+          'routeHistorySnapshots',
+          'routeContext',
+          'routeFeedback',
+          'optimizationReasons'
         ]);
 
       // CARRIER: Decline/unassign their currently assigned delivery back to pending
@@ -116,6 +122,30 @@ service cloud.firestore {
 
       // CUSTOMER: Create their own delivery/order
       allow create: if isCustomer() && request.resource.data.customerId == request.auth.uid;
+
+      // Route snapshot stream for persistent trip replay
+      match /routeSnapshots/{snapshotId} {
+        allow read: if isCoordinator()
+          || (isAuth() && get(/databases/$(database)/documents/deliveries/$(deliveryId)).data.carrierId == request.auth.uid)
+          || (isAuth() && get(/databases/$(database)/documents/deliveries/$(deliveryId)).data.customerId == request.auth.uid);
+
+        allow create: if isCoordinator()
+          || (isCarrier() && get(/databases/$(database)/documents/deliveries/$(deliveryId)).data.carrierId == request.auth.uid);
+
+        allow update, delete: if isCoordinator();
+      }
+
+      // Learned route segments from carrier deviation/shortcut feedback
+      match /routeLearnedSegments/{segmentId} {
+        allow read: if isCoordinator()
+          || (isAuth() && get(/databases/$(database)/documents/deliveries/$(deliveryId)).data.carrierId == request.auth.uid)
+          || (isAuth() && get(/databases/$(database)/documents/deliveries/$(deliveryId)).data.customerId == request.auth.uid);
+
+        allow create: if isCoordinator()
+          || (isCarrier() && get(/databases/$(database)/documents/deliveries/$(deliveryId)).data.carrierId == request.auth.uid);
+
+        allow update, delete: if isCoordinator();
+      }
     }
 
     // ==================== ORDERS COLLECTION ====================

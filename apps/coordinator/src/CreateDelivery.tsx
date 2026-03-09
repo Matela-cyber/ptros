@@ -42,6 +42,9 @@ interface Carrier {
     lat: number;
     lng: number;
   };
+  routeLearningStats?: {
+    shortcutsReported?: number;
+  };
 }
 
 interface Coordinates {
@@ -57,6 +60,7 @@ interface CarrierRecommendation extends Carrier {
   activeDeliveries: number;
   recommendationReason: string;
   autoAssignable: boolean;
+  shortcutContributionScore: number;
 }
 
 export default function CreateDelivery() {
@@ -166,6 +170,9 @@ export default function CreateDelivery() {
                 lng: data.currentLocation.lng,
               }
             : undefined,
+          routeLearningStats: data.routeLearningStats || {
+            shortcutsReported: 0,
+          },
         });
       });
       setCarriers(carriersList);
@@ -419,6 +426,10 @@ export default function CreateDelivery() {
           const vehicleCapacityKg = getVehicleCapacityKg(carrier.vehicleType);
           const weightKg = packageWeight || 0;
           const overweight = weightKg > 0 && weightKg > vehicleCapacityKg;
+          const shortcutContributionScore = Math.min(
+            Number(carrier.routeLearningStats?.shortcutsReported || 0),
+            20,
+          );
 
           const availabilityPenalty =
             carrier.status === "active"
@@ -460,7 +471,8 @@ export default function CreateDelivery() {
             availabilityPenalty +
             workloadPenalty +
             directionPenalty +
-            capacityPenalty;
+            capacityPenalty -
+            shortcutContributionScore * 0.8;
 
           const reasonParts = [
             `${distanceToPickupKm.toFixed(1)}km from pickup`,
@@ -478,6 +490,12 @@ export default function CreateDelivery() {
             reasonParts.push(`package exceeds ${vehicleCapacityKg}kg capacity`);
           }
 
+          if (shortcutContributionScore > 0) {
+            reasonParts.push(
+              `${shortcutContributionScore} shortcut learning contributions`,
+            );
+          }
+
           const autoAssignable =
             !overweight &&
             (carrier.status === "active" ||
@@ -491,6 +509,7 @@ export default function CreateDelivery() {
             recommendationScore,
             recommendationReason: reasonParts.join(" • "),
             autoAssignable,
+            shortcutContributionScore,
           } as CarrierRecommendation;
         })
         .sort((a, b) => a.recommendationScore - b.recommendationScore)
@@ -675,6 +694,7 @@ export default function CreateDelivery() {
           carrierId: carrier.id,
           carrierName: carrier.fullName,
           score: Number(carrier.recommendationScore.toFixed(2)),
+          shortcutContributionScore: carrier.shortcutContributionScore,
           distanceToPickupKm: Number(carrier.distanceToPickupKm.toFixed(2)),
           estimatedDetourKm: Number(carrier.estimatedDetourKm.toFixed(2)),
           activeDeliveries: carrier.activeDeliveries,

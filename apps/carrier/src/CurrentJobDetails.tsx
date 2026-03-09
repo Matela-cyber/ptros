@@ -690,9 +690,21 @@ export default function CurrentJobDetails({
                         <Polyline
                           path={activeProgressPath}
                           options={{
-                            strokeColor: "#0ea5e9",
+                            strokeColor: "#14b8a6",
                             strokeOpacity: 1,
                             strokeWeight: 5,
+                            icons: [
+                              {
+                                icon: {
+                                  path: google.maps.SymbolPath
+                                    .FORWARD_OPEN_ARROW,
+                                  scale: 2.2,
+                                  strokeOpacity: 0.9,
+                                },
+                                offset: "12px",
+                                repeat: "40px",
+                              },
+                            ],
                           }}
                         />
                       )}
@@ -778,7 +790,7 @@ export default function CurrentJobDetails({
                           label: "Pickup → Dropoff",
                         },
                         {
-                          color: "#0ea5e9",
+                          color: "#14b8a6",
                           opacity: 1,
                           label: "Active progress",
                         },

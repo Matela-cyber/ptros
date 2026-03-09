@@ -1,5 +1,6 @@
 import { db, auth } from "@config";
 import {
+  addDoc,
   collection,
   query,
   where,
@@ -10,10 +11,12 @@ import {
   orderBy,
   limit as fbLimit,
   arrayUnion,
+  increment,
   serverTimestamp,
 } from "firebase/firestore";
 import { Delivery } from "../types";
 import { LocationService } from "./locationService";
+import { encodePolyline } from "./routeHistoryService";
 
 export class DeliveryService {
   // Update delivery status with optional OTP (used by carrier UI)
@@ -199,12 +202,13 @@ export const updateDeliveryStatus = async (
 ) => {
   try {
     const deliveryRef = doc(db, "deliveries", deliveryId);
+    const nowIso = new Date().toISOString();
     const updateData: any = {
       status,
       updatedAt: serverTimestamp(),
       statusHistory: arrayUnion({
         status,
-        timestamp: new Date().toISOString(),
+        timestamp: nowIso,
         location,
       }),
     };
@@ -226,11 +230,19 @@ export const updateDeliveryStatus = async (
     }
 
     if (routeContext?.reason || routeContext?.note || routeContext?.shortcut) {
+      const encodedShortcutPolyline = routeContext.shortcut
+        ? encodePolyline([
+            routeContext.shortcut.start,
+            routeContext.shortcut.end,
+          ])
+        : null;
+
       updateData.routeContext = {
         reason: routeContext.reason || null,
         note: routeContext.note || null,
         shortcut: routeContext.shortcut || null,
-        timestamp: new Date().toISOString(),
+        shortcutPolyline: encodedShortcutPolyline,
+        timestamp: nowIso,
       };
 
       updateData.routeFeedback = arrayUnion({
@@ -238,11 +250,69 @@ export const updateDeliveryStatus = async (
         reason: routeContext.reason || null,
         note: routeContext.note || null,
         shortcut: routeContext.shortcut || null,
-        reportedAt: new Date().toISOString(),
+        shortcutPolyline: encodedShortcutPolyline,
+        reportedAt: nowIso,
+        source: "carrier",
+      });
+
+      updateData.optimizationReasons = arrayUnion({
+        type: "route_optimization",
+        reason: routeContext.shortcut
+          ? "Carrier reported a shortcut for route learning"
+          : "Carrier reported route deviation context",
+        timestamp: serverTimestamp(),
+        details: {
+          factors: [
+            routeContext.reason
+              ? `Reason: ${routeContext.reason}`
+              : "Reason not specified",
+            routeContext.shortcut
+              ? "Includes shortcut segment"
+              : "No shortcut segment",
+            routeContext.shortcut?.vehicleTypeSpecific
+              ? "Vehicle-specific shortcut"
+              : "General route context",
+          ],
+        },
       });
     }
 
     await updateDoc(deliveryRef, updateData);
+
+    if (routeContext?.shortcut) {
+      const shortcutPolyline = encodePolyline([
+        routeContext.shortcut.start,
+        routeContext.shortcut.end,
+      ]);
+
+      await addDoc(
+        collection(db, "deliveries", deliveryId, "routeLearnedSegments"),
+        {
+          schemaVersion: 1,
+          source: "carrier",
+          type: "shortcut",
+          reason: routeContext.reason || "shortcut",
+          note: routeContext.note || routeContext.shortcut.note || null,
+          start: routeContext.shortcut.start,
+          end: routeContext.shortcut.end,
+          encodedPolyline: shortcutPolyline,
+          vehicleTypeSpecific: !!routeContext.shortcut.vehicleTypeSpecific,
+          status,
+          createdAt: serverTimestamp(),
+          reportedAtISO: nowIso,
+          reporterId: auth.currentUser?.uid || null,
+        },
+      );
+
+      if (auth.currentUser?.uid) {
+        await updateDoc(doc(db, "users", auth.currentUser.uid), {
+          "routeLearningStats.shortcutsReported": increment(1),
+          "routeLearningStats.lastShortcutAt": serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+    }
+
     return { success: true, message: `Delivery marked as ${status}` };
   } catch (error: any) {
     console.error("Error updating delivery status:", error);
