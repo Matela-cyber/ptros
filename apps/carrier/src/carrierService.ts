@@ -14,6 +14,7 @@ import {
   limit,
   getDoc, // added
   serverTimestamp,
+  increment,
 } from "firebase/firestore";
 import {
   ref as rtdbRef,
@@ -25,6 +26,8 @@ import { CarrierProfile, Delivery, LocationUpdate } from "./types";
 import {
   compressRoutePoints,
   encodePolyline,
+  getRouteBounds,
+  getRouteDistanceMeters,
   haversineDistanceMeters,
   RoutePoint,
 } from "./services/routeHistoryService";
@@ -190,12 +193,17 @@ export class CarrierService {
 
     const compressed = compressRoutePoints(points);
     const activePolyline = encodePolyline(compressed);
+    const activeBounds = getRouteBounds(compressed);
+    const activeDistanceMeters = getRouteDistanceMeters(compressed);
 
     await updateDoc(doc(db, "deliveries", deliveryId), {
       routeHistory: {
-        schemaVersion: 1,
+        schemaVersion: 2,
+        compression: "polyline5",
         activePolyline,
         activePointCount: compressed.length,
+        activeDistanceMeters,
+        activeBounds,
         activeStartTs: compressed[0]?.timestamp || now,
         activeEndTs: compressed[compressed.length - 1]?.timestamp || now,
         lastUpdatedTs: now,
@@ -204,6 +212,8 @@ export class CarrierService {
       routeHistoryMeta: {
         hasHistory: true,
         lastActiveUpdateTs: now,
+        replayReady: true,
+        schemaVersion: 2,
       },
     });
 
@@ -219,15 +229,20 @@ export class CarrierService {
 
     const compressed = compressRoutePoints(current);
     const encodedPolyline = encodePolyline(compressed);
+    const distanceMeters = getRouteDistanceMeters(compressed);
+    const bounds = getRouteBounds(compressed);
     const startedAt = compressed[0].timestamp;
     const endedAt = compressed[compressed.length - 1].timestamp;
     const now = Date.now();
 
     await addDoc(collection(db, "deliveries", deliveryId, "routeSnapshots"), {
-      schemaVersion: 1,
+      schemaVersion: 2,
+      compression: "polyline5",
       encodedPolyline,
       pointCount: compressed.length,
       rawPointCount: current.length,
+      distanceMeters,
+      bounds,
       startedAt,
       endedAt,
       createdAt: serverTimestamp(),
@@ -235,17 +250,23 @@ export class CarrierService {
     });
 
     await updateDoc(doc(db, "deliveries", deliveryId), {
-      routeHistoryMeta: {
-        hasHistory: true,
-        lastSnapshotAt: serverTimestamp(),
-        lastSnapshotTs: now,
-      },
       routeHistorySnapshots: arrayUnion({
         startedAt,
         endedAt,
         pointCount: compressed.length,
+        distanceMeters,
         reason,
       }),
+      "routeHistoryMeta.hasHistory": true,
+      "routeHistoryMeta.lastSnapshotAt": serverTimestamp(),
+      "routeHistoryMeta.lastSnapshotTs": now,
+      "routeHistoryMeta.lastSnapshotReason": reason,
+      "routeHistoryMeta.replayReady": true,
+      "routeHistoryMeta.schemaVersion": 2,
+      "routeHistoryMeta.snapshotCount": increment(1),
+      "routeHistoryMeta.totalPersistedDistanceMeters":
+        increment(distanceMeters),
+      "routeHistoryMeta.totalPersistedPoints": increment(compressed.length),
     });
 
     this.lastRouteSnapshotAtMs[deliveryId] = now;
