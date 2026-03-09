@@ -4,6 +4,7 @@ import { Delivery } from "./types";
 import { formatCurrency, formatDate } from "./utils";
 import { useDeliveryStatus } from "./hooks/useDeliveryStatus";
 import MapLegend from "./components/MapLegend";
+import { summarizeRouteDeviation } from "./services/routeHistoryService";
 import "./Dashboard.css"; // Assuming you have some custom styles for the dashboard
 interface CurrentJobDetailsProps {
   delivery: Delivery | null;
@@ -29,6 +30,9 @@ export default function CurrentJobDetails({
     Array<{ lat: number; lng: number }>
   >([]);
   const [vehicleSpecificShortcut, setVehicleSpecificShortcut] = useState(false);
+  const [routeContextError, setRouteContextError] = useState<string | null>(
+    null,
+  );
 
   if (!delivery) {
     return (
@@ -52,6 +56,10 @@ export default function CurrentJobDetails({
   ) => {
     try {
       if (status === "delivered") {
+        setRouteContextError(null);
+        if (routeDeviationDetected) {
+          setDeviationReason("other");
+        }
         setShowDeliveryRouteModal(true);
         return;
       }
@@ -114,6 +122,34 @@ export default function CurrentJobDetails({
     return points;
   };
 
+  const offsetPathMeters = (
+    path: Array<{ lat: number; lng: number }>,
+    offsetMeters: number,
+  ): Array<{ lat: number; lng: number }> => {
+    if (!path || path.length < 2 || offsetMeters === 0) return path;
+
+    return path.map((point, index, arr) => {
+      const prev = arr[Math.max(0, index - 1)];
+      const next = arr[Math.min(arr.length - 1, index + 1)];
+      const dx = next.lng - prev.lng;
+      const dy = next.lat - prev.lat;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      const nx = -dy / len;
+      const ny = dx / len;
+
+      const latScale = 111320;
+      const lngScale = Math.max(
+        1,
+        111320 * Math.cos((point.lat * Math.PI) / 180),
+      );
+
+      return {
+        lat: point.lat + (ny * offsetMeters) / latScale,
+        lng: point.lng + (nx * offsetMeters) / lngScale,
+      };
+    });
+  };
+
   const routePath = decodePolyline(delivery.route?.polyline);
   const activeRoutePath = decodePolyline(
     (delivery as any)?.routeHistory?.activePolyline,
@@ -141,11 +177,13 @@ export default function CurrentJobDetails({
     currentPoint &&
     pickupPoint &&
     (delivery.status === "assigned" || delivery.status === "accepted")
-      ? [currentPoint, pickupPoint]
+      ? offsetPathMeters([currentPoint, pickupPoint], -7)
       : [];
 
   const pickupToDropoffPath =
-    pickupPoint && deliveryPoint ? [pickupPoint, deliveryPoint] : [];
+    pickupPoint && deliveryPoint
+      ? offsetPathMeters([pickupPoint, deliveryPoint], 7)
+      : [];
 
   const activeProgressPath =
     activeRoutePath.length > 1
@@ -153,6 +191,14 @@ export default function CurrentJobDetails({
       : pickupPoint && currentPoint
         ? [pickupPoint, currentPoint]
         : [];
+
+  const deviationSummary = summarizeRouteDeviation(
+    activeProgressPath,
+    routePath,
+  );
+  const routeDeviationDetected =
+    deviationSummary.maxDistanceMeters >= 85 ||
+    deviationSummary.deviatedPointCount >= 3;
 
   const mapCenter =
     shortcutPoints[shortcutPoints.length - 1] ||
@@ -167,12 +213,33 @@ export default function CurrentJobDetails({
   const onShortcutMapClick = (event: google.maps.MapMouseEvent) => {
     if (!event.latLng) return;
     const point = { lat: event.latLng.lat(), lng: event.latLng.lng() };
+    setRouteContextError(null);
     setShortcutPoints((prev) =>
       prev.length >= 2 ? [point] : [...prev, point],
     );
   };
 
   const confirmDeliveredWithRouteContext = async () => {
+    const autoDeviationNote = routeDeviationDetected
+      ? `Auto-detected route deviation (max ${Math.round(
+          deviationSummary.maxDistanceMeters,
+        )}m, avg ${Math.round(deviationSummary.averageDistanceMeters)}m).`
+      : null;
+
+    if (routeDeviationDetected && deviationReason === "normal_route") {
+      setRouteContextError(
+        "Route deviation was detected. Please select a deviation reason before completing delivery.",
+      );
+      return;
+    }
+
+    if (deviationReason === "shortcut" && shortcutPoints.length !== 2) {
+      setRouteContextError(
+        "For shortcut learning, choose two map points for the shortcut segment.",
+      );
+      return;
+    }
+
     const start = shortcutPoints[0];
     const end = shortcutPoints[1];
 
@@ -188,7 +255,9 @@ export default function CurrentJobDetails({
 
     await updateStatus(delivery.id, "delivered", delivery.status, {
       reason: deviationReason,
-      note: deviationNote || undefined,
+      note: [deviationNote?.trim(), autoDeviationNote]
+        .filter(Boolean)
+        .join(" "),
       shortcut,
     });
 
@@ -610,13 +679,30 @@ export default function CurrentJobDetails({
             </div>
 
             <div className="space-y-4 px-6 py-5">
+              {routeDeviationDetected && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Deviation detected from planned route (max ~
+                  {Math.round(deviationSummary.maxDistanceMeters)}m). Please
+                  provide route outcome details to improve optimization quality.
+                </div>
+              )}
+
+              {routeContextError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  {routeContextError}
+                </div>
+              )}
+
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">
                   Route outcome
                 </label>
                 <select
                   value={deviationReason}
-                  onChange={(e) => setDeviationReason(e.target.value)}
+                  onChange={(e) => {
+                    setDeviationReason(e.target.value);
+                    setRouteContextError(null);
+                  }}
                   className="w-full rounded-lg border border-gray-300 p-2 text-sm"
                 >
                   <option value="normal_route">Normal route (no issues)</option>
@@ -646,8 +732,8 @@ export default function CurrentJobDetails({
                         <Polyline
                           path={carrierToPickupPath}
                           options={{
-                            strokeColor: "#fbbf24",
-                            strokeOpacity: 0.4,
+                            strokeColor: "#a855f7",
+                            strokeOpacity: 0.75,
                             strokeWeight: 5,
                           }}
                         />
@@ -780,8 +866,8 @@ export default function CurrentJobDetails({
                       className="top-2 right-2 max-w-[220px]"
                       items={[
                         {
-                          color: "#fbbf24",
-                          opacity: 0.4,
+                          color: "#a855f7",
+                          opacity: 0.75,
                           label: "Carrier → Pickup",
                         },
                         {
@@ -812,7 +898,10 @@ export default function CurrentJobDetails({
                     <span>Selected points: {shortcutPoints.length}/2</span>
                     <button
                       type="button"
-                      onClick={() => setShortcutPoints([])}
+                      onClick={() => {
+                        setShortcutPoints([]);
+                        setRouteContextError(null);
+                      }}
                       className="rounded border border-gray-300 px-2 py-1 hover:bg-gray-100"
                     >
                       Reset points
@@ -834,7 +923,10 @@ export default function CurrentJobDetails({
 
               <textarea
                 value={deviationNote}
-                onChange={(e) => setDeviationNote(e.target.value)}
+                onChange={(e) => {
+                  setDeviationNote(e.target.value);
+                  setRouteContextError(null);
+                }}
                 rows={3}
                 className="w-full rounded-lg border border-gray-300 p-2 text-sm"
                 placeholder="Extra note (optional): temporary closure reason, safer path, time saved, etc."
@@ -843,7 +935,10 @@ export default function CurrentJobDetails({
 
             <div className="flex justify-end gap-2 border-t px-6 py-4">
               <button
-                onClick={() => setShowDeliveryRouteModal(false)}
+                onClick={() => {
+                  setRouteContextError(null);
+                  setShowDeliveryRouteModal(false);
+                }}
                 className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700"
               >
                 Cancel

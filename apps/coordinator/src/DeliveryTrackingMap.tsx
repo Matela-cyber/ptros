@@ -121,13 +121,56 @@ interface LearnedSegment {
 }
 
 const ROUTE_COLORS = [
-  "#2563eb",
+  "#a855f7",
   "#16a34a",
   "#e11d48",
-  "#9333ea",
+  "#ca8a04",
   "#ea580c",
-  "#0891b2",
+  "#84cc16",
 ];
+
+const toLatLngLiteral = (
+  point: google.maps.LatLng | { lat: number; lng: number },
+) => {
+  const anyPoint: any = point;
+  if (typeof anyPoint.lat === "function") {
+    return { lat: anyPoint.lat(), lng: anyPoint.lng() };
+  }
+  return { lat: anyPoint.lat, lng: anyPoint.lng };
+};
+
+const offsetPathMeters = (
+  path: Array<google.maps.LatLng | { lat: number; lng: number }> | null,
+  offsetMeters: number,
+): Array<{ lat: number; lng: number }> | null => {
+  if (!path || path.length < 2 || offsetMeters === 0) return path as any;
+
+  const source = path.map(toLatLngLiteral);
+  const shifted: Array<{ lat: number; lng: number }> = [];
+
+  for (let i = 0; i < source.length; i += 1) {
+    const prev = source[Math.max(0, i - 1)];
+    const next = source[Math.min(source.length - 1, i + 1)];
+    const dx = next.lng - prev.lng;
+    const dy = next.lat - prev.lat;
+    const length = Math.sqrt(dx * dx + dy * dy) || 1;
+    const nx = -dy / length;
+    const ny = dx / length;
+
+    const latScale = 111320;
+    const lngScale = Math.max(
+      1,
+      111320 * Math.cos((source[i].lat * Math.PI) / 180),
+    );
+
+    shifted.push({
+      lat: source[i].lat + (ny * offsetMeters) / latScale,
+      lng: source[i].lng + (nx * offsetMeters) / lngScale,
+    });
+  }
+
+  return shifted;
+};
 
 export default function DeliveryTrackingMap() {
   const navigate = useNavigate();
@@ -442,6 +485,16 @@ export default function DeliveryTrackingMap() {
   const visibleSnapshotSegments = routeSegments.snapshotSegments.slice(
     0,
     visibleSegmentCount,
+  );
+
+  const carrierToPickupDisplayPath = useMemo(
+    () => offsetPathMeters(carrierToPickupPath, -7),
+    [carrierToPickupPath],
+  );
+
+  const pickupToDeliveryDisplayPath = useMemo(
+    () => offsetPathMeters(pickupToDeliveryPath, 7),
+    [pickupToDeliveryPath],
   );
 
   const getStatusLabel = (status: string) => {
@@ -783,50 +836,52 @@ export default function DeliveryTrackingMap() {
               options={{ disableDefaultUI: false }}
             >
               {/* Carrier to Pickup Path (Yellow with low opacity) */}
-              {carrierToPickupPath && carrierToPickupPath.length > 1 && (
-                <Polyline
-                  path={carrierToPickupPath}
-                  options={{
-                    strokeColor: "#fbbf24",
-                    strokeOpacity: 0.4,
-                    strokeWeight: 6,
-                    icons: [
-                      {
-                        icon: {
-                          path: "M 0,-1 0,1",
-                          strokeOpacity: 0.6,
-                          scale: 3,
+              {carrierToPickupDisplayPath &&
+                carrierToPickupDisplayPath.length > 1 && (
+                  <Polyline
+                    path={carrierToPickupDisplayPath}
+                    options={{
+                      strokeColor: "#a855f7",
+                      strokeOpacity: 0.72,
+                      strokeWeight: 5,
+                      icons: [
+                        {
+                          icon: {
+                            path: "M 0,-1 0,1",
+                            strokeOpacity: 0.9,
+                            scale: 3,
+                          },
+                          offset: "0",
+                          repeat: "16px",
                         },
-                        offset: "0",
-                        repeat: "20px",
-                      },
-                    ],
-                  }}
-                />
-              )}
+                      ],
+                    }}
+                  />
+                )}
 
               {/* Pickup to Delivery Path (Orange with low opacity) */}
-              {pickupToDeliveryPath && pickupToDeliveryPath.length > 1 && (
-                <Polyline
-                  path={pickupToDeliveryPath}
-                  options={{
-                    strokeColor: "#fb923c",
-                    strokeOpacity: 0.4,
-                    strokeWeight: 6,
-                    icons: [
-                      {
-                        icon: {
-                          path: "M 0,-1 0,1",
-                          strokeOpacity: 0.6,
-                          scale: 3,
+              {pickupToDeliveryDisplayPath &&
+                pickupToDeliveryDisplayPath.length > 1 && (
+                  <Polyline
+                    path={pickupToDeliveryDisplayPath}
+                    options={{
+                      strokeColor: "#f97316",
+                      strokeOpacity: 0.74,
+                      strokeWeight: 5,
+                      icons: [
+                        {
+                          icon: {
+                            path: "M 0,-1 0,1",
+                            strokeOpacity: 0.95,
+                            scale: 3,
+                          },
+                          offset: "0",
+                          repeat: "18px",
                         },
-                        offset: "0",
-                        repeat: "20px",
-                      },
-                    ],
-                  }}
-                />
-              )}
+                      ],
+                    }}
+                  />
+                )}
 
               {/* Planned Route (Dotted Amber) */}
               {routeSegments.planned.length > 1 && (
@@ -1039,16 +1094,16 @@ export default function DeliveryTrackingMap() {
               title="Route Legend"
               items={[
                 {
-                  color: "#fbbf24",
-                  opacity: 0.4,
+                  color: "#a855f7",
+                  opacity: 0.72,
                   label: "Carrier → Pickup",
-                  description: "Expected path from carrier to pickup location",
+                  description: "Approach leg (offset for overlap clarity)",
                 },
                 {
-                  color: "#fb923c",
-                  opacity: 0.4,
+                  color: "#f97316",
+                  opacity: 0.74,
                   label: "Pickup → Delivery",
-                  description: "Expected path from pickup to delivery",
+                  description: "Delivery leg (offset for overlap clarity)",
                 },
                 {
                   color: activeRouteColor,

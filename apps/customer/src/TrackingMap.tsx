@@ -168,6 +168,34 @@ export default function TrackingMap({ user }: Props) {
     return points;
   };
 
+  const offsetPathMeters = (
+    path: Array<{ lat: number; lng: number }>,
+    offsetMeters: number,
+  ): Array<{ lat: number; lng: number }> => {
+    if (!path || path.length < 2 || offsetMeters === 0) return path;
+
+    return path.map((point, index, arr) => {
+      const prev = arr[Math.max(0, index - 1)];
+      const next = arr[Math.min(arr.length - 1, index + 1)];
+      const dx = next.lng - prev.lng;
+      const dy = next.lat - prev.lat;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      const nx = -dy / len;
+      const ny = dx / len;
+
+      const latScale = 111320;
+      const lngScale = Math.max(
+        1,
+        111320 * Math.cos((point.lat * Math.PI) / 180),
+      );
+
+      return {
+        lat: point.lat + (ny * offsetMeters) / latScale,
+        lng: point.lng + (nx * offsetMeters) / lngScale,
+      };
+    });
+  };
+
   // Load only customer's deliveries
   useEffect(() => {
     if (!user?.uid) return;
@@ -493,14 +521,22 @@ export default function TrackingMap({ user }: Props) {
 
       const plannedPath = decodePolyline(delivery.route?.polyline);
       const activePath = decodePolyline(delivery.routeHistory?.activePolyline);
+      const carrierToPickupPath = offsetPathMeters(
+        [currentPoint, pickupPoint],
+        -7,
+      );
+      const pickupToDropoffPath = offsetPathMeters(
+        [pickupPoint, dropoffPoint],
+        7,
+      );
 
       plannedPolylineRef.current = new window.google.maps.Polyline({
         path:
           plannedPath.length > 1 ? plannedPath : [pickupPoint, dropoffPoint],
         geodesic: true,
         strokeColor: "#f59e0b",
-        strokeOpacity: 0.75,
-        strokeWeight: 3,
+        strokeOpacity: 0.8,
+        strokeWeight: 4,
         icons: [
           {
             icon: {
@@ -516,21 +552,43 @@ export default function TrackingMap({ user }: Props) {
       });
 
       pickupToDropoffPolylineRef.current = new window.google.maps.Polyline({
-        path: [pickupPoint, dropoffPoint],
+        path: pickupToDropoffPath,
         geodesic: true,
-        strokeColor: "#fb923c",
-        strokeOpacity: 0.4,
+        strokeColor: "#f97316",
+        strokeOpacity: 0.75,
         strokeWeight: 5,
+        icons: [
+          {
+            icon: {
+              path: "M 0,-1 0,1",
+              strokeOpacity: 1,
+              scale: 2,
+            },
+            offset: "0",
+            repeat: "16px",
+          },
+        ],
         map: mapInstance.current,
       });
 
       if (delivery.status === "assigned") {
         carrierToPickupPolylineRef.current = new window.google.maps.Polyline({
-          path: [currentPoint, pickupPoint],
+          path: carrierToPickupPath,
           geodesic: true,
-          strokeColor: "#fbbf24",
-          strokeOpacity: 0.4,
+          strokeColor: "#a855f7",
+          strokeOpacity: 0.75,
           strokeWeight: 5,
+          icons: [
+            {
+              icon: {
+                path: "M 0,-1 0,1",
+                strokeOpacity: 1,
+                scale: 2,
+              },
+              offset: "0",
+              repeat: "14px",
+            },
+          ],
           map: mapInstance.current,
         });
       } else {
@@ -750,16 +808,16 @@ export default function TrackingMap({ user }: Props) {
                 title="Route key"
                 items={[
                   {
-                    color: "#fbbf24",
-                    opacity: 0.4,
+                    color: "#a855f7",
+                    opacity: 0.75,
                     label: "Carrier → Pickup",
-                    description: "Expected first leg before pickup",
+                    description: "Approach leg (offset for overlap clarity)",
                   },
                   {
-                    color: "#fb923c",
-                    opacity: 0.4,
+                    color: "#f97316",
+                    opacity: 0.75,
                     label: "Pickup → Dropoff",
-                    description: "Expected delivery path",
+                    description: "Delivery leg (offset for overlap clarity)",
                   },
                   {
                     color: "#14b8a6",
