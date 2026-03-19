@@ -6,6 +6,21 @@ import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
 import { format } from "date-fns";
 import { writeTimestamp, getTimeServiceStatus } from "./services/timeService";
+import {
+  FaArrowLeft,
+  FaBolt,
+  FaBox,
+  FaFlagCheckered,
+  FaLocationDot,
+  FaMap,
+  FaMoneyBill,
+  FaMotorcycle,
+  FaNotesMedical,
+  FaPhone,
+  FaChartColumn,
+  FaUser,
+  FaEnvelope,
+} from "react-icons/fa6";
 
 interface CustomerProfile {
   id: string;
@@ -248,7 +263,9 @@ export default function DeliveryDetails() {
               onClick={() => navigate("/deliveries/active")}
               className="text-blue-600 hover:text-blue-800 mb-4 inline-flex items-center"
             >
-              ← Back to Deliveries
+              <span className="inline-flex items-center gap-2">
+                <FaArrowLeft /> Back to Deliveries
+              </span>
             </button>
             <h1 className="text-3xl font-bold text-gray-800">
               Delivery: {delivery.trackingCode}
@@ -263,7 +280,9 @@ export default function DeliveryDetails() {
               onClick={() => navigate(`/deliveries/${delivery.id}/track`)}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium flex items-center gap-2"
             >
-              🗺️ Live Track
+              <>
+                <FaMap /> Live Track
+              </>
             </button>
             <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
               Print
@@ -362,7 +381,9 @@ export default function DeliveryDetails() {
         {/* Customer Profile */}
         <div className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow p-6 border-l-4 border-blue-600">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold">👤 Customer Profile</h2>
+            <h2 className="text-xl font-bold inline-flex items-center gap-2">
+              <FaUser /> Customer Profile
+            </h2>
             {customerProfile && (
               <button
                 onClick={() => navigate(`/customers/${customerProfile.id}`)}
@@ -421,7 +442,9 @@ export default function DeliveryDetails() {
                   }
                   className="flex-1 px-3 py-2 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 text-sm font-medium"
                 >
-                  ✉️ Email
+                  <span className="inline-flex items-center gap-2">
+                    <FaEnvelope /> Email
+                  </span>
                 </button>
                 <button
                   onClick={() =>
@@ -429,7 +452,9 @@ export default function DeliveryDetails() {
                   }
                   className="flex-1 px-3 py-2 bg-green-50 text-green-600 rounded hover:bg-green-100 text-sm font-medium"
                 >
-                  📞 Call
+                  <span className="inline-flex items-center gap-2">
+                    <FaPhone /> Call
+                  </span>
                 </button>
               </div>
             </div>
@@ -441,7 +466,9 @@ export default function DeliveryDetails() {
         {/* Carrier Profile */}
         <div className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow p-6 border-l-4 border-green-600">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold">🏍️ Carrier Profile</h2>
+            <h2 className="text-xl font-bold inline-flex items-center gap-2">
+              <FaMotorcycle /> Carrier Profile
+            </h2>
             {carrierProfile && (
               <button
                 onClick={() => navigate(`/carriers/${carrierProfile.id}`)}
@@ -522,7 +549,9 @@ export default function DeliveryDetails() {
                   }
                   className="flex-1 px-3 py-2 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 text-sm font-medium"
                 >
-                  ✉️ Email
+                  <span className="inline-flex items-center gap-2">
+                    <FaEnvelope /> Email
+                  </span>
                 </button>
                 <button
                   onClick={() =>
@@ -530,7 +559,9 @@ export default function DeliveryDetails() {
                   }
                   className="flex-1 px-3 py-2 bg-green-50 text-green-600 rounded hover:bg-green-100 text-sm font-medium"
                 >
-                  📞 Call
+                  <span className="inline-flex items-center gap-2">
+                    <FaPhone /> Call
+                  </span>
                 </button>
               </div>
             </div>
@@ -546,7 +577,9 @@ export default function DeliveryDetails() {
         <div className="lg:col-span-2 space-y-8">
           {/* Package Details */}
           <div className="bg-white rounded-xl shadow p-6">
-            <h2 className="text-xl font-bold mb-4">📦 Package Details</h2>
+            <h2 className="text-xl font-bold mb-4 inline-flex items-center gap-2">
+              <FaBox /> Package Details
+            </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-500">
@@ -587,7 +620,9 @@ export default function DeliveryDetails() {
 
           {/* Pickup Details */}
           <div className="bg-white rounded-xl shadow p-6">
-            <h2 className="text-xl font-bold mb-4">📍 Pickup Details</h2>
+            <h2 className="text-xl font-bold mb-4 inline-flex items-center gap-2">
+              <FaLocationDot /> Pickup Details
+            </h2>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-500">
@@ -641,7 +676,9 @@ export default function DeliveryDetails() {
 
           {/* Delivery Details */}
           <div className="bg-white rounded-xl shadow p-6">
-            <h2 className="text-xl font-bold mb-4">🏁 Delivery Details</h2>
+            <h2 className="text-xl font-bold mb-4 inline-flex items-center gap-2">
+              <FaFlagCheckered /> Delivery Details
+            </h2>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-500">
@@ -695,7 +732,9 @@ export default function DeliveryDetails() {
         <div className="space-y-8">
           {/* Status & Tracking */}
           <div className="bg-white rounded-xl shadow p-6">
-            <h2 className="text-xl font-bold mb-4">📊 Status & Tracking</h2>
+            <h2 className="text-xl font-bold mb-4 inline-flex items-center gap-2">
+              <FaChartColumn /> Status & Tracking
+            </h2>
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-gray-500">
@@ -750,7 +789,9 @@ export default function DeliveryDetails() {
 
           {/* Payment Info */}
           <div className="bg-white rounded-xl shadow p-6">
-            <h2 className="text-xl font-bold mb-4">💰 Payment Information</h2>
+            <h2 className="text-xl font-bold mb-4 inline-flex items-center gap-2">
+              <FaMoneyBill /> Payment Information
+            </h2>
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-gray-500">
@@ -788,14 +829,18 @@ export default function DeliveryDetails() {
           {/* Notes */}
           {delivery.notes && (
             <div className="bg-white rounded-xl shadow p-6">
-              <h2 className="text-xl font-bold mb-4">📝 Notes</h2>
+              <h2 className="text-xl font-bold mb-4 inline-flex items-center gap-2">
+                <FaNotesMedical /> Notes
+              </h2>
               <p className="text-gray-700">{delivery.notes}</p>
             </div>
           )}
 
           {/* Quick Actions */}
           <div className="bg-white rounded-xl shadow p-6">
-            <h2 className="text-xl font-bold mb-4">⚡ Quick Actions</h2>
+            <h2 className="text-xl font-bold mb-4 inline-flex items-center gap-2">
+              <FaBolt /> Quick Actions
+            </h2>
             <div className="space-y-3">
               <button className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
                 Send Update to Customer

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { db } from "@config";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { FaUsers } from "react-icons/fa6";
 
 interface Customer {
   id: string;
@@ -42,7 +43,7 @@ export default function CustomerList() {
       (error) => {
         console.error("Error loading customers:", error);
         setLoading(false);
-      }
+      },
     );
 
     return () => unsubscribe();
@@ -65,7 +66,7 @@ export default function CustomerList() {
 
       {customers.length === 0 ? (
         <div className="bg-white rounded-xl shadow p-8 text-center">
-          <div className="text-6xl mb-4">👥</div>
+          <FaUsers className="text-6xl mb-4 mx-auto text-gray-400" />
           <h3 className="text-xl font-semibold text-gray-700 mb-2">
             No customers found
           </h3>

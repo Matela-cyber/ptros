@@ -1,5 +1,14 @@
 // apps/coordinator/src/components/OptimizationReasonDisplay.tsx
 import { FC } from "react";
+import {
+  FaBox,
+  FaBullseye,
+  FaChartColumn,
+  FaChartLine,
+  FaLocationDot,
+  FaTriangleExclamation,
+  FaUser,
+} from "react-icons/fa6";
 
 export interface OptimizationReason {
   type: "carrier_assignment" | "route_optimization" | "reassignment";
@@ -33,13 +42,13 @@ export const OptimizationReasonDisplay: FC<OptimizationReasonDisplayProps> = ({
   const getTypeIcon = (type: string) => {
     switch (type) {
       case "carrier_assignment":
-        return "👤";
+        return <FaUser />;
       case "route_optimization":
-        return "🗺️";
+        return <FaChartLine />;
       case "reassignment":
-        return "🔄";
+        return <FaTriangleExclamation />;
       default:
-        return "ℹ️";
+        return <FaChartColumn />;
     }
   };
 
@@ -59,7 +68,7 @@ export const OptimizationReasonDisplay: FC<OptimizationReasonDisplayProps> = ({
   return (
     <div className={`space-y-3 ${className}`}>
       <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
-        <span>🎯</span>
+        <FaBullseye className="text-red-500" />
         Optimization History
       </h3>
 
@@ -70,7 +79,7 @@ export const OptimizationReasonDisplay: FC<OptimizationReasonDisplayProps> = ({
             className={`p-3 rounded-lg border ${getTypeColor(reason.type)}`}
           >
             <div className="flex items-start gap-2">
-              <span className="text-lg">{getTypeIcon(reason.type)}</span>
+              <span className="text-lg mt-0.5">{getTypeIcon(reason.type)}</span>
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-semibold capitalize mb-1">
                   {reason.type.replace(/_/g, " ")}
@@ -80,23 +89,27 @@ export const OptimizationReasonDisplay: FC<OptimizationReasonDisplayProps> = ({
                 {reason.details && (
                   <div className="text-xs space-y-1 mt-2 pt-2 border-t border-current opacity-60">
                     {reason.details.distanceKm !== undefined && (
-                      <div>
-                        📍 Distance: {reason.details.distanceKm.toFixed(1)} km
+                      <div className="flex items-center gap-1.5">
+                        <FaLocationDot /> Distance:{" "}
+                        {reason.details.distanceKm.toFixed(1)} km
                       </div>
                     )}
                     {reason.details.estimatedDetourKm !== undefined &&
                       reason.details.estimatedDetourKm > 0 && (
-                        <div>
-                          🔀 Detour:{" "}
+                        <div className="flex items-center gap-1.5">
+                          <FaChartLine /> Detour:{" "}
                           {reason.details.estimatedDetourKm.toFixed(1)} km
                         </div>
                       )}
                     {reason.details.carrierStatus && (
-                      <div>📊 Status: {reason.details.carrierStatus}</div>
+                      <div className="flex items-center gap-1.5">
+                        <FaChartColumn /> Status: {reason.details.carrierStatus}
+                      </div>
                     )}
                     {reason.details.activeDeliveries !== undefined && (
-                      <div>
-                        📦 Active: {reason.details.activeDeliveries} deliveries
+                      <div className="flex items-center gap-1.5">
+                        <FaBox /> Active: {reason.details.activeDeliveries}{" "}
+                        deliveries
                       </div>
                     )}
                     {reason.details.factors &&

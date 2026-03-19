@@ -1,7 +1,26 @@
 // apps/coordinator/src/Dashboard.tsx - UPDATED
 import { useState, useEffect } from "react";
 import { db } from "@config";
-import { collection, query, where, getDocs, Timestamp } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  Timestamp,
+} from "firebase/firestore";
+import { IconType } from "react-icons";
+import {
+  FaBox,
+  FaChartColumn,
+  FaChartLine,
+  FaLocationDot,
+  FaMoneyBill,
+  FaMotorcycle,
+  FaPlus,
+  FaTriangleExclamation,
+  FaUser,
+  FaCircleCheck,
+} from "react-icons/fa6";
 
 type Props = {
   user: any;
@@ -42,7 +61,12 @@ export default function Dashboard({ user, userProfile }: Props) {
       // Fetch active deliveries (pending, assigned, picked up, in transit)
       const activeDeliveriesQuery = query(
         collection(db, "deliveries"),
-        where("status", "in", ["pending", "assigned", "picked_up", "in_transit"])
+        where("status", "in", [
+          "pending",
+          "assigned",
+          "picked_up",
+          "in_transit",
+        ]),
       );
       const activeDeliveriesSnapshot = await getDocs(activeDeliveriesQuery);
 
@@ -51,7 +75,7 @@ export default function Dashboard({ user, userProfile }: Props) {
         collection(db, "users"),
         where("role", "==", "carrier"),
         where("isApproved", "==", true),
-        where("status", "==", "active")
+        where("status", "==", "active"),
       );
       const activeCarriersSnapshot = await getDocs(activeCarriersQuery);
 
@@ -59,7 +83,7 @@ export default function Dashboard({ user, userProfile }: Props) {
       const completedTodayQuery = query(
         collection(db, "deliveries"),
         where("status", "==", "delivered"),
-        where("createdAt", ">=", todayTimestamp)
+        where("createdAt", ">=", todayTimestamp),
       );
       const completedTodaySnapshot = await getDocs(completedTodayQuery);
 
@@ -83,28 +107,33 @@ export default function Dashboard({ user, userProfile }: Props) {
       setLoading(false);
     }
   };
-  const quickActions = [
+  const quickActions: {
+    label: string;
+    icon: IconType;
+    path: string;
+    color: string;
+  }[] = [
     {
       label: "Create Delivery",
-      icon: "➕",
+      icon: FaPlus,
       path: "/deliveries/create",
       color: "bg-accent hover:bg-accent-dark shadow-lg",
     },
     {
       label: "Approve Carriers",
-      icon: "✅",
+      icon: FaCircleCheck,
       path: "/carriers/pending",
       color: "bg-success hover:bg-success-dark shadow-lg",
     },
     {
       label: "Live Tracking",
-      icon: "📍",
+      icon: FaLocationDot,
       path: "/tracking/live",
       color: "bg-primary hover:bg-primary-dark shadow-lg",
     },
     {
       label: "View Reports",
-      icon: "📊",
+      icon: FaChartColumn,
       path: "/analytics",
       color: "bg-primary-light hover:bg-primary shadow-lg",
     },
@@ -154,10 +183,12 @@ export default function Dashboard({ user, userProfile }: Props) {
         <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow border-l-4 border-accent">
           <div className="flex items-center">
             <div className="p-3 bg-accent-bg rounded-lg mr-4">
-              <span className="text-2xl">📦</span>
+              <FaBox className="text-2xl" />
             </div>
             <div>
-              <p className="text-sm text-gray-500 font-medium">Active Deliveries</p>
+              <p className="text-sm text-gray-500 font-medium">
+                Active Deliveries
+              </p>
               <p className="text-3xl font-bold text-accent">
                 {loading ? "..." : stats.activeDeliveries}
               </p>
@@ -168,10 +199,12 @@ export default function Dashboard({ user, userProfile }: Props) {
         <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow border-l-4 border-success">
           <div className="flex items-center">
             <div className="p-3 bg-success-bg rounded-lg mr-4">
-              <span className="text-2xl">🏍️</span>
+              <FaMotorcycle className="text-2xl" />
             </div>
             <div>
-              <p className="text-sm text-gray-500 font-medium">Active Carriers</p>
+              <p className="text-sm text-gray-500 font-medium">
+                Active Carriers
+              </p>
               <p className="text-3xl font-bold text-success">
                 {loading ? "..." : stats.activeCarriers}
               </p>
@@ -182,10 +215,12 @@ export default function Dashboard({ user, userProfile }: Props) {
         <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow border-l-4 border-primary">
           <div className="flex items-center">
             <div className="p-3 bg-primary-bg rounded-lg mr-4">
-              <span className="text-2xl">✅</span>
+              <FaCircleCheck className="text-2xl" />
             </div>
             <div>
-              <p className="text-sm text-gray-500 font-medium">Completed Today</p>
+              <p className="text-sm text-gray-500 font-medium">
+                Completed Today
+              </p>
               <p className="text-3xl font-bold text-primary">
                 {loading ? "..." : stats.completedToday}
               </p>
@@ -196,7 +231,7 @@ export default function Dashboard({ user, userProfile }: Props) {
         <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow border-l-4 border-success">
           <div className="flex items-center">
             <div className="p-3 bg-success-bg rounded-lg mr-4">
-              <span className="text-2xl">💰</span>
+              <FaMoneyBill className="text-2xl" />
             </div>
             <div>
               <p className="text-sm text-gray-500 font-medium">Revenue Today</p>
@@ -218,7 +253,7 @@ export default function Dashboard({ user, userProfile }: Props) {
               href={action.path}
               className={`${action.color} text-white p-6 rounded-lg flex flex-col items-center justify-center text-center transition-all transform hover:scale-105 hover:-translate-y-1`}
             >
-              <span className="text-4xl mb-3">{action.icon}</span>
+              <action.icon className="text-4xl mb-3" />
               <span className="font-semibold">{action.label}</span>
             </a>
           ))}
@@ -241,8 +276,8 @@ export default function Dashboard({ user, userProfile }: Props) {
                     activity.type === "delivery"
                       ? "bg-primary-bg"
                       : activity.type === "carrier"
-                      ? "bg-success-bg"
-                      : "bg-accent-bg"
+                        ? "bg-success-bg"
+                        : "bg-accent-bg"
                   }`}
                 >
                   <span
@@ -250,15 +285,17 @@ export default function Dashboard({ user, userProfile }: Props) {
                       activity.type === "delivery"
                         ? "text-primary"
                         : activity.type === "carrier"
-                        ? "text-success"
-                        : "text-accent"
+                          ? "text-success"
+                          : "text-accent"
                     }
                   >
-                    {activity.type === "delivery"
-                      ? "📦"
-                      : activity.type === "carrier"
-                      ? "🏍️"
-                      : "👤"}
+                    {activity.type === "delivery" ? (
+                      <FaBox />
+                    ) : activity.type === "carrier" ? (
+                      <FaMotorcycle />
+                    ) : (
+                      <FaUser />
+                    )}
                   </span>
                 </div>
                 <div className="flex-1">
@@ -278,10 +315,11 @@ export default function Dashboard({ user, userProfile }: Props) {
             {stats.pendingCarriers > 0 && (
               <div className="p-4 bg-accent-bg border-l-4 border-accent rounded-lg shadow-sm">
                 <div className="flex items-start">
-                  <span className="text-2xl mr-3">⚠️</span>
+                  <FaTriangleExclamation className="text-2xl mr-3" />
                   <div>
                     <h4 className="font-semibold text-gray-800">
-                      {stats.pendingCarriers} carrier{stats.pendingCarriers !== 1 ? 's' : ''} pending approval
+                      {stats.pendingCarriers} carrier
+                      {stats.pendingCarriers !== 1 ? "s" : ""} pending approval
                     </h4>
                     <p className="text-sm text-gray-600 mt-1">
                       Review carrier applications in the pending approvals
@@ -300,7 +338,7 @@ export default function Dashboard({ user, userProfile }: Props) {
 
             <div className="p-4 bg-primary-bg border-l-4 border-primary rounded-lg shadow-sm">
               <div className="flex items-start">
-                <span className="text-2xl mr-3">📊</span>
+                <FaChartLine className="text-2xl mr-3" />
                 <div>
                   <h4 className="font-semibold text-gray-800">
                     Monthly report ready
@@ -320,7 +358,7 @@ export default function Dashboard({ user, userProfile }: Props) {
 
             <div className="p-4 bg-success-bg border-l-4 border-success rounded-lg shadow-sm">
               <div className="flex items-start">
-                <span className="text-2xl mr-3">✅</span>
+                <FaCircleCheck className="text-2xl mr-3" />
                 <div>
                   <h4 className="font-semibold text-gray-800">
                     System is running smoothly

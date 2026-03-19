@@ -17,5 +17,9 @@
   },
   "pnpm": {
     "overrides": {}
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-fa": "^5.0.0"
   }
 }
