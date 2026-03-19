@@ -15,6 +15,13 @@ interface AddressAutocompleteProps {
   required?: boolean;
 }
 
+interface AddressSuggestion {
+  id: string;
+  description: string;
+  mainText: string;
+  secondaryText?: string;
+}
+
 export default function AddressAutocomplete({
   label,
   value,
@@ -22,7 +29,7 @@ export default function AddressAutocomplete({
   placeholder = "Start typing address...",
   required = false,
 }: AddressAutocompleteProps) {
-  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [inputValue, setInputValue] = useState(value);
@@ -30,12 +37,18 @@ export default function AddressAutocomplete({
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const autocompleteService = useRef<any>(null);
+  const supportsNewAutocomplete = useRef(false);
 
   // Initialize Google Places Autocomplete
   useEffect(() => {
     if (window.google && window.google.maps) {
-      autocompleteService.current =
-        new window.google.maps.places.AutocompleteService();
+      const places = window.google.maps.places;
+      supportsNewAutocomplete.current =
+        !!places?.AutocompleteSuggestion?.fetchAutocompleteSuggestions;
+
+      if (!supportsNewAutocomplete.current && places?.AutocompleteService) {
+        autocompleteService.current = new places.AutocompleteService();
+      }
     }
   }, []);
 
@@ -59,35 +72,93 @@ export default function AddressAutocomplete({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const mapLegacyPredictions = (predictions: any[]): AddressSuggestion[] => {
+    return (predictions || []).map((prediction: any) => ({
+      id: prediction.place_id || prediction.description,
+      description: prediction.description || "",
+      mainText:
+        prediction.structured_formatting?.main_text || prediction.description,
+      secondaryText: prediction.structured_formatting?.secondary_text || "",
+    }));
+  };
+
+  const mapNewSuggestions = (suggestionResponse: any): AddressSuggestion[] => {
+    const list = suggestionResponse?.suggestions || [];
+    return list
+      .map((entry: any, index: number) => {
+        const prediction = entry?.placePrediction;
+        const text = prediction?.text?.text || "";
+        const mainText = prediction?.mainText?.text || text;
+        const secondaryText = prediction?.secondaryText?.text || "";
+        const placeId = prediction?.placeId || `new-suggestion-${index}`;
+
+        return {
+          id: placeId,
+          description:
+            text || [mainText, secondaryText].filter(Boolean).join(", "),
+          mainText: mainText || text,
+          secondaryText,
+        };
+      })
+      .filter((item: AddressSuggestion) => !!item.description);
+  };
+
   const handleInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
     setInputValue(newValue);
     onChange(newValue);
 
     // Get suggestions from Google Places
-    if (newValue.length > 2 && autocompleteService.current) {
+    if (newValue.length > 2 && window.google?.maps?.places) {
       setIsLoading(true);
       try {
-        autocompleteService.current.getPlacePredictions(
-          {
-            input: newValue,
-            componentRestrictions: { country: "ls" }, // Lesotho only
-          },
-          (predictions: any[], status: any) => {
-            if (
-              status === window.google.maps.places.PlacesServiceStatus.OK &&
-              predictions
-            ) {
-              setSuggestions(predictions);
-              setShowSuggestions(true);
-            } else {
-              setSuggestions([]);
-            }
-            setIsLoading(false);
-          },
-        );
+        if (supportsNewAutocomplete.current) {
+          const response =
+            await window.google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions(
+              {
+                input: newValue,
+                componentRestrictions: { country: "ls" },
+              },
+            );
+
+          const mapped = mapNewSuggestions(response);
+          setSuggestions(mapped);
+          setShowSuggestions(mapped.length > 0);
+          setIsLoading(false);
+          return;
+        }
+
+        if (autocompleteService.current) {
+          autocompleteService.current.getPlacePredictions(
+            {
+              input: newValue,
+              componentRestrictions: { country: "ls" }, // Lesotho only
+            },
+            (predictions: any[], status: any) => {
+              if (
+                status === window.google.maps.places.PlacesServiceStatus.OK &&
+                predictions
+              ) {
+                const mapped = mapLegacyPredictions(predictions);
+                setSuggestions(mapped);
+                setShowSuggestions(mapped.length > 0);
+              } else {
+                setSuggestions([]);
+                setShowSuggestions(false);
+              }
+              setIsLoading(false);
+            },
+          );
+          return;
+        }
+
+        setSuggestions([]);
+        setShowSuggestions(false);
+        setIsLoading(false);
       } catch (err) {
         console.error("Error getting suggestions:", err);
+        setSuggestions([]);
+        setShowSuggestions(false);
         setIsLoading(false);
       }
     } else {
@@ -96,7 +167,7 @@ export default function AddressAutocomplete({
     }
   };
 
-  const handleSuggestionClick = (suggestion: any) => {
+  const handleSuggestionClick = (suggestion: AddressSuggestion) => {
     const address = suggestion.description;
     setInputValue(address);
     setShowSuggestions(false);
@@ -160,17 +231,19 @@ export default function AddressAutocomplete({
         <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
           {suggestions.map((suggestion) => (
             <button
-              key={suggestion.place_id}
+              key={suggestion.id}
               type="button"
               onClick={() => handleSuggestionClick(suggestion)}
               className="w-full text-left px-4 py-3 hover:bg-blue-50 focus:bg-blue-50 focus:outline-none border-b border-gray-100 last:border-b-0"
             >
               <div className="font-medium text-gray-900">
-                {suggestion.structured_formatting.main_text}
+                {suggestion.mainText}
               </div>
-              <div className="text-sm text-gray-500">
-                {suggestion.structured_formatting.secondary_text}
-              </div>
+              {suggestion.secondaryText && (
+                <div className="text-sm text-gray-500">
+                  {suggestion.secondaryText}
+                </div>
+              )}
             </button>
           ))}
         </div>

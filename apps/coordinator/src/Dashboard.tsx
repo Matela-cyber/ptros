@@ -79,25 +79,37 @@ export default function Dashboard({ user, userProfile }: Props) {
       );
       const activeCarriersSnapshot = await getDocs(activeCarriersQuery);
 
-      // Fetch completed deliveries today (status = delivered and createdAt is today)
+      // Fetch delivered deliveries and count today's completions client-side.
+      // This avoids requiring a composite Firestore index on (status + createdAt).
       const completedTodayQuery = query(
         collection(db, "deliveries"),
         where("status", "==", "delivered"),
-        where("createdAt", ">=", todayTimestamp),
       );
       const completedTodaySnapshot = await getDocs(completedTodayQuery);
 
       // Calculate revenue today from paymentAmount field
+      let completedToday = 0;
       let revenueToday = 0;
       completedTodaySnapshot.forEach((doc) => {
         const data = doc.data();
-        revenueToday += data.paymentAmount || 0;
+        const deliveredAt: Date | null = data.deliveredAt?.toDate
+          ? data.deliveredAt.toDate()
+          : null;
+        const createdAt: Date | null = data.createdAt?.toDate
+          ? data.createdAt.toDate()
+          : null;
+
+        const completedAt = deliveredAt || createdAt;
+        if (completedAt && completedAt >= todayTimestamp.toDate()) {
+          completedToday += 1;
+          revenueToday += data.paymentAmount || 0;
+        }
       });
 
       setStats({
         activeDeliveries: activeDeliveriesSnapshot.size,
         activeCarriers: activeCarriersSnapshot.size,
-        completedToday: completedTodaySnapshot.size,
+        completedToday,
         revenueToday: Math.round(revenueToday),
         pendingCarriers: 0,
       });

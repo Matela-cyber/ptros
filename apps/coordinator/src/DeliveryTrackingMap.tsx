@@ -194,12 +194,14 @@ export default function DeliveryTrackingMap() {
   const [recommendedCarrier, setRecommendedCarrier] =
     useState<CarrierCandidate | null>(null);
   const [learnedSegments, setLearnedSegments] = useState<LearnedSegment[]>([]);
-  const [carrierToPickupPath, setCarrierToPickupPath] = useState<
-    google.maps.LatLng[] | null
-  >(null);
-  const [pickupToDeliveryPath, setPickupToDeliveryPath] = useState<
-    google.maps.LatLng[] | null
-  >(null);
+  const [carrierToPickupPath, setCarrierToPickupPath] = useState<Array<{
+    lat: number;
+    lng: number;
+  }> | null>(null);
+  const [pickupToDeliveryPath, setPickupToDeliveryPath] = useState<Array<{
+    lat: number;
+    lng: number;
+  }> | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -337,7 +339,6 @@ export default function DeliveryTrackingMap() {
   useEffect(() => {
     if (
       !delivery ||
-      !window.google?.maps ||
       !carrierLocation ||
       !delivery.pickupLocation ||
       !delivery.deliveryLocation
@@ -356,55 +357,28 @@ export default function DeliveryTrackingMap() {
       return;
     }
 
-    const directionsService = new window.google.maps.DirectionsService();
-
     // Carrier to Pickup path (Yellow) - only if not picked up
+    // Lightweight segment path avoids legacy DirectionsService dependency.
     if (delivery.status === "assigned" || delivery.status === "accepted") {
-      directionsService.route(
+      setCarrierToPickupPath([
+        { lat: carrierLocation.lat, lng: carrierLocation.lng },
         {
-          origin: new google.maps.LatLng(
-            carrierLocation.lat,
-            carrierLocation.lng,
-          ),
-          destination: new google.maps.LatLng(
-            delivery.pickupLocation.lat,
-            delivery.pickupLocation.lng,
-          ),
-          travelMode: window.google.maps.TravelMode.DRIVING,
+          lat: delivery.pickupLocation.lat,
+          lng: delivery.pickupLocation.lng,
         },
-        (result: any, status: any) => {
-          if (status === "OK" && result) {
-            setCarrierToPickupPath(
-              result.routes[0].overview_path as google.maps.LatLng[],
-            );
-          }
-        },
-      );
+      ]);
     } else {
       setCarrierToPickupPath(null);
     }
 
     // Pickup to Delivery path (Orange) - always show for active deliveries
-    directionsService.route(
+    setPickupToDeliveryPath([
+      { lat: delivery.pickupLocation.lat, lng: delivery.pickupLocation.lng },
       {
-        origin: new google.maps.LatLng(
-          delivery.pickupLocation.lat,
-          delivery.pickupLocation.lng,
-        ),
-        destination: new google.maps.LatLng(
-          delivery.deliveryLocation.lat,
-          delivery.deliveryLocation.lng,
-        ),
-        travelMode: window.google.maps.TravelMode.DRIVING,
+        lat: delivery.deliveryLocation.lat,
+        lng: delivery.deliveryLocation.lng,
       },
-      (result: any, status: any) => {
-        if (status === "OK" && result) {
-          setPickupToDeliveryPath(
-            result.routes[0].overview_path as google.maps.LatLng[],
-          );
-        }
-      },
-    );
+    ]);
   }, [
     delivery?.id,
     delivery?.status,
