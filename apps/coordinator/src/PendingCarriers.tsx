@@ -1,6 +1,6 @@
 // apps/coordinator/src/PendingCarriers.tsx
 import { useState, useEffect } from "react";
-import { db } from "@config";
+import { auth, db } from "@config";
 import {
   collection,
   query,
@@ -12,6 +12,7 @@ import {
 import { toast, Toaster } from "react-hot-toast";
 import { writeTimestamp, getTimeServiceStatus } from "./services/timeService";
 import { FaCircleCheck, FaEye, FaXmark } from "react-icons/fa6";
+import { useNavigate } from "react-router-dom";
 
 interface PendingCarrier {
   id: string;
@@ -25,6 +26,7 @@ interface PendingCarrier {
 }
 
 export default function PendingCarriers() {
+  const navigate = useNavigate();
   const [carriers, setCarriers] = useState<PendingCarrier[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -75,14 +77,12 @@ export default function PendingCarriers() {
         isApproved: true,
         status: "active",
         approvedAt: timestamp,
-        approvedBy: "coordinator", // TODO: Replace with actual coordinator ID
+        approvedBy: auth.currentUser?.uid || "system",
         timeSource: timeServiceStatus.primarySource,
       });
 
       toast.success("Carrier approved successfully!");
       fetchPendingCarriers(); // Refresh list
-
-      // TODO: Send SMS notification to carrier via Twilio
     } catch (error) {
       console.error("Error approving carrier:", error);
       toast.error("Failed to approve carrier");
@@ -105,7 +105,7 @@ export default function PendingCarriers() {
         status: "rejected",
         rejectedAt: timestamp,
         rejectedReason: reason,
-        rejectedBy: "coordinator", // TODO: Replace with actual coordinator ID
+        rejectedBy: auth.currentUser?.uid || "system",
         timeSource: timeServiceStatus.primarySource,
       });
 
@@ -222,7 +222,10 @@ export default function PendingCarriers() {
                             <FaXmark /> Reject
                           </span>
                         </button>
-                        <button className="px-4 py-2 border-2 border-primary text-primary rounded-lg hover:bg-primary-bg transition-all font-semibold">
+                        <button
+                          onClick={() => navigate(`/carriers/${carrier.id}`)}
+                          className="px-4 py-2 border-2 border-primary text-primary rounded-lg hover:bg-primary-bg transition-all font-semibold"
+                        >
                           <span className="inline-flex items-center gap-2">
                             <FaEye /> View
                           </span>

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { db } from "@config";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { FaUsers } from "react-icons/fa6";
+import { Link } from "react-router-dom";
 
 interface Customer {
   id: string;
@@ -93,13 +94,21 @@ export default function CustomerList() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     City
                   </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {customers.map((customer) => (
                   <tr key={customer.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                      {customer.fullName || "Unnamed Customer"}
+                      <Link
+                        to={`/customers/${customer.id}`}
+                        className="text-blue-700 hover:text-blue-900"
+                      >
+                        {customer.fullName || "Unnamed Customer"}
+                      </Link>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
                       {customer.email || "-"}
@@ -112,6 +121,14 @@ export default function CustomerList() {
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
                       {customer.city || "-"}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      <Link
+                        to={`/customers/${customer.id}`}
+                        className="px-3 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
+                      >
+                        View
+                      </Link>
                     </td>
                   </tr>
                 ))}
