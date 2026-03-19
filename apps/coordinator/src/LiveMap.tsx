@@ -1140,13 +1140,13 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
 
       {/* Map Container */}
       <div className="bg-white rounded-xl shadow overflow-hidden mb-6">
-        <div className="border-b px-6 py-4 bg-gray-50">
-          <div className="flex items-center justify-between">
+        <div className="border-b px-4 md:px-6 py-4 bg-gray-50">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <h3 className="font-medium text-gray-700">
               Real-time Tracking View •{" "}
               {mapStyles.find((s) => s.id === mapStyle)?.name}
             </h3>
-            <div className="flex items-center space-x-4">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <div className="flex items-center">
                 <div className="w-3 h-3 rounded-full bg-blue-600 mr-2"></div>
                 <span className="text-sm">Carriers ({carriers.length})</span>
@@ -1167,7 +1167,7 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
           </div>
         </div>
 
-        <div className="border-b px-6 py-3 bg-gray-50">
+        <div className="border-b px-4 md:px-6 py-3 bg-gray-50">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium text-gray-700">
@@ -1241,12 +1241,12 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
         <div className="relative">
           <div
             ref={mapRef}
-            className="w-full h-[600px] bg-gray-100"
-            style={{ minHeight: "600px" }}
+            className="w-full h-[420px] md:h-[520px] lg:h-[620px] bg-gray-100"
+            style={{ minHeight: "420px" }}
           />
         </div>
 
-        <div className="border-t px-6 py-4 bg-gray-50">
+        <div className="border-t px-4 md:px-6 py-4 bg-gray-50">
           <div className="text-sm text-gray-500">
             Current map:{" "}
             <strong>{mapStyles.find((s) => s.id === mapStyle)?.name}</strong>
