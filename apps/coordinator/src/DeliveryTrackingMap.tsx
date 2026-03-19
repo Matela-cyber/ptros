@@ -696,10 +696,10 @@ export default function DeliveryTrackingMap() {
   }
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="min-h-[calc(100vh-8.5rem)] flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
       <Toaster position="top-right" />
 
-      <div className="bg-white shadow p-4 z-10">
+      <div className="bg-white shadow-sm p-4 z-10">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">
@@ -718,7 +718,7 @@ export default function DeliveryTrackingMap() {
         </div>
       </div>
 
-      <div className="bg-white border-t border-b px-4 py-3 grid grid-cols-1 lg:grid-cols-4 gap-3 text-sm">
+      <div className="bg-white border-t border-b px-4 py-3 grid grid-cols-1 xl:grid-cols-4 gap-3 text-sm">
         <div className="lg:col-span-2">
           <p className="font-semibold text-gray-700">Trip Replay</p>
           <input
@@ -781,7 +781,7 @@ export default function DeliveryTrackingMap() {
       </div>
 
       {reviewMode && (
-        <div className="bg-red-50 border-b border-red-200 px-4 py-3 text-sm grid grid-cols-1 lg:grid-cols-4 gap-3">
+        <div className="bg-red-50 border-b border-red-200 px-4 py-3 text-sm grid grid-cols-1 xl:grid-cols-4 gap-3">
           <select
             value={routeIssueCategory}
             onChange={(e) => setRouteIssueCategory(e.target.value)}
@@ -825,30 +825,78 @@ export default function DeliveryTrackingMap() {
         </div>
       )}
 
-      <div className="flex-1 relative">
-        {typeof window !== "undefined" && (
-          <>
-            <GoogleMap
-              zoom={15}
-              center={mapCenter}
-              onClick={onMapClick}
-              mapContainerStyle={{ height: "100%", width: "100%" }}
-              options={{ disableDefaultUI: false }}
-            >
-              {/* Carrier to Pickup Path (Yellow with low opacity) */}
-              {carrierToPickupDisplayPath &&
-                carrierToPickupDisplayPath.length > 1 && (
+      <div className="px-4 py-4 bg-gray-50 border-b border-gray-200">
+        <div className="relative w-full h-[52vh] min-h-[360px] lg:min-h-[520px] overflow-hidden rounded-xl border border-gray-200 bg-white">
+          {typeof window !== "undefined" && (
+            <>
+              <GoogleMap
+                zoom={15}
+                center={mapCenter}
+                onClick={onMapClick}
+                mapContainerStyle={{ height: "100%", width: "100%" }}
+                options={{ disableDefaultUI: false }}
+              >
+                {/* Carrier to Pickup Path (Yellow with low opacity) */}
+                {carrierToPickupDisplayPath &&
+                  carrierToPickupDisplayPath.length > 1 && (
+                    <Polyline
+                      path={carrierToPickupDisplayPath}
+                      options={{
+                        strokeColor: "#a855f7",
+                        strokeOpacity: 0.72,
+                        strokeWeight: 5,
+                        icons: [
+                          {
+                            icon: {
+                              path: "M 0,-1 0,1",
+                              strokeOpacity: 0.9,
+                              scale: 3,
+                            },
+                            offset: "0",
+                            repeat: "16px",
+                          },
+                        ],
+                      }}
+                    />
+                  )}
+
+                {/* Pickup to Delivery Path (Orange with low opacity) */}
+                {pickupToDeliveryDisplayPath &&
+                  pickupToDeliveryDisplayPath.length > 1 && (
+                    <Polyline
+                      path={pickupToDeliveryDisplayPath}
+                      options={{
+                        strokeColor: "#f97316",
+                        strokeOpacity: 0.74,
+                        strokeWeight: 5,
+                        icons: [
+                          {
+                            icon: {
+                              path: "M 0,-1 0,1",
+                              strokeOpacity: 0.95,
+                              scale: 3,
+                            },
+                            offset: "0",
+                            repeat: "18px",
+                          },
+                        ],
+                      }}
+                    />
+                  )}
+
+                {/* Planned Route (Dotted Amber) */}
+                {routeSegments.planned.length > 1 && (
                   <Polyline
-                    path={carrierToPickupDisplayPath}
+                    path={routeSegments.planned}
                     options={{
-                      strokeColor: "#a855f7",
-                      strokeOpacity: 0.72,
-                      strokeWeight: 5,
+                      strokeColor: "#f59e0b",
+                      strokeOpacity: 0.9,
+                      strokeWeight: 4,
                       icons: [
                         {
                           icon: {
                             path: "M 0,-1 0,1",
-                            strokeOpacity: 0.9,
+                            strokeOpacity: 1,
                             scale: 3,
                           },
                           offset: "0",
@@ -859,289 +907,246 @@ export default function DeliveryTrackingMap() {
                   />
                 )}
 
-              {/* Pickup to Delivery Path (Orange with low opacity) */}
-              {pickupToDeliveryDisplayPath &&
-                pickupToDeliveryDisplayPath.length > 1 && (
+                {/* Historical Route Snapshots */}
+                {visibleSnapshotSegments.map((segment) => (
                   <Polyline
-                    path={pickupToDeliveryDisplayPath}
+                    key={segment.id}
+                    path={segment.points}
                     options={{
-                      strokeColor: "#f97316",
-                      strokeOpacity: 0.74,
+                      strokeColor: segment.color,
+                      strokeOpacity: 0.95,
                       strokeWeight: 5,
+                    }}
+                  />
+                ))}
+
+                {routeSegments.active.length > 1 && (
+                  <Polyline
+                    path={routeSegments.active}
+                    options={{
+                      strokeColor: activeRouteColor,
+                      strokeOpacity: 1,
+                      strokeWeight: 6,
                       icons: [
                         {
                           icon: {
-                            path: "M 0,-1 0,1",
-                            strokeOpacity: 0.95,
-                            scale: 3,
+                            path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
+                            scale: 2.5,
+                            strokeOpacity: 0.9,
                           },
-                          offset: "0",
-                          repeat: "18px",
+                          offset: "12px",
+                          repeat: "44px",
                         },
                       ],
                     }}
                   />
                 )}
 
-              {/* Planned Route (Dotted Amber) */}
-              {routeSegments.planned.length > 1 && (
-                <Polyline
-                  path={routeSegments.planned}
-                  options={{
-                    strokeColor: "#f59e0b",
-                    strokeOpacity: 0.9,
-                    strokeWeight: 4,
-                    icons: [
-                      {
-                        icon: {
-                          path: "M 0,-1 0,1",
-                          strokeOpacity: 1,
-                          scale: 3,
+                {routeSegments.learnedShortcutSegments.map((segment) => (
+                  <Polyline
+                    key={`learned-${segment.id}`}
+                    path={segment.points}
+                    options={{
+                      strokeColor: "#ef4444",
+                      strokeOpacity: 0.9,
+                      strokeWeight: 4,
+                      icons: [
+                        {
+                          icon: {
+                            path: "M 0,-1 0,1",
+                            strokeOpacity: 1,
+                            scale: 3,
+                          },
+                          offset: "0",
+                          repeat: "10px",
                         },
-                        offset: "0",
-                        repeat: "16px",
-                      },
-                    ],
-                  }}
-                />
-              )}
+                      ],
+                    }}
+                  />
+                ))}
 
-              {/* Historical Route Snapshots */}
-              {visibleSnapshotSegments.map((segment) => (
-                <Polyline
-                  key={segment.id}
-                  path={segment.points}
-                  options={{
-                    strokeColor: segment.color,
-                    strokeOpacity: 0.95,
-                    strokeWeight: 5,
-                  }}
-                />
-              ))}
-
-              {routeSegments.active.length > 1 && (
-                <Polyline
-                  path={routeSegments.active}
-                  options={{
-                    strokeColor: activeRouteColor,
-                    strokeOpacity: 1,
-                    strokeWeight: 6,
-                    icons: [
-                      {
-                        icon: {
-                          path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
-                          scale: 2.5,
-                          strokeOpacity: 0.9,
+                {routeSegments.blockedSegments.map((segment) => (
+                  <Polyline
+                    key={segment.id}
+                    path={segment.points}
+                    options={{
+                      strokeColor: segment.temporary ? "#eab308" : "#dc2626",
+                      strokeOpacity: 1,
+                      strokeWeight: 5,
+                      icons: [
+                        {
+                          icon: {
+                            path: "M -2,-2 2,2 M 2,-2 -2,2",
+                            strokeOpacity: 1,
+                            scale: 2,
+                          },
+                          offset: "0",
+                          repeat: "14px",
                         },
-                        offset: "12px",
-                        repeat: "44px",
-                      },
-                    ],
-                  }}
-                />
-              )}
+                      ],
+                    }}
+                  />
+                ))}
 
-              {routeSegments.learnedShortcutSegments.map((segment) => (
-                <Polyline
-                  key={`learned-${segment.id}`}
-                  path={segment.points}
-                  options={{
-                    strokeColor: "#ef4444",
-                    strokeOpacity: 0.9,
-                    strokeWeight: 4,
-                    icons: [
-                      {
-                        icon: {
-                          path: "M 0,-1 0,1",
-                          strokeOpacity: 1,
-                          scale: 3,
-                        },
-                        offset: "0",
-                        repeat: "10px",
-                      },
-                    ],
-                  }}
-                />
-              ))}
+                {reviewPoints.map((point, index) => (
+                  <Marker
+                    key={`${point.lat}-${point.lng}-${index}`}
+                    position={point}
+                    title={`Review point ${index + 1}`}
+                    icon={{
+                      path: google.maps.SymbolPath.CIRCLE,
+                      scale: 8,
+                      fillColor: "#dc2626",
+                      fillOpacity: 1,
+                      strokeColor: "#fff",
+                      strokeWeight: 2,
+                    }}
+                  />
+                ))}
 
-              {routeSegments.blockedSegments.map((segment) => (
-                <Polyline
-                  key={segment.id}
-                  path={segment.points}
-                  options={{
-                    strokeColor: segment.temporary ? "#eab308" : "#dc2626",
-                    strokeOpacity: 1,
-                    strokeWeight: 5,
-                    icons: [
-                      {
-                        icon: {
-                          path: "M -2,-2 2,2 M 2,-2 -2,2",
-                          strokeOpacity: 1,
-                          scale: 2,
-                        },
-                        offset: "0",
-                        repeat: "14px",
-                      },
-                    ],
-                  }}
-                />
-              ))}
+                {reviewPoints.length === 2 && (
+                  <Polyline
+                    path={reviewPoints}
+                    options={{
+                      strokeColor: "#dc2626",
+                      strokeOpacity: 1,
+                      strokeWeight: 4,
+                    }}
+                  />
+                )}
 
-              {reviewPoints.map((point, index) => (
-                <Marker
-                  key={`${point.lat}-${point.lng}-${index}`}
-                  position={point}
-                  title={`Review point ${index + 1}`}
-                  icon={{
-                    path: google.maps.SymbolPath.CIRCLE,
-                    scale: 8,
-                    fillColor: "#dc2626",
-                    fillOpacity: 1,
-                    strokeColor: "#fff",
-                    strokeWeight: 2,
-                  }}
-                />
-              ))}
+                {delivery.currentLocation && (
+                  <Marker
+                    position={{
+                      lat: delivery.currentLocation.lat,
+                      lng: delivery.currentLocation.lng,
+                    }}
+                    title="Delivery Location"
+                    icon={{
+                      path: google.maps.SymbolPath.CIRCLE,
+                      scale: 8,
+                      fillColor: "#ef4444",
+                      fillOpacity: 1,
+                      strokeColor: "#fff",
+                      strokeWeight: 2,
+                    }}
+                  />
+                )}
 
-              {reviewPoints.length === 2 && (
-                <Polyline
-                  path={reviewPoints}
-                  options={{
-                    strokeColor: "#dc2626",
-                    strokeOpacity: 1,
-                    strokeWeight: 4,
-                  }}
-                />
-              )}
+                {carrierLocation && delivery.status !== "delivered" && (
+                  <Marker
+                    position={{
+                      lat: carrierLocation.lat,
+                      lng: carrierLocation.lng,
+                    }}
+                    title={delivery.carrierName || "Carrier"}
+                    icon={{
+                      path: google.maps.SymbolPath.CIRCLE,
+                      scale: 10,
+                      fillColor: "#22c55e",
+                      fillOpacity: 1,
+                      strokeColor: "#fff",
+                      strokeWeight: 2,
+                    }}
+                  />
+                )}
 
-              {delivery.currentLocation && (
-                <Marker
-                  position={{
-                    lat: delivery.currentLocation.lat,
-                    lng: delivery.currentLocation.lng,
-                  }}
-                  title="Delivery Location"
-                  icon={{
-                    path: google.maps.SymbolPath.CIRCLE,
-                    scale: 8,
-                    fillColor: "#ef4444",
-                    fillOpacity: 1,
-                    strokeColor: "#fff",
-                    strokeWeight: 2,
-                  }}
-                />
-              )}
+                {/* Pickup Location Marker */}
+                {delivery.pickupLocation && (
+                  <Marker
+                    position={{
+                      lat: delivery.pickupLocation.lat,
+                      lng: delivery.pickupLocation.lng,
+                    }}
+                    title="Pickup Location"
+                    icon={{
+                      path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
+                      scale: 6,
+                      fillColor: "#fbbf24",
+                      fillOpacity: 1,
+                      strokeColor: "#fff",
+                      strokeWeight: 2,
+                    }}
+                  />
+                )}
 
-              {carrierLocation && delivery.status !== "delivered" && (
-                <Marker
-                  position={{
-                    lat: carrierLocation.lat,
-                    lng: carrierLocation.lng,
-                  }}
-                  title={delivery.carrierName || "Carrier"}
-                  icon={{
-                    path: google.maps.SymbolPath.CIRCLE,
-                    scale: 10,
-                    fillColor: "#22c55e",
-                    fillOpacity: 1,
-                    strokeColor: "#fff",
-                    strokeWeight: 2,
-                  }}
-                />
-              )}
+                {/* Delivery Location Marker */}
+                {delivery.deliveryLocation && (
+                  <Marker
+                    position={{
+                      lat: delivery.deliveryLocation.lat,
+                      lng: delivery.deliveryLocation.lng,
+                    }}
+                    title="Delivery Destination"
+                    icon={{
+                      path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                      scale: 6,
+                      fillColor: "#fb923c",
+                      fillOpacity: 1,
+                      strokeColor: "#fff",
+                      strokeWeight: 2,
+                    }}
+                  />
+                )}
+              </GoogleMap>
+            </>
+          )}
+        </div>
 
-              {/* Pickup Location Marker */}
-              {delivery.pickupLocation && (
-                <Marker
-                  position={{
-                    lat: delivery.pickupLocation.lat,
-                    lng: delivery.pickupLocation.lng,
-                  }}
-                  title="Pickup Location"
-                  icon={{
-                    path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
-                    scale: 6,
-                    fillColor: "#fbbf24",
-                    fillOpacity: 1,
-                    strokeColor: "#fff",
-                    strokeWeight: 2,
-                  }}
-                />
-              )}
-
-              {/* Delivery Location Marker */}
-              {delivery.deliveryLocation && (
-                <Marker
-                  position={{
-                    lat: delivery.deliveryLocation.lat,
-                    lng: delivery.deliveryLocation.lng,
-                  }}
-                  title="Delivery Destination"
-                  icon={{
-                    path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                    scale: 6,
-                    fillColor: "#fb923c",
-                    fillOpacity: 1,
-                    strokeColor: "#fff",
-                    strokeWeight: 2,
-                  }}
-                />
-              )}
-            </GoogleMap>
-
-            {/* Map Legend */}
-            <MapLegend
-              title="Route Legend"
-              items={[
-                {
-                  color: "#a855f7",
-                  opacity: 0.72,
-                  label: "Carrier → Pickup",
-                  description: "Approach leg (offset for overlap clarity)",
-                },
-                {
-                  color: "#f97316",
-                  opacity: 0.74,
-                  label: "Pickup → Delivery",
-                  description: "Delivery leg (offset for overlap clarity)",
-                },
-                {
-                  color: activeRouteColor,
-                  opacity: 1,
-                  label: "Active Route",
-                  description: "Current live route in progress",
-                },
-                {
-                  color: "#ef4444",
-                  opacity: 0.9,
-                  label: "Learned Shortcut",
-                  description: "Carrier-reported shortcut candidates",
-                },
-                {
-                  color: "#dc2626",
-                  opacity: 1,
-                  label: "Rejected/Blocked Segment",
-                  description: "Coordinator-reviewed unavailable path",
-                },
-                ...ROUTE_COLORS.slice(
-                  0,
-                  Math.min(3, visibleSnapshotSegments.length),
-                ).map((color, i) => ({
-                  color,
-                  opacity: 0.95,
-                  label: `Snapshot ${i + 1}`,
-                  description: "Historical route segment",
-                })),
-                {
-                  color: "#f59e0b",
-                  opacity: 0.9,
-                  label: "Planned Route",
-                  description: "Original calculated route",
-                },
-              ]}
-            />
-          </>
-        )}
+        {/* Map Legend */}
+        <div className="mt-3">
+          <MapLegend
+            title="Route Legend"
+            className="w-full"
+            items={[
+              {
+                color: "#a855f7",
+                opacity: 0.72,
+                label: "Carrier → Pickup",
+                description: "Approach leg",
+              },
+              {
+                color: "#f97316",
+                opacity: 0.74,
+                label: "Pickup → Delivery",
+                description: "Delivery leg",
+              },
+              {
+                color: activeRouteColor,
+                opacity: 1,
+                label: "Active Route",
+                description: "Current live route",
+              },
+              {
+                color: "#ef4444",
+                opacity: 0.9,
+                label: "Learned Shortcut",
+                description: "Shortcut candidates",
+              },
+              {
+                color: "#dc2626",
+                opacity: 1,
+                label: "Rejected/Blocked",
+                description: "Unavailable path",
+              },
+              ...ROUTE_COLORS.slice(
+                0,
+                Math.min(3, visibleSnapshotSegments.length),
+              ).map((color, i) => ({
+                color,
+                opacity: 0.95,
+                label: `Snapshot ${i + 1}`,
+                description: "Historical segment",
+              })),
+              {
+                color: "#f59e0b",
+                opacity: 0.9,
+                label: "Planned Route",
+                description: "Original route",
+              },
+            ]}
+          />
+        </div>
       </div>
 
       {(delivery.routeFeedback?.length || learnedSegments.length) && (

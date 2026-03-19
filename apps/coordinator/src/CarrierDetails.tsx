@@ -163,7 +163,7 @@ export default function CarrierDetails() {
   }
 
   return (
-    <div className="p-8 bg-gray-50 min-h-screen">
+    <div className="p-4 md:p-8 bg-gray-50 min-h-full rounded-xl">
       <Toaster position="top-right" />
 
       {/* Header */}
