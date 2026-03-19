@@ -9,6 +9,15 @@ import {
   onChildRemoved,
 } from "firebase/database";
 import { Toaster } from "react-hot-toast";
+import {
+  FaMap,
+  FaMountain,
+  FaMotorcycle,
+  FaPhone,
+  FaSatellite,
+  FaGlobe,
+} from "react-icons/fa6";
+import { IconType } from "react-icons";
 
 declare global {
   interface Window {
@@ -111,7 +120,7 @@ interface MarkerData {
 interface MapStyle {
   name: string;
   id: string;
-  icon: string;
+  icon: IconType;
 }
 
 export default function LiveMap() {
@@ -206,10 +215,10 @@ export default function LiveMap() {
 
   // Map styles configuration
   const mapStyles: MapStyle[] = [
-    { name: "Roadmap", id: "roadmap", icon: "🗺️" },
-    { name: "Satellite", id: "satellite", icon: "🛰️" },
-    { name: "Hybrid", id: "hybrid", icon: "🌍" },
-    { name: "Terrain", id: "terrain", icon: "⛰️" },
+    { name: "Roadmap", id: "roadmap", icon: FaMap },
+    { name: "Satellite", id: "satellite", icon: FaSatellite },
+    { name: "Hybrid", id: "hybrid", icon: FaGlobe },
+    { name: "Terrain", id: "terrain", icon: FaMountain },
   ];
 
   // Listen for Google Maps ready signal
@@ -644,7 +653,7 @@ export default function LiveMap() {
             <div style="padding: 10px; min-width: 200px; font-family: system-ui;">
               <h3 style="margin: 0 0 5px 0; color: #1E40AF; font-size: 14px; font-weight: 600;">${carrier.name}</h3>
               <p style="margin: 0 0 5px 0; color: #4B5563; font-size: 12px;">${carrier.vehicleType}</p>
-              <p style="margin: 0 0 5px 0; font-size: 12px;">📱 ${carrier.phone}</p>
+              <p style="margin: 0 0 5px 0; font-size: 12px;">Phone: ${carrier.phone}</p>
               <p style="margin: 0 0 5px 0; font-size: 11px; color: #6B7280;">
                 Status: <strong>${carrier.status}</strong>
               </p>
@@ -935,7 +944,7 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
   if (mapError) {
     return (
       <div className="bg-white rounded-xl shadow p-8 text-center">
-        <div className="text-6xl mb-4">🗺️</div>
+        <FaMap className="text-6xl mb-4 mx-auto text-gray-400" />
         <h3 className="text-xl font-semibold text-gray-700 mb-2">Map Error</h3>
         <p className="text-red-600 mb-4">{mapError}</p>
         <div className="space-x-4">
@@ -992,8 +1001,8 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
           <div className="text-sm text-gray-500">Map Status</div>
           <div className="text-2xl font-bold text-green-600">
             {satelliteLoaded || mapStyle !== "satellite"
-              ? "✅ Live"
-              : "🔄 Loading..."}
+              ? "Live"
+              : "Loading..."}
           </div>
         </div>
       </div>
@@ -1178,7 +1187,7 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
                       : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                   }`}
                 >
-                  <span>{style.icon}</span>
+                  <style.icon />
                   <span>{style.name}</span>
                 </button>
               ))}
@@ -1190,7 +1199,9 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-yellow-700">
-                    🛰️ Satellite View Active
+                    <span className="inline-flex items-center gap-2">
+                      <FaSatellite /> Satellite View Active
+                    </span>
                   </span>
                   {!satelliteLoaded && (
                     <span className="text-sm text-yellow-600">
@@ -1282,7 +1293,7 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
         <h3 className="text-xl font-bold mb-4">Active Carriers</h3>
         {carriers.length === 0 ? (
           <div className="bg-white rounded-xl shadow p-8 text-center">
-            <div className="text-6xl mb-4">🏍️</div>
+            <FaMotorcycle className="text-6xl mb-4 mx-auto text-gray-400" />
             <h4 className="text-lg font-semibold text-gray-700 mb-2">
               No active carriers with location data
             </h4>
@@ -1306,7 +1317,9 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
                       {carrier.vehicleType}
                     </div>
                     <div className="text-sm text-gray-500 mt-1">
-                      📱 {carrier.phone}
+                      <span className="inline-flex items-center gap-2">
+                        <FaPhone /> {carrier.phone}
+                      </span>
                     </div>
                   </div>
                   <button

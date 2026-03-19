@@ -14,6 +14,15 @@ import { toast, Toaster } from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import { useGeocoder } from "./hooks/useGeocoder";
 import { writeTimestamp, getTimeServiceStatus } from "./services/timeService";
+import {
+  FaBox,
+  FaCircleCheck,
+  FaLocationDot,
+  FaMoneyBill,
+  FaTruck,
+  FaBullseye,
+  FaArrowLeft,
+} from "react-icons/fa6";
 
 declare global {
   interface Window {
@@ -820,7 +829,9 @@ export default function CreateDelivery() {
       // Show success message with details
       const successMessage = (
         <div>
-          <p className="font-bold">✅ Delivery Created Successfully!</p>
+          <p className="font-bold inline-flex items-center gap-2">
+            <FaCircleCheck /> Delivery Created Successfully!
+          </p>
           <div className="mt-2 space-y-1">
             <p className="text-sm">
               <span className="font-semibold">Tracking Code:</span>{" "}
@@ -834,7 +845,10 @@ export default function CreateDelivery() {
             )}
             {pickupCoords && deliveryCoords && (
               <p className="text-sm text-green-600">
-                ✓ Location tracking initialized at pickup point
+                <span className="inline-flex items-center gap-1">
+                  <FaCircleCheck /> Location tracking initialized at pickup
+                  point
+                </span>
               </p>
             )}
             <p className="text-xs text-gray-500 mt-1">
@@ -921,7 +935,9 @@ export default function CreateDelivery() {
             onClick={() => navigate("/deliveries")}
             className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
           >
-            ← Back to Deliveries
+            <span className="inline-flex items-center gap-2">
+              <FaArrowLeft /> Back to Deliveries
+            </span>
           </button>
         </div>
       </div>
@@ -930,7 +946,7 @@ export default function CreateDelivery() {
       <div className="mb-6 bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-4">
         <div className="flex items-center">
           <div className="flex-shrink-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center mr-3">
-            <span className="text-white text-sm">📍</span>
+            <FaLocationDot className="text-white text-sm" />
           </div>
           <div>
             <h3 className="font-semibold text-blue-800">Location Tracking</h3>
@@ -1092,7 +1108,7 @@ export default function CreateDelivery() {
               />
               {formData.pickupCoordinates && (
                 <div className="mt-2 flex items-center text-sm text-green-600">
-                  <span className="mr-2">✓</span>
+                  <FaCircleCheck className="mr-2" />
                   <span>
                     Coordinates ready:{" "}
                     {formData.pickupCoordinates.lat.toFixed(6)},{" "}
@@ -1194,7 +1210,7 @@ export default function CreateDelivery() {
               />
               {formData.deliveryCoordinates && (
                 <div className="mt-2 flex items-center text-sm text-green-600">
-                  <span className="mr-2">✓</span>
+                  <FaCircleCheck className="mr-2" />
                   <span>
                     Coordinates ready:{" "}
                     {formData.deliveryCoordinates.lat.toFixed(6)},{" "}
@@ -1504,14 +1520,16 @@ export default function CreateDelivery() {
         {(formData.pickupCoordinates || formData.deliveryCoordinates) && (
           <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6">
             <h3 className="text-lg font-semibold text-green-800 mb-4 flex items-center">
-              <span className="mr-2">✅</span>
+              <FaCircleCheck className="mr-2" />
               Location Tracking Ready
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {formData.pickupCoordinates && (
                 <div className="bg-white p-4 rounded-lg border border-green-200">
                   <div className="font-medium text-green-700 mb-1">
-                    📍 Pickup Location
+                    <span className="inline-flex items-center gap-2">
+                      <FaLocationDot /> Pickup Location
+                    </span>
                   </div>
                   <div className="text-sm text-gray-600">
                     <div className="truncate">{formData.pickupAddress}</div>
@@ -1525,7 +1543,9 @@ export default function CreateDelivery() {
               {formData.deliveryCoordinates && (
                 <div className="bg-white p-4 rounded-lg border border-green-200">
                   <div className="font-medium text-green-700 mb-1">
-                    🎯 Delivery Location
+                    <span className="inline-flex items-center gap-2">
+                      <FaBullseye /> Delivery Location
+                    </span>
                   </div>
                   <div className="text-sm text-gray-600">
                     <div className="truncate">{formData.deliveryAddress}</div>
@@ -1554,7 +1574,9 @@ export default function CreateDelivery() {
               </p>
               {formData.pickupCoordinates && formData.deliveryCoordinates && (
                 <p className="text-sm text-green-600 mt-1">
-                  ✓ Ready for location-based tracking
+                  <span className="inline-flex items-center gap-1">
+                    <FaCircleCheck /> Ready for location-based tracking
+                  </span>
                 </p>
               )}
             </div>
@@ -1582,7 +1604,7 @@ export default function CreateDelivery() {
                   </>
                 ) : (
                   <>
-                    <span className="mr-2 text-xl">📦</span>
+                    <FaBox className="mr-2 text-xl" />
                     Create Delivery
                   </>
                 )}
@@ -1596,7 +1618,7 @@ export default function CreateDelivery() {
       <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-primary-bg border-l-4 border-primary rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
           <div className="text-primary font-semibold mb-2 flex items-center">
-            <span className="text-xl mr-2">📍</span>
+            <FaLocationDot className="text-xl mr-2" />
             Location Tracking
           </div>
           <p className="text-sm text-gray-700">
@@ -1607,7 +1629,7 @@ export default function CreateDelivery() {
 
         <div className="bg-success-bg border-l-4 border-success rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
           <div className="text-success font-semibold mb-2 flex items-center">
-            <span className="text-xl mr-2">💰</span>
+            <FaMoneyBill className="text-xl mr-2" />
             Pricing
           </div>
           <p className="text-sm text-gray-700">
@@ -1618,7 +1640,7 @@ export default function CreateDelivery() {
 
         <div className="bg-accent-bg border-l-4 border-accent rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
           <div className="text-accent font-semibold mb-2 flex items-center">
-            <span className="text-xl mr-2">🚚</span>
+            <FaTruck className="text-xl mr-2" />
             Carrier Assignment
           </div>
           <p className="text-sm text-gray-700">

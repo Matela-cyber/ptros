@@ -15,6 +15,13 @@ import { toast, Toaster } from "react-hot-toast";
 import { Link, useSearchParams } from "react-router-dom";
 import { format } from "date-fns";
 import { writeTimestamp, getTimeServiceStatus } from "./services/timeService";
+import {
+  FaBox,
+  FaChartLine,
+  FaMagnifyingGlass,
+  FaTriangleExclamation,
+  FaChartColumn,
+} from "react-icons/fa6";
 
 interface Delivery {
   id: string;
@@ -386,7 +393,7 @@ export default function ActiveDeliveries() {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 pr-4 py-2 border rounded-lg w-full md:w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <span className="absolute left-3 top-2.5 text-gray-400">🔍</span>
+              <FaMagnifyingGlass className="absolute left-3 top-2.5 text-gray-400" />
             </div>
           </div>
         </div>
@@ -395,7 +402,7 @@ export default function ActiveDeliveries() {
       {/* Deliveries Table */}
       {filteredDeliveries.length === 0 ? (
         <div className="bg-white rounded-xl shadow p-8 text-center">
-          <div className="text-6xl mb-4">📦</div>
+          <FaBox className="text-6xl mb-4 mx-auto text-gray-400" />
           <h3 className="text-xl font-semibold text-gray-700 mb-2">
             No deliveries found
           </h3>
@@ -443,7 +450,7 @@ export default function ActiveDeliveries() {
                     <td className="px-6 py-4">
                       <div>
                         <div className="flex items-center">
-                          <span className="text-lg mr-2">📦</span>
+                          <FaBox className="text-lg mr-2" />
                           <div>
                             <div className="font-medium text-gray-900">
                               {delivery.trackingCode}
@@ -593,7 +600,9 @@ export default function ActiveDeliveries() {
       {/* Quick Actions Panel */}
       <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white rounded-xl shadow p-6">
-          <h3 className="font-semibold text-lg mb-4">📊 Delivery Insights</h3>
+          <h3 className="font-semibold text-lg mb-4 inline-flex items-center gap-2">
+            <FaChartColumn /> Delivery Insights
+          </h3>
           <ul className="space-y-3 text-sm">
             <li className="flex justify-between">
               <span className="text-gray-600">Avg delivery time:</span>
@@ -611,7 +620,9 @@ export default function ActiveDeliveries() {
         </div>
 
         <div className="bg-white rounded-xl shadow p-6">
-          <h3 className="font-semibold text-lg mb-4">🚨 Urgent Actions</h3>
+          <h3 className="font-semibold text-lg mb-4 inline-flex items-center gap-2">
+            <FaTriangleExclamation /> Urgent Actions
+          </h3>
           <div className="space-y-3">
             {deliveries
               .filter((d) => d.status === "pending")
@@ -639,7 +650,9 @@ export default function ActiveDeliveries() {
         </div>
 
         <div className="bg-white rounded-xl shadow p-6">
-          <h3 className="font-semibold text-lg mb-4">📈 Performance</h3>
+          <h3 className="font-semibold text-lg mb-4 inline-flex items-center gap-2">
+            <FaChartLine /> Performance
+          </h3>
           <div className="text-center">
             <div className="text-3xl font-bold text-blue-600 mb-2">
               {deliveries.length > 0

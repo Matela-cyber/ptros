@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Libraries, useJsApiLoader } from "@react-google-maps/api";
+import { FaTriangleExclamation } from "react-icons/fa6";
 
 const GOOGLE_MAPS_LIBRARIES: Libraries = ["places", "geometry"];
 
@@ -53,7 +54,9 @@ export default function GoogleMapsLoader({ children }: GoogleMapsLoaderProps) {
   if (!apiKey) {
     return (
       <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-        <p className="text-red-700">⚠️ Google Maps Configuration Error</p>
+        <p className="text-red-700 inline-flex items-center gap-2">
+          <FaTriangleExclamation /> Google Maps Configuration Error
+        </p>
         <p className="text-sm text-red-600 mt-1">
           Missing <code>VITE_GOOGLE_MAPS_API_KEY</code>. Add it to your
           coordinator environment variables and redeploy.
@@ -65,7 +68,9 @@ export default function GoogleMapsLoader({ children }: GoogleMapsLoaderProps) {
   if (authFailure || loadError) {
     return (
       <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-        <p className="text-red-700">⚠️ Google Maps Error</p>
+        <p className="text-red-700 inline-flex items-center gap-2">
+          <FaTriangleExclamation /> Google Maps Error
+        </p>
         <p className="text-sm text-red-600 mt-1">
           Failed to load Google Maps. If you see{" "}
           <code>RefererNotAllowedMapError</code>, authorize this URL in Google

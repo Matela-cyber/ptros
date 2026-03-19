@@ -2,7 +2,27 @@
 import { NavLink } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { db } from "@config";
-import { collection, query, where, getDocs, Timestamp } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  Timestamp,
+} from "firebase/firestore";
+import { IconType } from "react-icons";
+import {
+  FaAnglesLeft,
+  FaAnglesRight,
+  FaBox,
+  FaChartColumn,
+  FaChartLine,
+  FaGear,
+  FaHourglassHalf,
+  FaLocationDot,
+  FaMotorcycle,
+  FaPlus,
+  FaUsers,
+} from "react-icons/fa6";
 
 interface QuickStats {
   active: number;
@@ -31,7 +51,12 @@ export default function Sidebar() {
       // Fetch active deliveries
       const activeQuery = query(
         collection(db, "deliveries"),
-        where("status", "in", ["pending", "assigned", "picked_up", "in_transit"])
+        where("status", "in", [
+          "pending",
+          "assigned",
+          "picked_up",
+          "in_transit",
+        ]),
       );
       const activeSnapshot = await getDocs(activeQuery);
 
@@ -39,7 +64,7 @@ export default function Sidebar() {
       const todayQuery = query(
         collection(db, "deliveries"),
         where("status", "==", "delivered"),
-        where("deliveredAt", ">=", todayTimestamp)
+        where("deliveredAt", ">=", todayTimestamp),
       );
       const todaySnapshot = await getDocs(todayQuery);
 
@@ -60,16 +85,20 @@ export default function Sidebar() {
     }
   };
 
-  const navItems = [
-    { path: "/dashboard", icon: "📊", label: "Dashboard" },
-    { path: "/deliveries/create", icon: "➕", label: "Create Delivery" },
-    { path: "/deliveries/active", icon: "📦", label: "Active Deliveries" },
-    { path: "/carriers/pending", icon: "⏳", label: "Pending Carriers" },
-    { path: "/carriers/active", icon: "🏍️", label: "Active Carriers" },
-    { path: "/customers", icon: "👥", label: "Customers" },
-    { path: "/tracking/live", icon: "📍", label: "Live Tracking" },
-    { path: "/analytics", icon: "📈", label: "Analytics" },
-    { path: "/settings", icon: "⚙️", label: "Settings" },
+  const navItems: { path: string; icon: IconType; label: string }[] = [
+    { path: "/dashboard", icon: FaChartColumn, label: "Dashboard" },
+    { path: "/deliveries/create", icon: FaPlus, label: "Create Delivery" },
+    { path: "/deliveries/active", icon: FaBox, label: "Active Deliveries" },
+    {
+      path: "/carriers/pending",
+      icon: FaHourglassHalf,
+      label: "Pending Carriers",
+    },
+    { path: "/carriers/active", icon: FaMotorcycle, label: "Active Carriers" },
+    { path: "/customers", icon: FaUsers, label: "Customers" },
+    { path: "/tracking/live", icon: FaLocationDot, label: "Live Tracking" },
+    { path: "/analytics", icon: FaChartLine, label: "Analytics" },
+    { path: "/settings", icon: FaGear, label: "Settings" },
   ];
 
   return (
@@ -101,7 +130,7 @@ export default function Sidebar() {
             onClick={() => setCollapsed(!collapsed)}
             className="text-blue-200 hover:text-white transition-colors"
           >
-            {collapsed ? "→" : "←"}
+            {collapsed ? <FaAnglesRight /> : <FaAnglesLeft />}
           </button>
         </div>
       </div>
@@ -121,7 +150,7 @@ export default function Sidebar() {
                   }`
                 }
               >
-                <span className="text-xl mr-3">{item.icon}</span>
+                <item.icon className="text-xl mr-3" />
                 {!collapsed && <span>{item.label}</span>}
               </NavLink>
             </li>
@@ -133,19 +162,27 @@ export default function Sidebar() {
       {!collapsed && (
         <div className="p-4 border-t border-primary-dark">
           <div className="bg-primary-dark rounded-lg p-4 shadow-inner">
-            <h3 className="font-semibold text-sm mb-3 text-blue-100">Quick Stats</h3>
+            <h3 className="font-semibold text-sm mb-3 text-blue-100">
+              Quick Stats
+            </h3>
             <div className="text-xs space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-blue-200">Active:</span>
-                <span className="font-bold text-lg text-accent">{stats.active}</span>
+                <span className="font-bold text-lg text-accent">
+                  {stats.active}
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-blue-200">Today:</span>
-                <span className="font-bold text-lg text-white">{stats.today}</span>
+                <span className="font-bold text-lg text-white">
+                  {stats.today}
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-blue-200">Revenue:</span>
-                <span className="font-bold text-lg text-success">M{stats.revenue.toLocaleString()}</span>
+                <span className="font-bold text-lg text-success">
+                  M{stats.revenue.toLocaleString()}
+                </span>
               </div>
             </div>
           </div>

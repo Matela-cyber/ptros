@@ -10,10 +10,8 @@ import {
   doc,
 } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
-import {
-  writeTimestamp,
-  getTimeServiceStatus,
-} from "./services/timeService";
+import { writeTimestamp, getTimeServiceStatus } from "./services/timeService";
+import { FaCircleCheck, FaEye, FaXmark } from "react-icons/fa6";
 
 interface PendingCarrier {
   id: string;
@@ -39,7 +37,7 @@ export default function PendingCarriers() {
       const q = query(
         collection(db, "users"),
         where("role", "==", "carrier"),
-        where("isApproved", "==", false)
+        where("isApproved", "==", false),
       );
 
       const snapshot = await getDocs(q);
@@ -70,9 +68,7 @@ export default function PendingCarriers() {
 
   const approveCarrier = async (carrierId: string) => {
     try {
-      const timestamp = await writeTimestamp(
-        `carriers/${carrierId}/approved`
-      );
+      const timestamp = await writeTimestamp(`carriers/${carrierId}/approved`);
       const timeServiceStatus = getTimeServiceStatus();
 
       await updateDoc(doc(db, "users", carrierId), {
@@ -102,9 +98,7 @@ export default function PendingCarriers() {
         return;
       }
 
-      const timestamp = await writeTimestamp(
-        `carriers/${carrierId}/rejected`
-      );
+      const timestamp = await writeTimestamp(`carriers/${carrierId}/rejected`);
       const timeServiceStatus = getTimeServiceStatus();
 
       await updateDoc(doc(db, "users", carrierId), {
@@ -147,7 +141,7 @@ export default function PendingCarriers() {
 
       {carriers.length === 0 ? (
         <div className="bg-white rounded-xl shadow-md p-12 text-center">
-          <div className="text-7xl mb-4">🎉</div>
+          <FaCircleCheck className="text-7xl mb-4 mx-auto text-green-500" />
           <h3 className="text-2xl font-bold text-gray-800 mb-3">
             No pending approvals
           </h3>
@@ -216,16 +210,22 @@ export default function PendingCarriers() {
                           onClick={() => approveCarrier(carrier.id)}
                           className="px-4 py-2 bg-success text-white rounded-lg hover:bg-success-dark transition-all shadow-sm hover:shadow-md font-semibold"
                         >
-                          ✅ Approve
+                          <span className="inline-flex items-center gap-2">
+                            <FaCircleCheck /> Approve
+                          </span>
                         </button>
                         <button
                           onClick={() => rejectCarrier(carrier.id)}
                           className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all shadow-sm hover:shadow-md font-semibold"
                         >
-                          ❌ Reject
+                          <span className="inline-flex items-center gap-2">
+                            <FaXmark /> Reject
+                          </span>
                         </button>
                         <button className="px-4 py-2 border-2 border-primary text-primary rounded-lg hover:bg-primary-bg transition-all font-semibold">
-                          👁️ View
+                          <span className="inline-flex items-center gap-2">
+                            <FaEye /> View
+                          </span>
                         </button>
                       </div>
                     </td>

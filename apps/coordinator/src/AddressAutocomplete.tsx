@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { FaXmark } from "react-icons/fa6";
 
 declare global {
   interface Window {
@@ -83,7 +84,7 @@ export default function AddressAutocomplete({
               setSuggestions([]);
             }
             setIsLoading(false);
-          }
+          },
         );
       } catch (err) {
         console.error("Error getting suggestions:", err);
@@ -149,7 +150,7 @@ export default function AddressAutocomplete({
               className="text-gray-400 hover:text-gray-600"
               title="Clear"
             >
-              ✕
+              <FaXmark />
             </button>
           )}
         </div>
