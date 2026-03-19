@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { auth, db } from "@config";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import {
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+} from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 
 const ROLE = "coordinator";
@@ -10,6 +13,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [resetMessage, setResetMessage] = useState("");
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,7 +25,7 @@ export default function Login() {
       const userCredential = await signInWithEmailAndPassword(
         auth,
         email,
-        password
+        password,
       );
 
       const user = userCredential.user;
@@ -48,6 +52,24 @@ export default function Login() {
     }
   };
 
+  const handleForgotPassword = async () => {
+    const targetEmail = email.trim();
+    setError("");
+    setResetMessage("");
+
+    if (!targetEmail) {
+      setError("Enter your email first, then click Forgot password.");
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, targetEmail);
+      setResetMessage("Password reset link sent. Check your email inbox.");
+    } catch (err: any) {
+      setError(err.message || "Could not send reset email.");
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary to-primary-dark">
       <div className="bg-white rounded-2xl shadow-2xl p-10 w-96">
@@ -57,15 +79,23 @@ export default function Login() {
             <span className="text-white font-bold text-3xl">P</span>
           </div>
         </div>
-        
+
         <h1 className="text-3xl font-bold text-center text-gray-800 mb-2">
           PTROS Coordinator
         </h1>
-        <p className="text-center text-gray-500 mb-8">Sign in to your account</p>
+        <p className="text-center text-gray-500 mb-8">
+          Sign in to your account
+        </p>
 
         {error && (
           <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4 rounded">
             <p className="text-red-700 text-sm">{error}</p>
+          </div>
+        )}
+
+        {resetMessage && (
+          <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-4 rounded">
+            <p className="text-green-700 text-sm">{resetMessage}</p>
           </div>
         )}
 
@@ -108,11 +138,15 @@ export default function Login() {
             {loading ? "Signing in..." : "Login"}
           </button>
         </form>
-        
+
         <div className="mt-6 text-center">
-          <a href="#" className="text-sm text-primary hover:text-primary-dark">
+          <button
+            type="button"
+            onClick={handleForgotPassword}
+            className="text-sm text-primary hover:text-primary-dark"
+          >
             Forgot password?
-          </a>
+          </button>
         </div>
       </div>
     </div>

@@ -203,30 +203,42 @@ export default function Header({ user, userProfile }: Props) {
                   <p className="text-sm text-gray-500">Coordinator</p>
                 </div>
                 <div className="py-2">
-                  <a
-                    href="/settings"
-                    className="block px-4 py-2 hover:bg-primary-bg hover:text-primary transition-colors"
+                  <button
+                    onClick={() => {
+                      navigate("/settings");
+                      setShowMenu(false);
+                    }}
+                    className="w-full text-left block px-4 py-2 hover:bg-primary-bg hover:text-primary transition-colors"
                   >
                     <span className="inline-flex items-center gap-2">
                       <FaGear /> Settings
                     </span>
-                  </a>
-                  <a
-                    href="#"
-                    className="block px-4 py-2 hover:bg-primary-bg hover:text-primary transition-colors"
+                  </button>
+                  <button
+                    onClick={() => {
+                      navigate("/analytics");
+                      setShowMenu(false);
+                    }}
+                    className="w-full text-left block px-4 py-2 hover:bg-primary-bg hover:text-primary transition-colors"
                   >
                     <span className="inline-flex items-center gap-2">
                       <FaChartLine /> Analytics
                     </span>
-                  </a>
-                  <a
-                    href="#"
-                    className="block px-4 py-2 hover:bg-primary-bg hover:text-primary transition-colors"
+                  </button>
+                  <button
+                    onClick={() => {
+                      window.open(
+                        "mailto:support@ptros.com?subject=Coordinator%20Help%20Request",
+                        "_self",
+                      );
+                      setShowMenu(false);
+                    }}
+                    className="w-full text-left block px-4 py-2 hover:bg-primary-bg hover:text-primary transition-colors"
                   >
                     <span className="inline-flex items-center gap-2">
                       <FaWandMagicSparkles /> Help
                     </span>
-                  </a>
+                  </button>
                 </div>
                 <div className="border-t border-gray-100 py-2">
                   <button

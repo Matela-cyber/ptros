@@ -60,6 +60,7 @@ interface DeliveryDetails {
   deliveryDate: Date;
   carrierName?: string;
   carrierId?: string;
+  carrierPhone?: string;
   packageDescription: string;
   packageWeight?: number;
   packageDimensions?: string;
@@ -116,6 +117,7 @@ export default function DeliveryDetails() {
           deliveryDate: data.deliveryDate?.toDate(),
           carrierName: data.carrierName,
           carrierId: data.carrierId,
+          carrierPhone: data.carrierPhone,
           packageDescription: data.packageDescription,
           packageWeight: data.packageWeight,
           packageDimensions: data.packageDimensions,
@@ -217,6 +219,52 @@ export default function DeliveryDetails() {
     }
   };
 
+  const cancelDelivery = async () => {
+    if (!delivery) return;
+    const reason = window.prompt("Reason for cancellation (required):")?.trim();
+    if (!reason) return;
+
+    try {
+      const timestamp = await writeTimestamp(
+        `deliveries/${delivery.id}/cancelled`,
+      );
+      const timeServiceStatus = getTimeServiceStatus();
+
+      await updateDoc(doc(db, "deliveries", delivery.id), {
+        status: "cancelled",
+        cancelledAt: timestamp,
+        cancelledReason: reason,
+        updatedAt: timestamp,
+        timeSource: timeServiceStatus.primarySource,
+      });
+
+      toast.success("Delivery cancelled");
+      loadDelivery(delivery.id);
+    } catch (error) {
+      console.error("Error cancelling delivery:", error);
+      toast.error("Failed to cancel delivery");
+    }
+  };
+
+  const shareDelivery = async () => {
+    const url = `${window.location.origin}/deliveries/${delivery?.id}`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `Delivery ${delivery?.trackingCode}`,
+          text: `Track delivery ${delivery?.trackingCode}`,
+          url,
+        });
+      } else {
+        await navigator.clipboard.writeText(url);
+        toast.success("Delivery link copied to clipboard");
+      }
+    } catch (error) {
+      console.error("Share failed:", error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -284,10 +332,16 @@ export default function DeliveryDetails() {
                 <FaMap /> Live Track
               </>
             </button>
-            <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+            <button
+              onClick={() => window.print()}
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
               Print
             </button>
-            <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+            <button
+              onClick={shareDelivery}
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
               Share
             </button>
           </div>
@@ -842,13 +896,36 @@ export default function DeliveryDetails() {
               <FaBolt /> Quick Actions
             </h2>
             <div className="space-y-3">
-              <button className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+              <button
+                onClick={() => {
+                  const phone =
+                    delivery.customerPhone || delivery.deliveryContactPhone;
+                  if (!phone) {
+                    toast.error("No customer phone available");
+                    return;
+                  }
+                  window.location.href = `tel:${phone}`;
+                }}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
                 Send Update to Customer
               </button>
-              <button className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+              <button
+                onClick={() => {
+                  if (!delivery.carrierPhone) {
+                    toast.error("No carrier phone available");
+                    return;
+                  }
+                  window.location.href = `tel:${delivery.carrierPhone}`;
+                }}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
                 Contact Carrier
               </button>
-              <button className="w-full px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50">
+              <button
+                onClick={cancelDelivery}
+                className="w-full px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50"
+              >
                 Cancel Delivery
               </button>
             </div>

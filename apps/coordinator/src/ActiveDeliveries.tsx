@@ -51,6 +51,7 @@ export default function ActiveDeliveries() {
     assigned: 0,
     inTransit: 0,
     delivered: 0,
+    cancelled: 0,
     revenue: 0,
   });
 
@@ -68,6 +69,7 @@ export default function ActiveDeliveries() {
           assigned: 0,
           inTransit: 0,
           delivered: 0,
+          cancelled: 0,
           revenue: 0,
         };
 
@@ -100,6 +102,7 @@ export default function ActiveDeliveries() {
             statsTemp.delivered++;
             statsTemp.revenue += delivery.paymentAmount;
           }
+          if (delivery.status === "cancelled") statsTemp.cancelled++;
         });
 
         setDeliveries(deliveryList);
@@ -265,6 +268,15 @@ export default function ActiveDeliveries() {
       </div>
     );
   }
+
+  const successRate =
+    stats.delivered + stats.cancelled > 0
+      ? Math.round(
+          (stats.delivered / (stats.delivered + stats.cancelled)) * 100,
+        )
+      : 0;
+  const avgDeliveredAmount =
+    stats.delivered > 0 ? stats.revenue / stats.delivered : 0;
 
   return (
     <div>
@@ -605,12 +617,14 @@ export default function ActiveDeliveries() {
           </h3>
           <ul className="space-y-3 text-sm">
             <li className="flex justify-between">
-              <span className="text-gray-600">Avg delivery time:</span>
-              <span className="font-medium">2.5 hours</span>
+              <span className="text-gray-600">Avg delivered amount:</span>
+              <span className="font-medium">
+                M{avgDeliveredAmount.toFixed(2)}
+              </span>
             </li>
             <li className="flex justify-between">
               <span className="text-gray-600">Success rate:</span>
-              <span className="font-medium text-green-600">98.2%</span>
+              <span className="font-medium text-green-600">{successRate}%</span>
             </li>
             <li className="flex justify-between">
               <span className="text-gray-600">Today's deliveries:</span>
