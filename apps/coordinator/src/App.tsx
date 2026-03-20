@@ -9,6 +9,7 @@ import {
   initializeTimeServiceMonitor,
   cleanupTimeServiceMonitor,
 } from "./services/timeService";
+import { applyDarkMode } from "./settingsStore";
 
 import GoogleMapsLoader from "./GoogleMapsLoader";
 import AppRouter from "./AppRouter";
@@ -23,6 +24,9 @@ function App() {
   const [userRole, setUserRole] = useState<string | null>(null);
 
   useEffect(() => {
+    // Initial mode should always be normal until user preference is loaded.
+    applyDarkMode(false);
+
     // Initialize time service monitor for Realtime Database
     initializeTimeServiceMonitor();
 
@@ -30,10 +34,18 @@ function App() {
       if (currentUser) {
         const userDoc = await getDoc(doc(db, "users", currentUser.uid));
         const role = userDoc.exists() ? userDoc.data()?.role : null;
+        const darkModeEnabled = userDoc.exists()
+          ? Boolean(
+              userDoc.data()?.preferences?.darkMode ?? userDoc.data()?.darkMode,
+            )
+          : false;
+
+        applyDarkMode(darkModeEnabled);
 
         setUser(currentUser);
         setUserRole(role);
       } else {
+        applyDarkMode(false);
         setUser(null);
         setUserRole(null);
       }

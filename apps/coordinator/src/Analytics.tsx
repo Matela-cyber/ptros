@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { db } from "@config";
 import { collection, getDocs, query, where } from "firebase/firestore";
+import { Link } from "react-router-dom";
 
 interface AnalyticsSummary {
   successRate: number;
@@ -157,25 +158,30 @@ export default function Analytics() {
           {
             label: "Delivery Success Rate",
             value: loading ? "..." : `${summary.successRate.toFixed(1)}%`,
+            to: "/deliveries/active",
           },
           {
             label: "Avg Delivery Time",
             value: loading ? "..." : `${summary.avgDeliveryMinutes} min`,
+            to: "/deliveries/history",
           },
           {
             label: "Active Carriers",
             value: loading ? "..." : `${summary.activeCarriers}`,
+            to: "/carriers/active",
           },
           {
             label: "Customer Satisfaction",
             value: loading
               ? "..."
               : `${summary.customerSatisfaction.toFixed(1)} / 5`,
+            to: "/customers",
           },
         ].map((item) => (
-          <div
+          <Link
             key={item.label}
-            className="rounded-xl border border-gray-200 bg-white p-4 md:p-5 shadow-sm"
+            to={item.to}
+            className="rounded-xl border border-gray-200 bg-white p-4 md:p-5 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 block"
           >
             <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">
               {item.label}
@@ -183,7 +189,7 @@ export default function Analytics() {
             <p className="text-2xl font-bold text-gray-800 mt-2">
               {item.value}
             </p>
-          </div>
+          </Link>
         ))}
       </div>
 

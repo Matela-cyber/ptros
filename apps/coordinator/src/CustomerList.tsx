@@ -122,13 +122,15 @@ export default function CustomerList() {
                     <td className="px-6 py-4 text-sm text-gray-600">
                       {customer.city || "-"}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      <Link
-                        to={`/customers/${customer.id}`}
-                        className="px-3 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
-                      >
-                        View
-                      </Link>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col space-y-2">
+                        <Link
+                          to={`/customers/${customer.id}`}
+                          className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200 text-center"
+                        >
+                          View
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}

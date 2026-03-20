@@ -96,7 +96,8 @@ export default function ActiveDeliveries() {
           statsTemp.total++;
           if (delivery.status === "pending" || delivery.status === "created")
             statsTemp.pending++;
-          if (delivery.status === "assigned") statsTemp.assigned++;
+          if (delivery.status === "assigned" || delivery.status === "accepted")
+            statsTemp.assigned++;
           if (delivery.status === "in_transit") statsTemp.inTransit++;
           if (delivery.status === "delivered") {
             statsTemp.delivered++;
@@ -130,7 +131,15 @@ export default function ActiveDeliveries() {
   // Filter deliveries
   const filteredDeliveries = deliveries.filter((delivery) => {
     // Status filter
-    if (filter !== "all" && delivery.status !== filter) return false;
+    if (filter !== "all") {
+      if (filter === "assigned") {
+        if (!["assigned", "accepted"].includes(delivery.status)) {
+          return false;
+        }
+      } else if (delivery.status !== filter) {
+        return false;
+      }
+    }
 
     // Search filter
     if (searchTerm) {
@@ -221,6 +230,7 @@ export default function ActiveDeliveries() {
       case "created":
         return "bg-yellow-100 text-yellow-800";
       case "assigned":
+      case "accepted":
         return "bg-blue-100 text-blue-800";
       case "picked_up":
         return "bg-purple-100 text-purple-800";
@@ -261,6 +271,16 @@ export default function ActiveDeliveries() {
     }
   };
 
+  const canLiveTrack = (status: string) =>
+    [
+      "assigned",
+      "accepted",
+      "picked_up",
+      "in_transit",
+      "out_for_delivery",
+      "delivered",
+    ].includes(status);
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -277,6 +297,11 @@ export default function ActiveDeliveries() {
       : 0;
   const avgDeliveredAmount =
     stats.delivered > 0 ? stats.revenue / stats.delivered : 0;
+
+  const getStatCardClass = (active: boolean) =>
+    `bg-white p-4 rounded-xl shadow border transition-all text-left ${
+      active ? "ring-2 ring-blue-500 border-blue-200" : "border-transparent"
+    } hover:shadow-md hover:-translate-y-0.5`;
 
   return (
     <div>
@@ -303,40 +328,64 @@ export default function ActiveDeliveries() {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
-          <div className="bg-white p-4 rounded-xl shadow">
+          <button
+            type="button"
+            onClick={() => setFilter("all")}
+            className={getStatCardClass(filter === "all")}
+          >
             <div className="text-sm text-gray-500">Total</div>
             <div className="text-2xl font-bold">{stats.total}</div>
-          </div>
-          <div className="bg-white p-4 rounded-xl shadow">
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter("pending")}
+            className={getStatCardClass(filter === "pending")}
+          >
             <div className="text-sm text-gray-500">Pending</div>
             <div className="text-2xl font-bold text-yellow-600">
               {stats.pending}
             </div>
-          </div>
-          <div className="bg-white p-4 rounded-xl shadow">
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter("assigned")}
+            className={getStatCardClass(filter === "assigned")}
+          >
             <div className="text-sm text-gray-500">Assigned</div>
             <div className="text-2xl font-bold text-blue-600">
               {stats.assigned}
             </div>
-          </div>
-          <div className="bg-white p-4 rounded-xl shadow">
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter("in_transit")}
+            className={getStatCardClass(filter === "in_transit")}
+          >
             <div className="text-sm text-gray-500">In Transit</div>
             <div className="text-2xl font-bold text-indigo-600">
               {stats.inTransit}
             </div>
-          </div>
-          <div className="bg-white p-4 rounded-xl shadow">
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter("delivered")}
+            className={getStatCardClass(filter === "delivered")}
+          >
             <div className="text-sm text-gray-500">Delivered</div>
             <div className="text-2xl font-bold text-green-600">
               {stats.delivered}
             </div>
-          </div>
-          <div className="bg-white p-4 rounded-xl shadow">
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter("delivered")}
+            className={getStatCardClass(filter === "delivered")}
+          >
             <div className="text-sm text-gray-500">Revenue</div>
             <div className="text-2xl font-bold text-purple-600">
               M{stats.revenue.toFixed(2)}
             </div>
-          </div>
+          </button>
         </div>
 
         {/* Filters */}
@@ -525,65 +574,65 @@ export default function ActiveDeliveries() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col space-y-2">
-                        <div className="flex space-x-2">
-                          <Link
-                            to={`/deliveries/${delivery.id}`}
-                            className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200"
-                          >
-                            View
-                          </Link>
+                        <Link
+                          to={`/deliveries/${delivery.id}`}
+                          className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200 text-center"
+                        >
+                          View
+                        </Link>
+
+                        {canLiveTrack(delivery.status) && (
                           <Link
                             to={`/deliveries/${delivery.id}/track`}
-                            className="px-3 py-1 bg-cyan-100 text-cyan-700 rounded text-sm hover:bg-cyan-200"
+                            className="px-3 py-1 bg-cyan-100 text-cyan-700 rounded text-sm hover:bg-cyan-200 text-center"
                           >
                             Live Track
                           </Link>
+                        )}
 
-                          {delivery.status === "pending" && (
-                            <button
-                              onClick={() => assignCarrier(delivery.id)}
-                              className="px-3 py-1 bg-green-100 text-green-700 rounded text-sm hover:bg-green-200"
-                            >
-                              Assign
-                            </button>
-                          )}
+                        {(delivery.status === "pending" ||
+                          delivery.status === "created") && (
+                          <button
+                            onClick={() => assignCarrier(delivery.id)}
+                            className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200 text-center"
+                          >
+                            Assign
+                          </button>
+                        )}
 
-                          {delivery.status === "assigned" && (
-                            <button
-                              onClick={() =>
-                                updateStatus(delivery.id, "picked_up")
-                              }
-                              className="px-3 py-1 bg-purple-100 text-purple-700 rounded text-sm hover:bg-purple-200"
-                            >
-                              Mark Picked
-                            </button>
-                          )}
-                        </div>
+                        {(delivery.status === "assigned" ||
+                          delivery.status === "accepted") && (
+                          <button
+                            onClick={() =>
+                              updateStatus(delivery.id, "picked_up")
+                            }
+                            className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs hover:bg-purple-200 text-center"
+                          >
+                            Mark Picked
+                          </button>
+                        )}
 
-                        {/* Status quick actions */}
-                        <div className="flex space-x-1">
-                          {delivery.status === "picked_up" && (
-                            <button
-                              onClick={() =>
-                                updateStatus(delivery.id, "in_transit")
-                              }
-                              className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs hover:bg-indigo-200"
-                            >
-                              Start Transit
-                            </button>
-                          )}
+                        {delivery.status === "picked_up" && (
+                          <button
+                            onClick={() =>
+                              updateStatus(delivery.id, "in_transit")
+                            }
+                            className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs hover:bg-indigo-200 text-center"
+                          >
+                            Start Transit
+                          </button>
+                        )}
 
-                          {delivery.status === "in_transit" && (
-                            <button
-                              onClick={() =>
-                                updateStatus(delivery.id, "delivered")
-                              }
-                              className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200"
-                            >
-                              Mark Delivered
-                            </button>
-                          )}
-                        </div>
+                        {delivery.status === "in_transit" && (
+                          <button
+                            onClick={() =>
+                              updateStatus(delivery.id, "delivered")
+                            }
+                            className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200 text-center"
+                          >
+                            Mark Delivered
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
