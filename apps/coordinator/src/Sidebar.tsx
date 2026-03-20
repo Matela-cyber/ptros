@@ -190,19 +190,19 @@ export default function Sidebar() {
             </h3>
             <div className="text-xs space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-blue-200">Active:</span>
+                <span className="text-blue-200">Active Deliveries:</span>
                 <span className="font-bold text-lg text-accent">
                   {stats.active}
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-blue-200">Today:</span>
+                <span className="text-blue-200">Delivered Today:</span>
                 <span className="font-bold text-lg text-white">
                   {stats.today}
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-blue-200">Revenue:</span>
+                <span className="text-blue-200">Revenue Today:</span>
                 <span className="font-bold text-lg text-success">
                   M{stats.revenue.toLocaleString()}
                 </span>

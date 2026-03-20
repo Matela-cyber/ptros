@@ -200,6 +200,14 @@ service cloud.firestore {
       allow read: if isCoordinator();
     }
 
+    // ==================== KNOWN LOCATIONS COLLECTION ====================
+    // Canonical pickup/drop-off locations curated by coordinators
+    match /knownLocations/{locationId} {
+      // COORDINATOR: full access for reading/saving curated locations
+      allow read, write: if isCoordinator();
+      allow create, update, delete: if isCoordinator();
+    }
+
     // ==================== DEFAULT DENY ====================
     match /{document=**} {
       allow read, write: if false;
