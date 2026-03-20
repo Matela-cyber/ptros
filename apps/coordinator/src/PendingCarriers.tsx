@@ -11,7 +11,7 @@ import {
 } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
 import { writeTimestamp, getTimeServiceStatus } from "./services/timeService";
-import { FaCircleCheck, FaEye, FaXmark } from "react-icons/fa6";
+import { FaCircleCheck } from "react-icons/fa6";
 import { useNavigate } from "react-router-dom";
 
 interface PendingCarrier {
@@ -204,32 +204,29 @@ export default function PendingCarriers() {
                     <td className="px-6 py-4 text-sm text-gray-500">
                       {carrier.createdAt.toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4 text-sm font-medium">
-                      <div className="flex space-x-3">
-                        <button
-                          onClick={() => approveCarrier(carrier.id)}
-                          className="px-4 py-2 bg-success text-white rounded-lg hover:bg-success-dark transition-all shadow-sm hover:shadow-md font-semibold"
-                        >
-                          <span className="inline-flex items-center gap-2">
-                            <FaCircleCheck /> Approve
-                          </span>
-                        </button>
-                        <button
-                          onClick={() => rejectCarrier(carrier.id)}
-                          className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all shadow-sm hover:shadow-md font-semibold"
-                        >
-                          <span className="inline-flex items-center gap-2">
-                            <FaXmark /> Reject
-                          </span>
-                        </button>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col space-y-2">
                         <button
                           onClick={() => navigate(`/carriers/${carrier.id}`)}
-                          className="px-4 py-2 border-2 border-primary text-primary rounded-lg hover:bg-primary-bg transition-all font-semibold"
+                          className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200 text-center"
                         >
-                          <span className="inline-flex items-center gap-2">
-                            <FaEye /> View
-                          </span>
+                          View
                         </button>
+
+                        <div className="flex space-x-1">
+                          <button
+                            onClick={() => approveCarrier(carrier.id)}
+                            className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={() => rejectCarrier(carrier.id)}
+                            className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200"
+                          >
+                            Reject
+                          </button>
+                        </div>
                       </div>
                     </td>
                   </tr>

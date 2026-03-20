@@ -231,13 +231,15 @@ export default function CustomerDetails() {
                         ? format(delivery.createdAt, "MMM d, h:mm a")
                         : "-"}
                     </td>
-                    <td className="px-6 py-4 text-sm">
-                      <Link
-                        to={`/deliveries/${delivery.id}`}
-                        className="text-blue-600 hover:text-blue-800 font-medium"
-                      >
-                        Open
-                      </Link>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col space-y-2">
+                        <Link
+                          to={`/deliveries/${delivery.id}`}
+                          className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200 text-center"
+                        >
+                          View
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}

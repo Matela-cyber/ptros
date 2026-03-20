@@ -171,17 +171,17 @@ export default function DeliveryHistory() {
                           ? format(row.createdAt, "MMM d, h:mm a")
                           : "-"}
                     </td>
-                    <td className="px-6 py-4 text-sm">
-                      <div className="flex items-center gap-3">
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col space-y-2">
                         <Link
                           to={`/deliveries/${row.id}`}
-                          className="text-blue-600 hover:text-blue-800 font-medium"
+                          className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200 text-center"
                         >
                           View
                         </Link>
                         <Link
                           to={`/deliveries/${row.id}/track`}
-                          className="text-cyan-600 hover:text-cyan-800 font-medium"
+                          className="px-3 py-1 bg-cyan-100 text-cyan-700 rounded text-sm hover:bg-cyan-200 text-center"
                         >
                           Track
                         </Link>

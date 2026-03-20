@@ -225,20 +225,6 @@ export default function Header({ user, userProfile }: Props) {
                       <FaChartLine /> Analytics
                     </span>
                   </button>
-                  <button
-                    onClick={() => {
-                      window.open(
-                        "mailto:support@ptros.com?subject=Coordinator%20Help%20Request",
-                        "_self",
-                      );
-                      setShowMenu(false);
-                    }}
-                    className="w-full text-left block px-4 py-2 hover:bg-primary-bg hover:text-primary transition-colors"
-                  >
-                    <span className="inline-flex items-center gap-2">
-                      <FaWandMagicSparkles /> Help
-                    </span>
-                  </button>
                 </div>
                 <div className="border-t border-gray-100 py-2">
                   <button

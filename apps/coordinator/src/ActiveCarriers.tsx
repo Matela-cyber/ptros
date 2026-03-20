@@ -250,6 +250,11 @@ export default function ActiveCarriers() {
     );
   }
 
+  const getStatCardClass = (active: boolean) =>
+    `bg-white p-4 rounded-xl shadow border transition-all text-left ${
+      active ? "ring-2 ring-blue-500 border-blue-200" : "border-transparent"
+    } hover:shadow-md hover:-translate-y-0.5`;
+
   return (
     <div>
       <Toaster position="top-right" />
@@ -264,40 +269,64 @@ export default function ActiveCarriers() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
-        <div className="bg-white p-4 rounded-xl shadow">
+        <button
+          type="button"
+          onClick={() => setFilter("all")}
+          className={getStatCardClass(filter === "all")}
+        >
           <div className="text-sm text-gray-500">Total Carriers</div>
           <div className="text-2xl font-bold">{stats.total}</div>
-        </div>
-        <div className="bg-white p-4 rounded-xl shadow">
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilter("active")}
+          className={getStatCardClass(filter === "active")}
+        >
           <div className="text-sm text-gray-500">Active</div>
           <div className="text-2xl font-bold text-green-600">
             {stats.active}
           </div>
-        </div>
-        <div className="bg-white p-4 rounded-xl shadow">
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilter("pending")}
+          className={getStatCardClass(filter === "pending")}
+        >
           <div className="text-sm text-gray-500">Pending</div>
           <div className="text-2xl font-bold text-yellow-600">
             {stats.pending}
           </div>
-        </div>
-        <div className="bg-white p-4 rounded-xl shadow">
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilter("inactive")}
+          className={getStatCardClass(filter === "inactive")}
+        >
           <div className="text-sm text-gray-500">Inactive</div>
           <div className="text-2xl font-bold text-gray-600">
             {stats.inactive}
           </div>
-        </div>
-        <div className="bg-white p-4 rounded-xl shadow">
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilter("all")}
+          className={getStatCardClass(filter === "all")}
+        >
           <div className="text-sm text-gray-500">Total Earnings</div>
           <div className="text-2xl font-bold text-purple-600">
             M{stats.totalEarnings}
           </div>
-        </div>
-        <div className="bg-white p-4 rounded-xl shadow">
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilter("all")}
+          className={getStatCardClass(filter === "all")}
+        >
           <div className="text-sm text-gray-500">Total Deliveries</div>
           <div className="text-2xl font-bold text-blue-600">
             {stats.totalDeliveries}
           </div>
-        </div>
+        </button>
       </div>
 
       {/* Filters */}

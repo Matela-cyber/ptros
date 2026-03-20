@@ -1,5 +1,5 @@
 // apps/coordinator/src/Sidebar.tsx
-import { NavLink } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { db } from "@config";
 import {
@@ -40,6 +40,8 @@ export default function Sidebar() {
 
   useEffect(() => {
     fetchQuickStats();
+    const interval = setInterval(fetchQuickStats, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const fetchQuickStats = async () => {
@@ -53,31 +55,46 @@ export default function Sidebar() {
         collection(db, "deliveries"),
         where("status", "in", [
           "pending",
+          "created",
           "assigned",
+          "accepted",
           "picked_up",
           "in_transit",
+          "out_for_delivery",
         ]),
       );
       const activeSnapshot = await getDocs(activeQuery);
 
-      // Fetch completed today
+      // Fetch delivered and compute today's values client-side
+      // to support records missing deliveredAt (fallback to createdAt)
       const todayQuery = query(
         collection(db, "deliveries"),
         where("status", "==", "delivered"),
-        where("deliveredAt", ">=", todayTimestamp),
       );
       const todaySnapshot = await getDocs(todayQuery);
 
-      // Calculate revenue today
+      // Calculate completed today + revenue today
+      let completedToday = 0;
       let revenue = 0;
       todaySnapshot.forEach((doc) => {
         const data = doc.data();
-        revenue += data.price || 0;
+        const deliveredAt: Date | null = data.deliveredAt?.toDate
+          ? data.deliveredAt.toDate()
+          : null;
+        const createdAt: Date | null = data.createdAt?.toDate
+          ? data.createdAt.toDate()
+          : null;
+
+        const completedAt = deliveredAt || createdAt;
+        if (completedAt && completedAt >= todayTimestamp.toDate()) {
+          completedToday += 1;
+          revenue += data.paymentAmount || data.price || 0;
+        }
       });
 
       setStats({
         active: activeSnapshot.size,
-        today: todaySnapshot.size,
+        today: completedToday,
         revenue: Math.round(revenue),
       });
     } catch (error) {
@@ -105,27 +122,33 @@ export default function Sidebar() {
     <aside
       className={`bg-primary text-white ${
         collapsed ? "w-20" : "w-64"
-      } transition-all duration-300 flex flex-col h-screen shadow-xl flex-shrink-0`}
+      } transition-all duration-300 flex flex-col h-screen sticky top-0 shadow-xl flex-shrink-0 overflow-hidden`}
     >
       {/* Logo */}
       <div className="p-6 border-b border-primary-dark">
         <div className="flex items-center justify-between">
-          {!collapsed && (
-            <div className="flex items-center space-x-3">
+          <Link
+            to="/dashboard"
+            className="flex items-center space-x-3 hover:opacity-90 transition-opacity"
+            aria-label="Go to dashboard"
+          >
+            {!collapsed && (
+              <>
+                <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-md">
+                  <span className="text-primary font-bold text-xl">P</span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold">PTROS</h2>
+                  <p className="text-xs text-blue-200">Coordinator</p>
+                </div>
+              </>
+            )}
+            {collapsed && (
               <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-md">
                 <span className="text-primary font-bold text-xl">P</span>
               </div>
-              <div>
-                <h2 className="text-xl font-bold">PTROS</h2>
-                <p className="text-xs text-blue-200">Coordinator</p>
-              </div>
-            </div>
-          )}
-          {collapsed && (
-            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center mx-auto shadow-md">
-              <span className="text-primary font-bold text-xl">P</span>
-            </div>
-          )}
+            )}
+          </Link>
           <button
             onClick={() => setCollapsed(!collapsed)}
             className="text-blue-200 hover:text-white transition-colors"
@@ -136,7 +159,7 @@ export default function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-4 overflow-y-auto">
+      <nav className="flex-1 p-4 overflow-y-auto min-h-0">
         <ul className="space-y-2">
           {navItems.map((item) => (
             <li key={item.path}>
@@ -160,7 +183,7 @@ export default function Sidebar() {
 
       {/* Quick Stats (only when expanded) */}
       {!collapsed && (
-        <div className="p-4 border-t border-primary-dark">
+        <div className="p-4 border-t border-primary-dark bg-primary">
           <div className="bg-primary-dark rounded-lg p-4 shadow-inner">
             <h3 className="font-semibold text-sm mb-3 text-blue-100">
               Quick Stats

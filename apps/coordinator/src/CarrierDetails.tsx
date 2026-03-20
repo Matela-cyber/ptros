@@ -29,6 +29,7 @@ interface Carrier {
   id: string;
   email: string;
   fullName: string;
+  avatarUrl?: string;
   phone: string;
   whatsapp: string;
   address: string;
@@ -80,6 +81,13 @@ export default function CarrierDetails() {
           id: docSnap.id,
           email: data.email || "",
           fullName: data.fullName || "Unknown",
+          avatarUrl:
+            data.avatarUrl ||
+            data.photoURL ||
+            data.photoUrl ||
+            data.profileImage ||
+            data.selfieUrl ||
+            "",
           phone: data.phone || "",
           whatsapp: data.whatsapp || data.phone || "",
           address: data.address || "",
@@ -181,11 +189,25 @@ export default function CarrierDetails() {
       {/* Carrier Header */}
       <div className="bg-white rounded-xl shadow-md p-8 mb-8 border-l-4 border-green-600">
         <div className="flex items-start justify-between mb-4">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-800">
-              {carrier.fullName}
-            </h1>
-            <p className="text-gray-500 mt-1">Carrier ID: {carrier.id}</p>
+          <div className="flex items-start gap-4">
+            <div className="h-20 w-20 rounded-xl overflow-hidden bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-2xl shadow">
+              {carrier.avatarUrl ? (
+                <img
+                  src={carrier.avatarUrl}
+                  alt={carrier.fullName}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                carrier.fullName?.[0] || "C"
+              )}
+            </div>
+
+            <div>
+              <h1 className="text-3xl font-bold text-gray-800">
+                {carrier.fullName}
+              </h1>
+              <p className="text-gray-500 mt-1">Carrier ID: {carrier.id}</p>
+            </div>
           </div>
           <div className="text-right">
             <span

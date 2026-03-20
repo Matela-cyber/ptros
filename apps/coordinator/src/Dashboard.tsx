@@ -240,7 +240,10 @@ export default function Dashboard({ user, userProfile }: Props) {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow border-l-4 border-accent">
+        <Link
+          to="/deliveries/active"
+          className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-all border-l-4 border-accent hover:-translate-y-0.5 block"
+        >
           <div className="flex items-center">
             <div className="p-3 bg-accent-bg rounded-lg mr-4">
               <FaBox className="text-2xl" />
@@ -254,9 +257,12 @@ export default function Dashboard({ user, userProfile }: Props) {
               </p>
             </div>
           </div>
-        </div>
+        </Link>
 
-        <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow border-l-4 border-success">
+        <Link
+          to="/carriers/active"
+          className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-all border-l-4 border-success hover:-translate-y-0.5 block"
+        >
           <div className="flex items-center">
             <div className="p-3 bg-success-bg rounded-lg mr-4">
               <FaMotorcycle className="text-2xl" />
@@ -270,9 +276,12 @@ export default function Dashboard({ user, userProfile }: Props) {
               </p>
             </div>
           </div>
-        </div>
+        </Link>
 
-        <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow border-l-4 border-primary">
+        <Link
+          to="/deliveries/active"
+          className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-all border-l-4 border-primary hover:-translate-y-0.5 block"
+        >
           <div className="flex items-center">
             <div className="p-3 bg-primary-bg rounded-lg mr-4">
               <FaCircleCheck className="text-2xl" />
@@ -286,9 +295,12 @@ export default function Dashboard({ user, userProfile }: Props) {
               </p>
             </div>
           </div>
-        </div>
+        </Link>
 
-        <div className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow border-l-4 border-success">
+        <Link
+          to="/analytics"
+          className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-all border-l-4 border-success hover:-translate-y-0.5 block"
+        >
           <div className="flex items-center">
             <div className="p-3 bg-success-bg rounded-lg mr-4">
               <FaMoneyBill className="text-2xl" />
@@ -300,7 +312,7 @@ export default function Dashboard({ user, userProfile }: Props) {
               </p>
             </div>
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* Quick Actions */}
@@ -332,9 +344,14 @@ export default function Dashboard({ user, userProfile }: Props) {
               </div>
             )}
             {recentActivities.map((activity) => (
-              <div
+              <Link
                 key={activity.id}
-                className="flex items-center p-3 border rounded-lg hover:bg-gray-50"
+                to={
+                  activity.type === "delivery"
+                    ? `/deliveries/${activity.id}`
+                    : "/deliveries/active"
+                }
+                className="flex items-center p-3 border rounded-lg hover:bg-gray-50 hover:shadow-sm transition-all"
               >
                 <div
                   className={`w-10 h-10 rounded-full flex items-center justify-center mr-4 ${
@@ -368,7 +385,7 @@ export default function Dashboard({ user, userProfile }: Props) {
                   <p className="text-sm text-gray-500">{activity.details}</p>
                 </div>
                 <span className="text-sm text-gray-400">{activity.time}</span>
-              </div>
+              </Link>
             ))}
           </div>
         </div>
