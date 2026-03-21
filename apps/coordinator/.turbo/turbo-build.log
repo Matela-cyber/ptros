@@ -1,6 +1,0 @@
-
-> @ptros/coordinator@1.0.0 build C:\Users\Lenovo\Desktop\ptros-platform\apps\coordinator
-> tsc && vite build
-
-src/CreateDelivery.tsx(472,9): error TS6133: 'selectKnownLocation' is declared but its value is never read.
- ELIFECYCLE  Command failed with exit code 2.
