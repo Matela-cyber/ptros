@@ -10,8 +10,8 @@ import {
   db,
   realtimeDb,
   formatRouteNetworkSegmentType,
+  getDisplayRouteNetworkSegments,
   getRouteNetworkSegmentStyle,
-  isRouteNetworkSegmentRelevant,
   subscribeRouteNetworkSegments,
   type RouteNetworkSegment,
 } from "@config";
@@ -359,15 +359,15 @@ export default function PackageTrackingPage({
 
   const visibleManagedSegments = useMemo(
     () =>
-      managedSegments.filter(
-        (segment) =>
-          segment.status === "active" &&
-          isRouteNetworkSegmentRelevant(segment, [
-            delivery?.pickupLocation,
-            delivery?.deliveryLocation,
-            carrierLocation,
-            delivery?.currentLocation,
-          ]),
+      getDisplayRouteNetworkSegments(
+        managedSegments,
+        [
+          delivery?.pickupLocation,
+          delivery?.deliveryLocation,
+          carrierLocation,
+          delivery?.currentLocation,
+        ],
+        { thresholdKm: 10, fallbackLimit: 120 },
       ),
     [
       carrierLocation,
@@ -534,6 +534,28 @@ export default function PackageTrackingPage({
                       />
                     )}
 
+                    {!toPickupDirections &&
+                      delivery.pickupLocation &&
+                      carrierLocation && (
+                        <Polyline
+                          path={[
+                            {
+                              lat: carrierLocation.lat,
+                              lng: carrierLocation.lng,
+                            },
+                            {
+                              lat: delivery.pickupLocation.lat,
+                              lng: delivery.pickupLocation.lng,
+                            },
+                          ]}
+                          options={{
+                            strokeColor: "#8b5cf6",
+                            strokeOpacity: 0.85,
+                            strokeWeight: 5,
+                          }}
+                        />
+                      )}
+
                     {toDropoffDirections && (
                       <DirectionsRenderer
                         directions={toDropoffDirections}
@@ -547,6 +569,28 @@ export default function PackageTrackingPage({
                         }}
                       />
                     )}
+
+                    {!toDropoffDirections &&
+                      delivery.pickupLocation &&
+                      delivery.deliveryLocation && (
+                        <Polyline
+                          path={[
+                            {
+                              lat: delivery.pickupLocation.lat,
+                              lng: delivery.pickupLocation.lng,
+                            },
+                            {
+                              lat: delivery.deliveryLocation.lat,
+                              lng: delivery.deliveryLocation.lng,
+                            },
+                          ]}
+                          options={{
+                            strokeColor: "#f59e0b",
+                            strokeOpacity: 0.85,
+                            strokeWeight: 5,
+                          }}
+                        />
+                      )}
 
                     {delivery.pickupLocation && (
                       <Marker

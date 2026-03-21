@@ -4,8 +4,8 @@ import {
   db,
   realtimeDb,
   formatRouteNetworkSegmentType,
+  getDisplayRouteNetworkSegments,
   getRouteNetworkSegmentStyle,
-  isRouteNetworkSegmentRelevant,
   subscribeRouteNetworkSegments,
   type RouteNetworkSegment,
 } from "@config";
@@ -914,25 +914,22 @@ export default function LiveMap() {
       delivery.currentLocation,
     ]);
 
-    managedSegments
-      .filter(
-        (segment) =>
-          segment.status === "active" &&
-          isRouteNetworkSegmentRelevant(segment, contextPoints),
-      )
-      .forEach((segment) => {
-        const style = getRouteNetworkSegmentStyle(segment);
-        routePolylinesRef.current.push(
-          new window.google.maps.Polyline({
-            path: [segment.start, segment.end],
-            geodesic: true,
-            strokeColor: style.strokeColor,
-            strokeOpacity: style.strokeOpacity,
-            strokeWeight: style.strokeWeight,
-            map: mapInstance.current,
-          }),
-        );
-      });
+    getDisplayRouteNetworkSegments(managedSegments, contextPoints, {
+      thresholdKm: 12,
+      fallbackLimit: 150,
+    }).forEach((segment) => {
+      const style = getRouteNetworkSegmentStyle(segment);
+      routePolylinesRef.current.push(
+        new window.google.maps.Polyline({
+          path: [segment.start, segment.end],
+          geodesic: true,
+          strokeColor: style.strokeColor,
+          strokeOpacity: style.strokeOpacity,
+          strokeWeight: style.strokeWeight,
+          map: mapInstance.current,
+        }),
+      );
+    });
 
     return () => {
       routePolylinesRef.current.forEach((polyline) => polyline.setMap(null));
@@ -1517,14 +1514,14 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {deliveries.map((delivery) => {
-              const relevantSegments = managedSegments.filter(
-                (segment) =>
-                  segment.status === "active" &&
-                  isRouteNetworkSegmentRelevant(segment, [
-                    delivery.pickupLocation,
-                    delivery.deliveryLocation,
-                    delivery.currentLocation,
-                  ]),
+              const relevantSegments = getDisplayRouteNetworkSegments(
+                managedSegments,
+                [
+                  delivery.pickupLocation,
+                  delivery.deliveryLocation,
+                  delivery.currentLocation,
+                ],
+                { thresholdKm: 12, fallbackLimit: 20 },
               );
 
               return (

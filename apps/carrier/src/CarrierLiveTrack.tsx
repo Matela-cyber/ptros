@@ -4,8 +4,8 @@ import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { onValue, ref as rtdbRef } from "firebase/database";
 import {
   formatRouteNetworkSegmentType,
+  getDisplayRouteNetworkSegments,
   getRouteNetworkSegmentStyle,
-  isRouteNetworkSegmentRelevant,
   subscribeRouteNetworkSegments,
   type RouteNetworkSegment,
 } from "@config";
@@ -337,14 +337,10 @@ export default function CarrierLiveTrack() {
 
   const visibleManagedSegments = useMemo(
     () =>
-      managedSegments.filter(
-        (segment) =>
-          segment.status === "active" &&
-          isRouteNetworkSegmentRelevant(segment, [
-            pickupPoint,
-            destinationPoint,
-            currentPoint,
-          ]),
+      getDisplayRouteNetworkSegments(
+        managedSegments,
+        [pickupPoint, destinationPoint, currentPoint],
+        { thresholdKm: 12, fallbackLimit: 120 },
       ),
     [currentPoint, destinationPoint, managedSegments, pickupPoint],
   );

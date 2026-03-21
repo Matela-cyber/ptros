@@ -160,7 +160,7 @@ export const haversineKm = (a: LatLngPoint, b: LatLngPoint): number => {
 export const isRouteNetworkSegmentRelevant = (
   segment: RouteNetworkSegment,
   points: Array<LatLngPoint | null | undefined>,
-  thresholdKm = 4.5,
+  thresholdKm = 8,
 ) => {
   const validPoints = points.filter(Boolean) as LatLngPoint[];
   if (!validPoints.length) return false;
@@ -170,4 +170,36 @@ export const isRouteNetworkSegmentRelevant = (
       haversineKm(segment.start, point) < thresholdKm ||
       haversineKm(segment.end, point) < thresholdKm,
   );
+};
+
+interface RouteNetworkDisplayOptions {
+  thresholdKm?: number;
+  fallbackLimit?: number;
+  alwaysShowActive?: boolean;
+}
+
+export const getDisplayRouteNetworkSegments = (
+  segments: RouteNetworkSegment[],
+  points: Array<LatLngPoint | null | undefined>,
+  options?: RouteNetworkDisplayOptions,
+) => {
+  const activeSegments = segments.filter(
+    (segment) => segment.status === "active",
+  );
+  if (!activeSegments.length) return [];
+
+  const thresholdKm = options?.thresholdKm ?? 8;
+  const fallbackLimit = options?.fallbackLimit ?? 80;
+
+  if (options?.alwaysShowActive) {
+    return activeSegments.slice(0, fallbackLimit);
+  }
+
+  const relevant = activeSegments.filter((segment) =>
+    isRouteNetworkSegmentRelevant(segment, points, thresholdKm),
+  );
+
+  if (relevant.length) return relevant;
+
+  return activeSegments.slice(0, fallbackLimit);
 };

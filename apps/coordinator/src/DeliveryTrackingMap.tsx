@@ -5,8 +5,8 @@ import {
   db,
   realtimeDb,
   formatRouteNetworkSegmentType,
+  getDisplayRouteNetworkSegments,
   getRouteNetworkSegmentStyle,
-  isRouteNetworkSegmentRelevant,
   subscribeRouteNetworkSegments,
   type RouteNetworkSegment,
 } from "@config";
@@ -493,15 +493,15 @@ export default function DeliveryTrackingMap() {
 
   const visibleManagedSegments = useMemo(
     () =>
-      managedSegments.filter(
-        (segment) =>
-          segment.status === "active" &&
-          isRouteNetworkSegmentRelevant(segment, [
-            delivery?.pickupLocation,
-            delivery?.deliveryLocation,
-            carrierLocation,
-            delivery?.currentLocation,
-          ]),
+      getDisplayRouteNetworkSegments(
+        managedSegments,
+        [
+          delivery?.pickupLocation,
+          delivery?.deliveryLocation,
+          carrierLocation,
+          delivery?.currentLocation,
+        ],
+        { thresholdKm: 10, fallbackLimit: 120 },
       ),
     [
       carrierLocation,
