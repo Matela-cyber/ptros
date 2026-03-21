@@ -16,6 +16,7 @@ import {
 } from "./utils";
 import { Delivery } from "./types";
 import { toast, Toaster } from "react-hot-toast";
+import { getCarrierLiveTrackUrl } from "./liveTrackUrl";
 
 interface DashboardProps {
   user: User;
@@ -547,7 +548,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
                     <button
                       onClick={() =>
                         window.open(
-                          `/g/track/${activeDelivery.id}`,
+                          getCarrierLiveTrackUrl(activeDelivery.id),
                           "_blank",
                           "noopener,noreferrer",
                         )

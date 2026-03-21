@@ -3,8 +3,6 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { db } from "@config";
 import { collection, query, where, getDocs } from "firebase/firestore";
-import { createSampleNotifications } from "./services/notificationService";
-import toast from "react-hot-toast";
 
 type Props = {
   user: any;
@@ -38,6 +36,7 @@ export default function Dashboard({ user, userProfile }: Props) {
             status: data.status,
             pickupAddress: data.pickupAddress,
             deliveryAddress: data.deliveryAddress,
+            paymentAmount: Number(data.paymentAmount || 0),
             createdAt: data.createdAt?.toDate() || new Date(),
             estimatedDelivery: data.estimatedDelivery?.toDate(),
           });
@@ -46,13 +45,18 @@ export default function Dashboard({ user, userProfile }: Props) {
         setDeliveries(deliveryList.slice(0, 5)); // Show recent 5
 
         // Calculate stats
+        const totalSpent = deliveryList.reduce(
+          (sum, delivery) => sum + (Number(delivery.paymentAmount) || 0),
+          0,
+        );
+
         setStats({
           totalOrders: deliveryList.length,
           activeOrders: deliveryList.filter((d) => d.status !== "delivered")
             .length,
           completedOrders: deliveryList.filter((d) => d.status === "delivered")
             .length,
-          totalSpent: 0, // TODO: Calculate from actual data
+          totalSpent,
         });
       } catch (error) {
         console.error("Error fetching deliveries:", error);
@@ -89,119 +93,109 @@ export default function Dashboard({ user, userProfile }: Props) {
     },
   ];
 
-  const handleCreateSampleNotifications = async () => {
-    try {
-      await createSampleNotifications(user.uid);
-      toast.success("Sample notifications created! Check the bell icon.");
-    } catch (error) {
-      toast.error("Failed to create sample notifications");
-      console.error(error);
-    }
-  };
-
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">
+      <div className="mb-5 sm:mb-8">
+        <h1 className="text-2xl font-bold text-gray-800 sm:text-3xl">
           Welcome Back, {userProfile?.fullName || "Customer"}!
         </h1>
-        <p className="text-gray-600 mt-2">
+        <p className="mt-2 text-sm text-gray-600 sm:text-base">
           Here's an overview of your deliveries and account.
         </p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-xl shadow">
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:mb-8 sm:gap-6 md:grid-cols-2 xl:grid-cols-4">
+        <Link
+          to="/orders?filter=all"
+          className="rounded-xl bg-white p-4 shadow transition hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 sm:p-6"
+        >
           <div className="flex items-center">
             <div className="p-3 bg-blue-100 rounded-lg mr-4">
               <span className="text-2xl">📦</span>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Total Orders</p>
-              <p className="text-3xl font-bold">{stats.totalOrders}</p>
+              <p className="text-xs text-gray-500 sm:text-sm">Total Orders</p>
+              <p className="text-2xl font-bold sm:text-3xl">{stats.totalOrders}</p>
+              <p className="mt-1 text-xs font-medium text-blue-600">Tap to view all orders →</p>
             </div>
           </div>
-        </div>
+        </Link>
 
-        <div className="bg-white p-6 rounded-xl shadow">
+        <Link
+          to="/orders?filter=active"
+          className="rounded-xl bg-white p-4 shadow transition hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 sm:p-6"
+        >
           <div className="flex items-center">
             <div className="p-3 bg-yellow-100 rounded-lg mr-4">
               <span className="text-2xl">⏳</span>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Active Orders</p>
-              <p className="text-3xl font-bold">{stats.activeOrders}</p>
+              <p className="text-xs text-gray-500 sm:text-sm">Active Orders</p>
+              <p className="text-2xl font-bold sm:text-3xl">{stats.activeOrders}</p>
+              <p className="mt-1 text-xs font-medium text-yellow-700">Tap to view in-transit & assigned →</p>
             </div>
           </div>
-        </div>
+        </Link>
 
-        <div className="bg-white p-6 rounded-xl shadow">
+        <Link
+          to="/orders?filter=completed"
+          className="rounded-xl bg-white p-4 shadow transition hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-green-500 sm:p-6"
+        >
           <div className="flex items-center">
             <div className="p-3 bg-green-100 rounded-lg mr-4">
               <span className="text-2xl">✅</span>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Completed</p>
-              <p className="text-3xl font-bold">{stats.completedOrders}</p>
+              <p className="text-xs text-gray-500 sm:text-sm">Completed</p>
+              <p className="text-2xl font-bold sm:text-3xl">{stats.completedOrders}</p>
+              <p className="mt-1 text-xs font-medium text-green-700">Tap to view delivered orders →</p>
             </div>
           </div>
-        </div>
+        </Link>
 
-        <div className="bg-white p-6 rounded-xl shadow">
+        <Link
+          to="/orders?filter=completed&focus=spent"
+          className="rounded-xl bg-white p-4 shadow transition hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-purple-500 sm:p-6"
+        >
           <div className="flex items-center">
             <div className="p-3 bg-purple-100 rounded-lg mr-4">
               <span className="text-2xl">💰</span>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Total Spent</p>
-              <p className="text-3xl font-bold">M{stats.totalSpent}</p>
+              <p className="text-xs text-gray-500 sm:text-sm">Total Spent</p>
+              <p className="text-2xl font-bold sm:text-3xl">M{stats.totalSpent.toFixed(2)}</p>
+              <p className="mt-1 text-xs font-medium text-purple-700">Tap to view spending details →</p>
             </div>
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* Quick Actions */}
-      <div className="bg-white rounded-xl shadow p-8 mb-8">
-        <h3 className="text-2xl font-bold mb-6">Quick Actions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="mb-6 rounded-xl bg-white p-4 shadow sm:mb-8 sm:p-8">
+        <h3 className="mb-4 text-xl font-bold sm:mb-6 sm:text-2xl">Quick Actions</h3>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 md:grid-cols-4 md:gap-4">
           {quickActions.map((action, index) => (
             <Link
               key={index}
               to={action.path}
-              className={`${action.color} text-white p-4 rounded-lg flex flex-col items-center justify-center text-center transition transform hover:scale-105`}
+              className={`${action.color} rounded-lg p-3 text-center text-white transition transform hover:scale-105 sm:p-4`}
             >
-              <span className="text-3xl mb-2">{action.icon}</span>
-              <span className="font-medium">{action.label}</span>
+              <span className="mb-1 block text-2xl sm:mb-2 sm:text-3xl">{action.icon}</span>
+              <span className="text-sm font-medium sm:text-base">{action.label}</span>
             </Link>
           ))}
         </div>
       </div>
 
-      {/* Development: Test Notifications */}
-      {true && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-8">
-          <p className="text-sm text-blue-700 mb-3">
-            <strong>Test Mode:</strong> Create sample notifications to test the
-            notification system
-          </p>
-          <button
-            onClick={handleCreateSampleNotifications}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition"
-          >
-            Create Sample Notifications
-          </button>
-        </div>
-      )}
-
       {/* Recent Orders */}
-      <div className="bg-white rounded-xl shadow p-6">
-        <h3 className="text-xl font-bold mb-4">Recent Orders</h3>
+      <div className="rounded-xl bg-white p-4 shadow sm:p-6">
+        <h3 className="mb-4 text-lg font-bold sm:text-xl">Recent Orders</h3>
         {deliveries.length === 0 ? (
           <p className="text-gray-500 text-center py-8">No orders yet</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="border-b">
                   <th className="text-left py-3 px-4">Tracking Code</th>

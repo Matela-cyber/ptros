@@ -10,6 +10,7 @@ import {
 import { toast, Toaster } from "react-hot-toast";
 import { CarrierService } from "./carrierService";
 import { useDeliveryStatus } from "./hooks/useDeliveryStatus";
+import { getCarrierLiveTrackUrl } from "./liveTrackUrl";
 import { formatCurrency, formatDate } from "./utils";
 
 interface Delivery {
@@ -300,7 +301,11 @@ export default function MyDeliveries() {
   };
 
   const openLiveTrack = (deliveryId: string) => {
-    window.open(`/g/track/${deliveryId}`, "_blank", "noopener,noreferrer");
+    window.open(
+      getCarrierLiveTrackUrl(deliveryId),
+      "_blank",
+      "noopener,noreferrer",
+    );
   };
 
   if (loading) {

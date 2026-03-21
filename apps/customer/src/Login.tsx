@@ -1,8 +1,15 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { auth, db } from "@config";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import {
+  getMultiFactorResolver,
+  PhoneAuthProvider,
+  PhoneMultiFactorGenerator,
+  RecaptchaVerifier,
+  signInWithEmailAndPassword,
+} from "firebase/auth";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { Link, useNavigate } from "react-router-dom";
+import type { MultiFactorResolver } from "firebase/auth";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -11,74 +18,145 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [emailNotVerified, setEmailNotVerified] = useState(false);
+  const [mfaResolver, setMfaResolver] = useState<MultiFactorResolver | null>(null);
+  const [mfaVerificationId, setMfaVerificationId] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaHint, setMfaHint] = useState("");
+  const [mfaLoading, setMfaLoading] = useState(false);
+  const recaptchaContainerRef = useRef<HTMLDivElement>(null);
+  const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
+
+  useEffect(() => {
+    return () => {
+      recaptchaVerifierRef.current?.clear();
+      recaptchaVerifierRef.current = null;
+    };
+  }, []);
+
+  const ensureRecaptchaVerifier = async () => {
+    if (recaptchaVerifierRef.current) {
+      return recaptchaVerifierRef.current;
+    }
+
+    if (!recaptchaContainerRef.current) {
+      throw new Error("reCAPTCHA container not ready");
+    }
+
+    const verifier = new RecaptchaVerifier(auth, recaptchaContainerRef.current, {
+      size: "invisible",
+    });
+
+    await verifier.render();
+    recaptchaVerifierRef.current = verifier;
+    return verifier;
+  };
+
+  const finalizeCustomerLogin = async (user: any) => {
+    const userDoc = await getDoc(doc(db, "users", user.uid));
+
+    if (!userDoc.exists()) {
+      setError("Account not found. Please contact support.");
+      await auth.signOut();
+      return false;
+    }
+
+    const userData = userDoc.data();
+
+    if (userData.role !== "customer") {
+      setError(
+        "This account is not a customer account. Please use the correct portal.",
+      );
+      await auth.signOut();
+      return false;
+    }
+
+    const isEmailVerified =
+      user.emailVerified || userData.emailVerified === true;
+
+    if (!isEmailVerified) {
+      setEmailNotVerified(true);
+
+      if (user.emailVerified && !userData.emailVerified) {
+        await updateDoc(doc(db, "users", user.uid), {
+          emailVerified: true,
+          updatedAt: new Date(),
+        });
+      }
+    } else if (user.emailVerified && !userData.emailVerified) {
+      await updateDoc(doc(db, "users", user.uid), {
+        emailVerified: true,
+        updatedAt: new Date(),
+      });
+    }
+
+    console.log("Customer login successful for:", user.email);
+    return true;
+  };
+
+  const startMfaSignIn = async (resolver: MultiFactorResolver) => {
+    const phoneHint = resolver.hints[0];
+    if (!phoneHint) {
+      throw new Error("No enrolled second factor found for this account.");
+    }
+
+    const verifier = await ensureRecaptchaVerifier();
+    const provider = new PhoneAuthProvider(auth);
+    const verificationId = await provider.verifyPhoneNumber(
+      {
+        multiFactorHint: phoneHint,
+        session: resolver.session,
+      },
+      verifier,
+    );
+
+    const phoneHintInfo = phoneHint as {
+      phoneNumber?: string;
+      displayName?: string | null;
+    };
+
+    setMfaResolver(resolver);
+    setMfaVerificationId(verificationId);
+    setMfaHint(
+      phoneHintInfo.phoneNumber || phoneHintInfo.displayName || "your phone",
+    );
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
     setEmailNotVerified(false);
+    setMfaResolver(null);
+    setMfaVerificationId("");
+    setMfaCode("");
+    setMfaHint("");
 
     try {
-      // 1. Sign in with Firebase Auth
       const userCredential = await signInWithEmailAndPassword(
         auth,
         email,
         password,
       );
-
-      const user = userCredential.user;
-
-      // 2. Check user profile in Firestore
-      const userDoc = await getDoc(doc(db, "users", user.uid));
-
-      if (!userDoc.exists()) {
-        // User doesn't have a profile
-        setError("Account not found. Please contact support.");
-        await auth.signOut();
-        setLoading(false);
-        return;
-      }
-
-      const userData = userDoc.data();
-
-      // 3. Check if this is a customer account
-      if (userData.role !== "customer") {
-        setError(
-          "This account is not a customer account. Please use the correct portal.",
-        );
-        await auth.signOut();
-        setLoading(false);
-        return;
-      }
-
-      // 4. Check email verification status (INFO ONLY - DON'T BLOCK)
-      const isEmailVerified =
-        user.emailVerified || userData.emailVerified === true;
-
-      if (!isEmailVerified) {
-        setEmailNotVerified(true);
-
-        // Update Firestore with verification status if email is verified
-        if (user.emailVerified && !userData.emailVerified) {
-          await updateDoc(doc(db, "users", user.uid), {
-            emailVerified: true,
-            updatedAt: new Date(),
-          });
-        }
-      } else {
-        // Update Firestore if needed
-        if (user.emailVerified && !userData.emailVerified) {
-          await updateDoc(doc(db, "users", user.uid), {
-            emailVerified: true,
-            updatedAt: new Date(),
-          });
-        }
-      }
-
-      // 5. Login successful - always allow login
-      console.log("Customer login successful for:", user.email);
+      await finalizeCustomerLogin(userCredential.user);
     } catch (err: any) {
       console.error("Login error:", err);
+
+      if (err.code === "auth/multi-factor-auth-required") {
+        try {
+          const resolver = getMultiFactorResolver(auth, err);
+          await startMfaSignIn(resolver);
+          setError("");
+          return;
+        } catch (mfaError: any) {
+          console.error("MFA setup error:", mfaError);
+          if (mfaError?.code === "auth/operation-not-allowed") {
+            setError("Phone authentication is not enabled for this project.");
+          } else {
+            setError("Failed to start two-factor sign in. Please try again.");
+          }
+          return;
+        }
+      }
 
       // User-friendly error messages
       if (
@@ -98,6 +176,36 @@ export default function Login() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleVerifyMfaCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!mfaResolver || !mfaVerificationId || !mfaCode.trim()) {
+      setError("Enter the verification code sent to your phone.");
+      return;
+    }
+
+    setMfaLoading(true);
+    setError("");
+    try {
+      const credential = PhoneAuthProvider.credential(
+        mfaVerificationId,
+        mfaCode.trim(),
+      );
+      const assertion = PhoneMultiFactorGenerator.assertion(credential);
+      const userCredential = await mfaResolver.resolveSignIn(assertion);
+      await finalizeCustomerLogin(userCredential.user);
+    } catch (err: any) {
+      console.error("MFA verification error:", err);
+      if (err.code === "auth/invalid-verification-code") {
+        setError("Invalid verification code. Please try again.");
+      } else {
+        setError("Failed to verify two-factor code. Please try again.");
+      }
+    } finally {
+      setMfaLoading(false);
     }
   };
 
@@ -154,7 +262,8 @@ export default function Login() {
         )}
 
         {/* Login Form */}
-        <form onSubmit={handleLogin} className="space-y-6">
+        {!mfaResolver ? (
+          <form onSubmit={handleLogin} className="space-y-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Email Address
@@ -228,7 +337,59 @@ export default function Login() {
               "Sign In"
             )}
           </button>
-        </form>
+          </form>
+        ) : (
+          <form onSubmit={handleVerifyMfaCode} className="space-y-6">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm font-medium text-blue-800">
+                Two-factor authentication required
+              </p>
+              <p className="text-sm text-blue-700 mt-1">
+                Enter the SMS code sent to {mfaHint || "your phone"}.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Verification Code
+              </label>
+              <input
+                type="text"
+                placeholder="Enter SMS code"
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition"
+                required
+                disabled={mfaLoading}
+                inputMode="numeric"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={mfaLoading}
+              className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            >
+              {mfaLoading ? "Verifying..." : "Verify & Sign In"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMfaResolver(null);
+                setMfaVerificationId("");
+                setMfaCode("");
+                setMfaHint("");
+                setError("");
+              }}
+              className="w-full border border-gray-300 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-50 transition"
+            >
+              Back to Login
+            </button>
+          </form>
+        )}
+
+        <div ref={recaptchaContainerRef} className="min-h-[1px]" aria-hidden="true" />
 
         {/* Divider */}
         <div className="flex items-center my-8">

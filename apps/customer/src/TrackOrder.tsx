@@ -1,7 +1,7 @@
 // apps/customer/src/TrackOrder.tsx
 import { useState } from "react";
-import { Link } from "react-router-dom";
-import { db } from "@config";
+import { useNavigate } from "react-router-dom";
+import { auth, db } from "@config";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
 
@@ -21,49 +21,111 @@ interface TrackedOrder {
 }
 
 export default function TrackOrder() {
+  const navigate = useNavigate();
   const [trackingCode, setTrackingCode] = useState("");
   const [order, setOrder] = useState<TrackedOrder | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const findOrderByTrackingCode = async () => {
+    const normalizedCode = trackingCode.trim().toUpperCase();
+    const currentUser = auth.currentUser;
+
+    if (!normalizedCode) {
+      toast.error("Please enter a tracking code");
+      return null;
+    }
+
+    if (!currentUser) {
+      toast.error("Please sign in to track your order");
+      return null;
+    }
+
+    const q = query(
+      collection(db, "deliveries"),
+      where("customerId", "==", currentUser.uid),
+    );
+
+    const snapshot = await getDocs(q);
+
+    const foundDoc = snapshot.docs.find((doc) => {
+      const data = doc.data();
+      return String(data.trackingCode || "").toUpperCase() === normalizedCode;
+    });
+
+    if (!foundDoc) {
+      toast.error("Tracking code not found");
+      setOrder(null);
+      return null;
+    }
+
+    const data = foundDoc.data();
+    const foundOrder = {
+      id: foundDoc.id,
+      trackingCode: data.trackingCode,
+      status: data.status,
+      deliveryAddress: data.deliveryAddress,
+      carrierName: data.carrierName,
+      estimatedDelivery: data.estimatedDelivery?.toDate(),
+      otpCode: data.otpCode,
+      otpVerified: data.otpVerified,
+      proofOfDelivery: data.proofOfDelivery,
+    };
+
+    setOrder(foundOrder);
+    return foundOrder;
+  };
+
   const handleTrack = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!trackingCode.trim()) {
-      toast.error("Please enter a tracking code");
-      return;
-    }
-
     setLoading(true);
     try {
-      const q = query(
-        collection(db, "deliveries"),
-        where("trackingCode", "==", trackingCode.toUpperCase()),
-      );
-
-      const snapshot = await getDocs(q);
-
-      if (snapshot.empty) {
-        toast.error("Tracking code not found");
-        setOrder(null);
-      } else {
-        const doc = snapshot.docs[0];
-        const data = doc.data();
-        setOrder({
-          id: doc.id,
-          trackingCode: data.trackingCode,
-          status: data.status,
-          deliveryAddress: data.deliveryAddress,
-          carrierName: data.carrierName,
-          estimatedDelivery: data.estimatedDelivery?.toDate(),
-          otpCode: data.otpCode,
-          otpVerified: data.otpVerified,
-          proofOfDelivery: data.proofOfDelivery,
-        });
+      const foundOrder = await findOrderByTrackingCode();
+      if (foundOrder) {
         toast.success("Order found!");
       }
     } catch (error) {
       console.error("Error tracking order:", error);
       toast.error("Failed to track order");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewLiveMap = async () => {
+    setLoading(true);
+    try {
+      const normalizedInput = trackingCode.trim().toUpperCase();
+      const normalizedCurrentOrderCode = String(order?.trackingCode || "").toUpperCase();
+
+      // Backward-compatible behavior: if no specific order is selected/typed,
+      // open the live tracking dashboard directly.
+      if (!normalizedInput && !order) {
+        navigate("/track-map");
+        return;
+      }
+
+      // If user typed a code, always resolve using that current input
+      // (prevents stale previously-found order from being reused)
+      const shouldSearchByInput =
+        normalizedInput.length > 0 && normalizedInput !== normalizedCurrentOrderCode;
+
+      const targetOrder = shouldSearchByInput
+        ? await findOrderByTrackingCode()
+        : order ?? (await findOrderByTrackingCode());
+
+      if (!targetOrder) {
+        return;
+      }
+
+      const codeParam = encodeURIComponent(
+        String(targetOrder.trackingCode || trackingCode || "").toUpperCase(),
+      );
+      const idParam = encodeURIComponent(String(targetOrder.id || ""));
+      navigate(`/track-map?trackingCode=${codeParam}&deliveryId=${idParam}`);
+    } catch (error) {
+      console.error("Error opening live map:", error);
+      toast.error("Failed to open live map");
     } finally {
       setLoading(false);
     }
@@ -77,20 +139,30 @@ export default function TrackOrder() {
   return (
     <div>
       <Toaster position="top-right" />
-      <div className="mb-8 flex items-center justify-between">
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-800">Track Your Order</h1>
           <p className="text-gray-600 mt-2">
             Enter your tracking code to get real-time updates
           </p>
         </div>
-        <Link
-          to="/track-map"
-          className="px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 font-medium flex items-center gap-2 h-fit"
+        <button
+          type="button"
+          onClick={handleViewLiveMap}
+          disabled={loading}
+          className="flex h-fit w-full items-center justify-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 font-medium text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+          title="Open the live tracking map for this order"
         >
           🗺️ View Live Map
-        </Link>
+        </button>
       </div>
+
+      {!order && (
+        <p className="-mt-4 mb-6 text-sm text-gray-500">
+          Enter a tracking code, or press the live map button to find and open
+          that package on the map directly.
+        </p>
+      )}
 
       {/* Search Form */}
       <div className="bg-white rounded-xl shadow p-8 mb-8">
@@ -100,7 +172,18 @@ export default function TrackOrder() {
               <input
                 type="text"
                 value={trackingCode}
-                onChange={(e) => setTrackingCode(e.target.value)}
+                onChange={(e) => {
+                  const nextValue = e.target.value;
+                  setTrackingCode(nextValue);
+
+                  const normalizedNext = nextValue.trim().toUpperCase();
+                  const normalizedOrderCode = String(order?.trackingCode || "").toUpperCase();
+
+                  // Clear stale tracked result when input no longer matches it
+                  if (order && normalizedNext !== normalizedOrderCode) {
+                    setOrder(null);
+                  }
+                }}
                 placeholder="e.g., PTR-001234"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-lg"
                 disabled={loading}
