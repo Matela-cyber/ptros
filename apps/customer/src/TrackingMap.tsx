@@ -4,8 +4,8 @@ import {
   db,
   realtimeDb,
   formatRouteNetworkSegmentType,
+  getDisplayRouteNetworkSegments,
   getRouteNetworkSegmentStyle,
-  isRouteNetworkSegmentRelevant,
   subscribeRouteNetworkSegments,
   type RouteNetworkSegment,
 } from "@config";
@@ -685,19 +685,17 @@ export default function TrackingMap({ user }: Props) {
     );
     routeOverlayPolylinesRef.current = [];
 
-    if (
-      delivery.pickupLocation &&
-      effectiveCurrentLocation &&
-      delivery.deliveryLocation
-    ) {
+    if (delivery.pickupLocation && delivery.deliveryLocation) {
       const pickupPoint = {
         lat: delivery.pickupLocation.lat,
         lng: delivery.pickupLocation.lng,
       };
-      const currentPoint = {
-        lat: effectiveCurrentLocation.lat,
-        lng: effectiveCurrentLocation.lng,
-      };
+      const currentPoint = effectiveCurrentLocation
+        ? {
+            lat: effectiveCurrentLocation.lat,
+            lng: effectiveCurrentLocation.lng,
+          }
+        : null;
       const dropoffPoint = {
         lat: delivery.deliveryLocation.lat,
         lng: delivery.deliveryLocation.lng,
@@ -737,7 +735,7 @@ export default function TrackingMap({ user }: Props) {
         map: mapInstance.current,
       });
 
-      if (delivery.status === "assigned") {
+      if (delivery.status === "assigned" && currentPoint) {
         carrierToPickupPolylineRef.current = new window.google.maps.Polyline({
           path: [currentPoint, pickupPoint],
           geodesic: true,
@@ -749,7 +747,11 @@ export default function TrackingMap({ user }: Props) {
       } else {
         activePolylineRef.current = new window.google.maps.Polyline({
           path:
-            activePath.length > 1 ? activePath : [pickupPoint, currentPoint],
+            activePath.length > 1
+              ? activePath
+              : currentPoint
+                ? [pickupPoint, currentPoint]
+                : [pickupPoint, dropoffPoint],
           geodesic: true,
           strokeColor: routePalette.active,
           strokeOpacity: 0.95,
@@ -769,14 +771,14 @@ export default function TrackingMap({ user }: Props) {
         });
       }
 
-      const relevantManagedSegments = managedSegments.filter(
-        (segment) =>
-          segment.status === "active" &&
-          isRouteNetworkSegmentRelevant(segment, [
-            delivery.pickupLocation,
-            delivery.deliveryLocation,
-            effectiveCurrentLocation,
-          ]),
+      const relevantManagedSegments = getDisplayRouteNetworkSegments(
+        managedSegments,
+        [
+          delivery.pickupLocation,
+          delivery.deliveryLocation,
+          effectiveCurrentLocation,
+        ],
+        { thresholdKm: 10, fallbackLimit: 120 },
       );
 
       relevantManagedSegments.forEach((segment) => {
@@ -997,19 +999,19 @@ export default function TrackingMap({ user }: Props) {
   const visibleManagedSegments = useMemo(
     () =>
       selectedDeliveryData
-        ? managedSegments.filter(
-            (segment) =>
-              segment.status === "active" &&
-              isRouteNetworkSegmentRelevant(segment, [
-                selectedDeliveryData.pickupLocation,
-                selectedDeliveryData.deliveryLocation,
-                selectedLiveTrack
-                  ? {
-                      lat: selectedLiveTrack.lat,
-                      lng: selectedLiveTrack.lng,
-                    }
-                  : selectedDeliveryData.currentLocation,
-              ]),
+        ? getDisplayRouteNetworkSegments(
+            managedSegments,
+            [
+              selectedDeliveryData.pickupLocation,
+              selectedDeliveryData.deliveryLocation,
+              selectedLiveTrack
+                ? {
+                    lat: selectedLiveTrack.lat,
+                    lng: selectedLiveTrack.lng,
+                  }
+                : selectedDeliveryData.currentLocation,
+            ],
+            { thresholdKm: 10, fallbackLimit: 40 },
           )
         : [],
     [managedSegments, selectedDeliveryData, selectedLiveTrack],

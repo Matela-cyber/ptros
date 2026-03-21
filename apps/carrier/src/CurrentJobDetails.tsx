@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   formatRouteNetworkSegmentType,
+  getDisplayRouteNetworkSegments,
   getRouteNetworkSegmentStyle,
-  isRouteNetworkSegmentRelevant,
   subscribeRouteNetworkSegments,
   type RouteNetworkSegment,
 } from "@config";
@@ -42,6 +42,10 @@ export default function CurrentJobDetails({
   const [modalMapInstance, setModalMapInstance] =
     useState<google.maps.Map | null>(null);
 
+  useEffect(() => {
+    return subscribeRouteNetworkSegments(setManagedSegments);
+  }, []);
+
   if (!delivery) {
     return (
       <div className="bg-white rounded-xl shadow-lg p-8 text-center">
@@ -58,10 +62,6 @@ export default function CurrentJobDetails({
 
   const isAccepted = delivery.status === "accepted";
   const isAssigned = delivery.status === "assigned";
-
-  useEffect(() => {
-    return subscribeRouteNetworkSegments(setManagedSegments);
-  }, []);
 
   const handleStatusUpdate = async (
     status: "picked_up" | "in_transit" | "stuck" | "delivered",
@@ -182,14 +182,10 @@ export default function CurrentJobDetails({
 
   const visibleManagedSegments = useMemo(
     () =>
-      managedSegments.filter(
-        (segment) =>
-          segment.status === "active" &&
-          isRouteNetworkSegmentRelevant(segment, [
-            pickupPoint,
-            deliveryPoint,
-            currentPoint,
-          ]),
+      getDisplayRouteNetworkSegments(
+        managedSegments,
+        [pickupPoint, deliveryPoint, currentPoint],
+        { thresholdKm: 12, fallbackLimit: 100 },
       ),
     [currentPoint, deliveryPoint, managedSegments, pickupPoint],
   );
