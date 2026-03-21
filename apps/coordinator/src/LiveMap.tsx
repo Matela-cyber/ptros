@@ -1,6 +1,14 @@
 // apps/coordinator/src/LiveMap.tsx
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { db, realtimeDb } from "@config";
+import {
+  db,
+  realtimeDb,
+  formatRouteNetworkSegmentType,
+  getRouteNetworkSegmentStyle,
+  isRouteNetworkSegmentRelevant,
+  subscribeRouteNetworkSegments,
+  type RouteNetworkSegment,
+} from "@config";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import {
   ref as rtdbRef,
@@ -18,6 +26,7 @@ import {
   FaGlobe,
 } from "react-icons/fa6";
 import { IconType } from "react-icons";
+import { decodePolyline } from "./routeHistory";
 
 declare global {
   interface Window {
@@ -128,6 +137,9 @@ export default function LiveMap() {
   const [activeDeliveries, setActiveDeliveries] = useState<ActiveDelivery[]>(
     [],
   );
+  const [managedSegments, setManagedSegments] = useState<RouteNetworkSegment[]>(
+    [],
+  );
   const [tracksMap, setTracksMap] = useState<Record<string, any>>({});
   const [deliveryTracksMap, setDeliveryTracksMap] = useState<
     Record<string, any>
@@ -152,6 +164,8 @@ export default function LiveMap() {
   const trafficLayerRef = useRef<any>(null);
   const transitLayerRef = useRef<any>(null);
   const hasAutoFittedRef = useRef(false);
+  const routePolylinesRef = useRef<any[]>([]);
+  const routeMarkersRef = useRef<any[]>([]);
 
   const getTrackEpochMs = (track: any): number => {
     const raw = track?.timestampMs ?? track?.timestamp;
@@ -258,6 +272,10 @@ export default function LiveMap() {
       window.removeEventListener("mapsReady", handleMapsReady);
       clearTimeout(timeout);
     };
+  }, []);
+
+  useEffect(() => {
+    return subscribeRouteNetworkSegments(setManagedSegments);
   }, []);
 
   // Load carrier metadata and active deliveries from Firestore
@@ -795,6 +813,133 @@ export default function LiveMap() {
     }
   }, [carriers, deliveries, selectedType, googleMapsLoaded]);
 
+  useEffect(() => {
+    if (!mapInstance.current || !window.google || !googleMapsLoaded) return;
+
+    routePolylinesRef.current.forEach((polyline) => polyline.setMap(null));
+    routeMarkersRef.current.forEach((marker) => marker.setMap(null));
+    routePolylinesRef.current = [];
+    routeMarkersRef.current = [];
+
+    const visibleDeliveries = selectedType === "carriers" ? [] : deliveries;
+
+    visibleDeliveries.forEach((delivery) => {
+      const pickupPoint = delivery.pickupLocation;
+      const deliveryPoint = delivery.deliveryLocation;
+      const currentPoint = delivery.currentLocation;
+      const plannedPath = decodePolyline(delivery.route?.polyline || "");
+      const activePath = decodePolyline(
+        delivery.routeHistory?.activePolyline || "",
+      );
+
+      const fallbackPath =
+        pickupPoint && deliveryPoint ? [pickupPoint, deliveryPoint] : [];
+      const routeColor =
+        delivery.status === "out_for_delivery"
+          ? "#0ea5e9"
+          : delivery.status === "in_transit"
+            ? "#f59e0b"
+            : "#8b5cf6";
+
+      const baselinePath = plannedPath.length > 1 ? plannedPath : fallbackPath;
+      if (baselinePath.length > 1) {
+        routePolylinesRef.current.push(
+          new window.google.maps.Polyline({
+            path: baselinePath,
+            geodesic: true,
+            strokeColor: "#94a3b8",
+            strokeOpacity: 0.45,
+            strokeWeight: 4,
+            map: mapInstance.current,
+          }),
+        );
+      }
+
+      const liveRoutePath =
+        activePath.length > 1
+          ? activePath
+          : currentPoint && pickupPoint
+            ? [pickupPoint, currentPoint]
+            : [];
+
+      if (liveRoutePath.length > 1) {
+        routePolylinesRef.current.push(
+          new window.google.maps.Polyline({
+            path: liveRoutePath,
+            geodesic: true,
+            strokeColor: routeColor,
+            strokeOpacity: 0.95,
+            strokeWeight: 5,
+            map: mapInstance.current,
+          }),
+        );
+      }
+
+      [
+        pickupPoint && { point: pickupPoint, label: "P", color: "#fbbf24" },
+        deliveryPoint && {
+          point: deliveryPoint,
+          label: "D",
+          color: "#fb923c",
+        },
+      ]
+        .filter(Boolean)
+        .forEach((entry: any) => {
+          routeMarkersRef.current.push(
+            new window.google.maps.Marker({
+              position: entry.point,
+              map: mapInstance.current,
+              label: {
+                text: entry.label,
+                color: "#0f172a",
+                fontWeight: "700",
+              },
+              icon: {
+                path: window.google.maps.SymbolPath.CIRCLE,
+                fillColor: entry.color,
+                fillOpacity: 1,
+                strokeColor: "#ffffff",
+                strokeWeight: 2,
+                scale: 7,
+              },
+              title: `${delivery.trackingCode} ${entry.label === "P" ? "pickup" : "delivery"}`,
+            }),
+          );
+        });
+    });
+
+    const contextPoints = visibleDeliveries.flatMap((delivery) => [
+      delivery.pickupLocation,
+      delivery.deliveryLocation,
+      delivery.currentLocation,
+    ]);
+
+    managedSegments
+      .filter(
+        (segment) =>
+          segment.status === "active" &&
+          isRouteNetworkSegmentRelevant(segment, contextPoints),
+      )
+      .forEach((segment) => {
+        const style = getRouteNetworkSegmentStyle(segment);
+        routePolylinesRef.current.push(
+          new window.google.maps.Polyline({
+            path: [segment.start, segment.end],
+            geodesic: true,
+            strokeColor: style.strokeColor,
+            strokeOpacity: style.strokeOpacity,
+            strokeWeight: style.strokeWeight,
+            map: mapInstance.current,
+          }),
+        );
+      });
+
+    return () => {
+      routePolylinesRef.current.forEach((polyline) => polyline.setMap(null));
+      routeMarkersRef.current.forEach((marker) => marker.setMap(null));
+    };
+  }, [deliveries, googleMapsLoaded, managedSegments, selectedType]);
+
   // Keep auto-fit behavior only for initial load and marker-type filter changes.
   useEffect(() => {
     hasAutoFittedRef.current = false;
@@ -1157,6 +1302,14 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
                   Deliveries ({deliveries.length})
                 </span>
               </div>
+              <div className="flex items-center">
+                <div className="w-3 h-3 rounded-full bg-slate-400 mr-2"></div>
+                <span className="text-sm">Planned / live routes</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-3 h-3 rounded-full bg-green-600 mr-2"></div>
+                <span className="text-sm">Managed route rules</span>
+              </div>
               {showTraffic && (
                 <div className="flex items-center">
                   <div className="w-3 h-3 rounded-full bg-red-500 mr-2"></div>
@@ -1351,6 +1504,126 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-8">
+        <h3 className="text-xl font-bold mb-4">Active Deliveries</h3>
+        {deliveries.length === 0 ? (
+          <div className="bg-white rounded-xl shadow p-8 text-center text-gray-500">
+            No active deliveries to visualize right now.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {deliveries.map((delivery) => {
+              const relevantSegments = managedSegments.filter(
+                (segment) =>
+                  segment.status === "active" &&
+                  isRouteNetworkSegmentRelevant(segment, [
+                    delivery.pickupLocation,
+                    delivery.deliveryLocation,
+                    delivery.currentLocation,
+                  ]),
+              );
+
+              return (
+                <div
+                  key={delivery.id}
+                  className="bg-white rounded-xl shadow p-4 border border-gray-100"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-bold text-gray-800">
+                        {delivery.trackingCode}
+                      </div>
+                      <div className="text-sm text-gray-600 capitalize">
+                        {delivery.status.replace(/_/g, " ")}
+                      </div>
+                    </div>
+                    <div className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                      {relevantSegments.length} route rule(s)
+                    </div>
+                  </div>
+
+                  <div className="mt-3 space-y-1 text-sm text-gray-600">
+                    <p>
+                      <strong>Pickup:</strong> {delivery.pickupAddress}
+                    </p>
+                    <p>
+                      <strong>Dropoff:</strong> {delivery.deliveryAddress}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {delivery.pickupLocation && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          centerOnLocation(
+                            delivery.pickupLocation!.lat,
+                            delivery.pickupLocation!.lng,
+                          )
+                        }
+                        className="rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-200"
+                      >
+                        Pickup
+                      </button>
+                    )}
+                    {delivery.currentLocation && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          centerOnLocation(
+                            delivery.currentLocation!.lat,
+                            delivery.currentLocation!.lng,
+                          )
+                        }
+                        className="rounded-full bg-blue-100 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-200"
+                      >
+                        Current
+                      </button>
+                    )}
+                    {delivery.deliveryLocation && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          centerOnLocation(
+                            delivery.deliveryLocation!.lat,
+                            delivery.deliveryLocation!.lng,
+                          )
+                        }
+                        className="rounded-full bg-orange-100 px-3 py-1.5 text-xs font-semibold text-orange-800 hover:bg-orange-200"
+                      >
+                        Dropoff
+                      </button>
+                    )}
+                  </div>
+
+                  {relevantSegments.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {relevantSegments.slice(0, 3).map((segment) => {
+                        const style = getRouteNetworkSegmentStyle(segment);
+                        return (
+                          <span
+                            key={segment.id}
+                            className="rounded-full border px-2.5 py-1 text-[11px] font-semibold"
+                            style={{
+                              borderColor: style.strokeColor,
+                              color: style.strokeColor,
+                              backgroundColor: `${style.strokeColor}12`,
+                            }}
+                          >
+                            {segment.name} •{" "}
+                            {formatRouteNetworkSegmentType(segment.type)}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

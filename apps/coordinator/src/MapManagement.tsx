@@ -1,4 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { GoogleMap, Marker, Polyline } from "@react-google-maps/api";
+import {
+  formatRouteNetworkSegmentType,
+  getRouteNetworkSegmentStyle,
+  type LatLngPoint,
+} from "@config";
 import { toast, Toaster } from "react-hot-toast";
 import {
   FaBan,
@@ -40,6 +46,76 @@ const defaultForm = {
   maxWeightKg: "",
 };
 
+const DEFAULT_MAP_CENTER = { lat: -29.31, lng: 27.48 };
+
+const getPolylineIcons = (
+  iconMode: ReturnType<typeof getRouteNetworkSegmentStyle>["iconMode"],
+  color: string,
+) => {
+  if (typeof window === "undefined" || !window.google?.maps) return undefined;
+
+  switch (iconMode) {
+    case "cross":
+      return [
+        {
+          icon: {
+            path: "M -2,-2 2,2 M 2,-2 -2,2",
+            strokeColor: color,
+            strokeOpacity: 1,
+            scale: 2.2,
+          },
+          offset: "0",
+          repeat: "16px",
+        },
+      ];
+    case "dash":
+      return [
+        {
+          icon: {
+            path: "M 0,-1 0,1",
+            strokeColor: color,
+            strokeOpacity: 1,
+            scale: 3,
+          },
+          offset: "0",
+          repeat: "14px",
+        },
+      ];
+    case "dot":
+      return [
+        {
+          icon: {
+            path: window.google.maps.SymbolPath.CIRCLE,
+            fillColor: color,
+            fillOpacity: 1,
+            strokeColor: color,
+            strokeOpacity: 1,
+            scale: 2.4,
+          },
+          offset: "0",
+          repeat: "18px",
+        },
+      ];
+    case "arrow":
+      return [
+        {
+          icon: {
+            path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+            fillColor: color,
+            fillOpacity: 1,
+            strokeColor: color,
+            strokeOpacity: 1,
+            scale: 3,
+          },
+          offset: "14px",
+          repeat: "54px",
+        },
+      ];
+    default:
+      return undefined;
+  }
+};
+
 export default function MapManagement() {
   const [segments, setSegments] = useState<ManagedRouteSegment[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -47,6 +123,14 @@ export default function MapManagement() {
     NormalizedVehicleType[]
   >([]);
   const [form, setForm] = useState(defaultForm);
+  const [draftPoints, setDraftPoints] = useState<LatLngPoint[]>([]);
+  const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(
+    null,
+  );
+  const [interactionMode, setInteractionMode] = useState<"pencil" | "eraser">(
+    "pencil",
+  );
+  const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
 
   useEffect(() => {
     return subscribeManagedRouteSegments(setSegments);
@@ -60,6 +144,83 @@ export default function MapManagement() {
     };
   }, [segments]);
 
+  const selectedSegment = useMemo(
+    () => segments.find((segment) => segment.id === selectedSegmentId) || null,
+    [segments, selectedSegmentId],
+  );
+
+  const mapCenter = useMemo(() => {
+    if (draftPoints.length) return draftPoints[draftPoints.length - 1];
+    if (selectedSegment) return selectedSegment.start;
+    return DEFAULT_MAP_CENTER;
+  }, [draftPoints, selectedSegment]);
+
+  const syncDraftToForm = (points: LatLngPoint[]) => {
+    setDraftPoints(points);
+    setForm((prev) => ({
+      ...prev,
+      startLat: points[0] ? String(points[0].lat.toFixed(6)) : "",
+      startLng: points[0] ? String(points[0].lng.toFixed(6)) : "",
+      endLat: points[1] ? String(points[1].lat.toFixed(6)) : "",
+      endLng: points[1] ? String(points[1].lng.toFixed(6)) : "",
+    }));
+  };
+
+  const focusPoints = (points: LatLngPoint[]) => {
+    if (!mapInstance || !points.length || !window.google?.maps) return;
+    if (points.length === 1) {
+      mapInstance.panTo(points[0]);
+      mapInstance.setZoom(16);
+      return;
+    }
+
+    const bounds = new window.google.maps.LatLngBounds();
+    points.forEach((point) => bounds.extend(point));
+    mapInstance.fitBounds(bounds, 80);
+  };
+
+  const handleMapClick = (event: google.maps.MapMouseEvent) => {
+    if (!event.latLng) return;
+
+    const point = { lat: event.latLng.lat(), lng: event.latLng.lng() };
+    const nextPoints =
+      draftPoints.length >= 2 ? [point] : [...draftPoints, point];
+
+    syncDraftToForm(nextPoints);
+    setSelectedSegmentId(null);
+
+    if (interactionMode === "eraser" && form.type !== "blocked_path") {
+      setForm((prev) => ({ ...prev, type: "blocked_path" }));
+    }
+  };
+
+  const clearDraft = () => {
+    syncDraftToForm([]);
+    setSelectedSegmentId(null);
+  };
+
+  const selectSegment = (segment: ManagedRouteSegment) => {
+    setSelectedSegmentId(segment.id);
+    setInteractionMode(segment.type === "blocked_path" ? "eraser" : "pencil");
+    setSelectedVehicles(segment.allowedVehicleTypes);
+    setForm({
+      name: segment.name,
+      type: segment.type,
+      note: segment.note || "",
+      startLat: String(segment.start.lat.toFixed(6)),
+      startLng: String(segment.start.lng.toFixed(6)),
+      endLat: String(segment.end.lat.toFixed(6)),
+      endLng: String(segment.end.lng.toFixed(6)),
+      temporary: !!segment.temporary,
+      maxWeightKg:
+        typeof segment.maxWeightKg === "number"
+          ? String(segment.maxWeightKg)
+          : "",
+    });
+    syncDraftToForm([segment.start, segment.end]);
+    focusPoints([segment.start, segment.end]);
+  };
+
   const handleVehicleToggle = (vehicle: NormalizedVehicleType) => {
     setSelectedVehicles((prev) =>
       prev.includes(vehicle)
@@ -71,10 +232,10 @@ export default function MapManagement() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    const startLat = Number(form.startLat);
-    const startLng = Number(form.startLng);
-    const endLat = Number(form.endLat);
-    const endLng = Number(form.endLng);
+    const startLat = Number(form.startLat || draftPoints[0]?.lat);
+    const startLng = Number(form.startLng || draftPoints[0]?.lng);
+    const endLat = Number(form.endLat || draftPoints[1]?.lat);
+    const endLng = Number(form.endLng || draftPoints[1]?.lng);
 
     if (!form.name.trim()) {
       toast.error("Segment name is required");
@@ -108,6 +269,8 @@ export default function MapManagement() {
       toast.success("Managed route segment created");
       setForm(defaultForm);
       setSelectedVehicles([]);
+      setDraftPoints([]);
+      setSelectedSegmentId(null);
     } catch (error) {
       console.error(error);
       toast.error("Failed to save managed route segment");
@@ -144,8 +307,8 @@ export default function MapManagement() {
         <div>
           <h1 className="text-3xl font-bold text-gray-800">Map Management</h1>
           <p className="mt-2 text-gray-600">
-            Add custom shortcuts, block bad roads, and enforce vehicle-aware
-            routing rules.
+            Draw shortcuts like a pencil, block roads like an eraser, and make
+            every routing rule visible on the map.
           </p>
         </div>
         <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700">
@@ -153,7 +316,7 @@ export default function MapManagement() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-7">
         <form
           onSubmit={handleSubmit}
           className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm xl:col-span-2"
@@ -164,13 +327,73 @@ export default function MapManagement() {
                 Add route rule
               </h2>
               <p className="text-sm text-gray-500">
-                Save local road intelligence that Google Maps misses.
+                Use the map to sketch the segment first, then save the routing
+                rule below.
               </p>
             </div>
             <FaPlus className="text-xl text-blue-500" />
           </div>
 
+          <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-gray-50 p-2">
+            <button
+              type="button"
+              onClick={() => {
+                setInteractionMode("pencil");
+                if (form.type === "blocked_path") {
+                  setForm((prev) => ({ ...prev, type: "shortcut" }));
+                }
+              }}
+              className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                interactionMode === "pencil"
+                  ? "bg-emerald-600 text-white"
+                  : "bg-white text-gray-700"
+              }`}
+            >
+              <FaRoute className="mr-2 inline" /> Pencil draw
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setInteractionMode("eraser");
+                setForm((prev) => ({ ...prev, type: "blocked_path" }));
+              }}
+              className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                interactionMode === "eraser"
+                  ? "bg-red-600 text-white"
+                  : "bg-white text-gray-700"
+              }`}
+            >
+              <FaBan className="mr-2 inline" /> Eraser block
+            </button>
+          </div>
+
           <div className="space-y-4">
+            <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+              <p className="font-semibold">How it works</p>
+              <p className="mt-1">
+                Click one point for the start, a second point for the end, then
+                save. Clicking again starts a fresh segment.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={clearDraft}
+                  className="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                >
+                  Clear draft
+                </button>
+                {draftPoints.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => focusPoints(draftPoints)}
+                    className="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                  >
+                    Focus draft on map
+                  </button>
+                )}
+              </div>
+            </div>
+
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">
                 Rule name
@@ -346,107 +569,281 @@ export default function MapManagement() {
           </div>
         </form>
 
-        <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm xl:col-span-3">
+        <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm xl:col-span-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-gray-800">
-                Managed network
+                Visual route workspace
               </h2>
               <p className="text-sm text-gray-500">
-                Active, review, and deprecated local path rules.
+                Click on the map to draw a segment, click a saved route to edit
+                or inspect it, and present your routing intelligence visually.
               </p>
             </div>
             <FaRoad className="text-xl text-blue-500" />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-            {(
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+              Green = shortcuts / preferred roads
+            </div>
+            <div className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">
+              Red = blocked roads
+            </div>
+            <div className="rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">
+              Violet = restrictions
+            </div>
+            <div className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700">
+              Cyan = preferred corridors
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-gray-200 bg-gray-100">
+            <GoogleMap
+              center={mapCenter}
+              zoom={12}
+              onLoad={(map) => setMapInstance(map)}
+              onClick={handleMapClick}
+              mapContainerStyle={{ width: "100%", height: "430px" }}
+              options={{
+                streetViewControl: false,
+                fullscreenControl: true,
+                mapTypeControl: true,
+              }}
+            >
+              {segments.map((segment) => {
+                const style = getRouteNetworkSegmentStyle(segment);
+                const selected = segment.id === selectedSegmentId;
+
+                return (
+                  <Polyline
+                    key={segment.id}
+                    path={[segment.start, segment.end]}
+                    onClick={() => selectSegment(segment)}
+                    options={{
+                      strokeColor: style.strokeColor,
+                      strokeOpacity: selected ? 1 : style.strokeOpacity,
+                      strokeWeight: selected
+                        ? style.strokeWeight + 2
+                        : style.strokeWeight,
+                      zIndex: selected
+                        ? 50
+                        : segment.status === "active"
+                          ? 20
+                          : 10,
+                      icons: getPolylineIcons(
+                        style.iconMode,
+                        style.strokeColor,
+                      ),
+                    }}
+                  />
+                );
+              })}
+
+              {selectedSegment && (
+                <>
+                  <Marker
+                    position={selectedSegment.start}
+                    title={`${selectedSegment.name} start`}
+                    label="A"
+                  />
+                  <Marker
+                    position={selectedSegment.end}
+                    title={`${selectedSegment.name} end`}
+                    label="B"
+                  />
+                </>
+              )}
+
+              {draftPoints.map((point, index) => (
+                <Marker
+                  key={`${point.lat}-${point.lng}-${index}`}
+                  position={point}
+                  title={index === 0 ? "Draft start" : "Draft end"}
+                  label={index === 0 ? "1" : "2"}
+                  icon={{
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 8,
+                    fillColor:
+                      interactionMode === "eraser" ? "#dc2626" : "#16a34a",
+                    fillOpacity: 1,
+                    strokeColor: "#ffffff",
+                    strokeWeight: 2,
+                  }}
+                />
+              ))}
+
+              {draftPoints.length === 2 && (
+                <Polyline
+                  path={draftPoints}
+                  options={{
+                    strokeColor:
+                      interactionMode === "eraser" ? "#dc2626" : "#16a34a",
+                    strokeOpacity: 1,
+                    strokeWeight: 6,
+                    zIndex: 100,
+                    icons: getPolylineIcons(
+                      interactionMode === "eraser" ? "cross" : "arrow",
+                      interactionMode === "eraser" ? "#dc2626" : "#16a34a",
+                    ),
+                  }}
+                />
+              )}
+            </GoogleMap>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+              <p className="text-sm font-semibold text-emerald-800">
+                Pencil workflow
+              </p>
+              <p className="mt-1 text-xs text-emerald-700">
+                Draw shortcuts and preferred corridors directly on the map so
+                dispatch can explain route choices live.
+              </p>
+            </div>
+            <div className="rounded-xl border border-red-100 bg-red-50 p-4">
+              <p className="text-sm font-semibold text-red-800">
+                Eraser workflow
+              </p>
+              <p className="mt-1 text-xs text-red-700">
+                Mark blocked roads visually so they look like removed segments
+                during demos and live operations.
+              </p>
+            </div>
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+              <p className="text-sm font-semibold text-blue-800">
+                Presentation-ready view
+              </p>
+              <p className="mt-1 text-xs text-blue-700">
+                Saved segments stay visible and clickable, so tomorrow’s demo is
+                less PowerPoint and more actual software.
+              </p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-800">
+              Managed network
+            </h2>
+            <p className="text-sm text-gray-500">
+              Active, review, and deprecated local path rules with one-click
+              focus back onto the map.
+            </p>
+          </div>
+          <FaRoad className="text-xl text-blue-500" />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+          {(
+            [
               [
-                [
-                  "Active",
-                  grouped.active,
-                  "bg-green-50 border-green-100 text-green-700",
-                ],
-                [
-                  "Under review",
-                  grouped.review,
-                  "bg-amber-50 border-amber-100 text-amber-700",
-                ],
-                [
-                  "Deprecated",
-                  grouped.deprecated,
-                  "bg-red-50 border-red-100 text-red-700",
-                ],
-              ] as const
-            ).map(([title, list, tone]) => (
+                "Active",
+                grouped.active,
+                "bg-green-50 border-green-100 text-green-700",
+              ],
+              [
+                "Under review",
+                grouped.review,
+                "bg-amber-50 border-amber-100 text-amber-700",
+              ],
+              [
+                "Deprecated",
+                grouped.deprecated,
+                "bg-red-50 border-red-100 text-red-700",
+              ],
+            ] as const
+          ).map(([title, list, tone]) => (
+            <div
+              key={title}
+              className="rounded-xl border border-gray-200 bg-gray-50 p-4"
+            >
               <div
-                key={title}
-                className="rounded-xl border border-gray-200 bg-gray-50 p-4"
+                className={`mb-3 inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${tone}`}
               >
-                <div
-                  className={`mb-3 inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${tone}`}
-                >
-                  {title} • {list.length}
-                </div>
-                <div className="space-y-3">
-                  {list.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-gray-300 bg-white p-4 text-sm text-gray-500">
-                      Nothing here yet.
-                    </div>
-                  ) : (
-                    list.map((segment) => (
-                      <div
-                        key={segment.id}
-                        className="rounded-lg border border-gray-200 bg-white p-4"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-semibold text-gray-800">
-                              {segment.name}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {segment.type.replace(/_/g, " ")}
-                              {segment.blocked ? " • blocked" : " • usable"}
-                            </p>
-                          </div>
-                          <div className="text-lg text-gray-400">
-                            {segment.type === "blocked_path" ? (
-                              <FaBan />
-                            ) : (
-                              <FaRoute />
-                            )}
-                          </div>
+                {title} • {list.length}
+              </div>
+              <div className="space-y-3">
+                {list.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-gray-300 bg-white p-4 text-sm text-gray-500">
+                    Nothing here yet.
+                  </div>
+                ) : (
+                  list.map((segment) => (
+                    <div
+                      key={segment.id}
+                      className={`rounded-lg border bg-white p-4 ${
+                        segment.id === selectedSegmentId
+                          ? "border-blue-400 ring-2 ring-blue-100"
+                          : "border-gray-200"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800">
+                            {segment.name}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {formatRouteNetworkSegmentType(segment.type)}
+                            {segment.blocked ? " • blocked" : " • usable"}
+                          </p>
                         </div>
-                        <p className="mt-2 text-sm text-gray-600">
-                          {segment.note || "No note recorded."}
-                        </p>
-                        <div className="mt-2 text-xs text-gray-500">
-                          Vehicles:{" "}
-                          {segment.allowedVehicleTypes.length
-                            ? segment.allowedVehicleTypes.join(", ")
-                            : "all"}
+                        <div className="text-lg text-gray-400">
+                          {segment.type === "blocked_path" ? (
+                            <FaBan />
+                          ) : (
+                            <FaRoute />
+                          )}
                         </div>
-                        <div className="mt-2 text-xs text-gray-500">
-                          Weight cap: {segment.maxWeightKg ?? "none"}
-                        </div>
+                      </div>
+                      <p className="mt-2 text-sm text-gray-600">
+                        {segment.note || "No note recorded."}
+                      </p>
+                      <div className="mt-2 text-xs text-gray-500">
+                        Coordinates: {segment.start.lat.toFixed(4)},{" "}
+                        {segment.start.lng.toFixed(4)} →{" "}
+                        {segment.end.lat.toFixed(4)},{" "}
+                        {segment.end.lng.toFixed(4)}
+                      </div>
+                      <div className="mt-2 text-xs text-gray-500">
+                        Vehicles:{" "}
+                        {segment.allowedVehicleTypes.length
+                          ? segment.allowedVehicleTypes.join(", ")
+                          : "all"}
+                      </div>
+                      <div className="mt-2 text-xs text-gray-500">
+                        Weight cap: {segment.maxWeightKg ?? "none"}
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => selectSegment(segment)}
+                          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                        >
+                          <FaMapLocationDot /> Focus on map
+                        </button>
                         <button
                           type="button"
                           onClick={() =>
                             cycleStatus(segment.id, segment.status)
                           }
-                          className="mt-3 inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                          className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
                         >
                           <FaCircleCheck /> Cycle status
                         </button>
                       </div>
-                    ))
-                  )}
-                </div>
+                    </div>
+                  ))
+                )}
               </div>
-            ))}
-          </div>
-        </section>
-      </div>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="rounded-xl border border-blue-100 bg-blue-50 p-5 shadow-sm">

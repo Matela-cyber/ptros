@@ -3,6 +3,13 @@ import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { onValue, ref as rtdbRef } from "firebase/database";
 import {
+  formatRouteNetworkSegmentType,
+  getRouteNetworkSegmentStyle,
+  isRouteNetworkSegmentRelevant,
+  subscribeRouteNetworkSegments,
+  type RouteNetworkSegment,
+} from "@config";
+import {
   DirectionsRenderer,
   GoogleMap,
   Marker,
@@ -29,6 +36,20 @@ interface LiveTrackDelivery {
     distance?: number;
     duration?: number;
   };
+  routeReviews?: Array<{
+    type: string;
+    reason?: string;
+    temporary?: boolean;
+    start?: MapPoint;
+    end?: MapPoint;
+  }>;
+  routeFeedback?: Array<{
+    type: string;
+    reason?: string;
+    note?: string;
+    start?: MapPoint;
+    end?: MapPoint;
+  }>;
 }
 
 const DEFAULT_CENTER = { lat: -29.31, lng: 27.48 };
@@ -107,6 +128,9 @@ export default function CarrierLiveTrack() {
   const [authorized, setAuthorized] = useState(false);
   const [loadingDelivery, setLoadingDelivery] = useState(true);
   const [delivery, setDelivery] = useState<LiveTrackDelivery | null>(null);
+  const [managedSegments, setManagedSegments] = useState<RouteNetworkSegment[]>(
+    [],
+  );
   const [liveLocation, setLiveLocation] = useState<MapPoint | null>(null);
   const [googleRoutePath, setGoogleRoutePath] = useState<MapPoint[]>([]);
   const [googleDirections, setGoogleDirections] =
@@ -151,6 +175,10 @@ export default function CarrierLiveTrack() {
   }, [navigate]);
 
   useEffect(() => {
+    return subscribeRouteNetworkSegments(setManagedSegments);
+  }, []);
+
+  useEffect(() => {
     if (!deliveryId || !authReady || !authorized) {
       if (authReady && !deliveryId) {
         setError("No delivery selected for live tracking.");
@@ -189,6 +217,8 @@ export default function CarrierLiveTrack() {
           pickupLocation,
           deliveryLocation,
           route: data.route,
+          routeReviews: data.routeReviews || [],
+          routeFeedback: data.routeFeedback || [],
         });
 
         if (currentLocation) {
@@ -265,10 +295,12 @@ export default function CarrierLiveTrack() {
           result?.routes?.[0]?.overview_path
         ) {
           setGoogleDirections(result);
-          const mappedPath = result.routes[0].overview_path.map((point: google.maps.LatLng) => ({
-            lat: point.lat(),
-            lng: point.lng(),
-          }));
+          const mappedPath = result.routes[0].overview_path.map(
+            (point: google.maps.LatLng) => ({
+              lat: point.lat(),
+              lng: point.lng(),
+            }),
+          );
           setGoogleRoutePath(mappedPath);
           return;
         }
@@ -277,7 +309,12 @@ export default function CarrierLiveTrack() {
         setGoogleRoutePath([]);
       },
     );
-  }, [pickupPoint, destinationPoint, delivery?.pickupAddress, delivery?.deliveryAddress]);
+  }, [
+    pickupPoint,
+    destinationPoint,
+    delivery?.pickupAddress,
+    delivery?.deliveryAddress,
+  ]);
 
   const pickupToDestinationPath =
     plannedRoutePath.length > 1
@@ -298,6 +335,34 @@ export default function CarrierLiveTrack() {
   const mapCenter =
     currentPoint || routeStartPoint || routeEndPoint || DEFAULT_CENTER;
 
+  const visibleManagedSegments = useMemo(
+    () =>
+      managedSegments.filter(
+        (segment) =>
+          segment.status === "active" &&
+          isRouteNetworkSegmentRelevant(segment, [
+            pickupPoint,
+            destinationPoint,
+            currentPoint,
+          ]),
+      ),
+    [currentPoint, destinationPoint, managedSegments, pickupPoint],
+  );
+
+  const focusPoint = (point?: MapPoint | null) => {
+    if (!mapInstance || !point) return;
+    mapInstance.panTo(point);
+    mapInstance.setZoom(16);
+  };
+
+  const focusSegment = (segment: RouteNetworkSegment) => {
+    if (!mapInstance || !window.google?.maps) return;
+    const bounds = new window.google.maps.LatLngBounds();
+    bounds.extend(segment.start);
+    bounds.extend(segment.end);
+    mapInstance.fitBounds(bounds, 80);
+  };
+
   useEffect(() => {
     if (!mapInstance || !window.google?.maps) return;
 
@@ -316,14 +381,22 @@ export default function CarrierLiveTrack() {
     });
 
     if (hasPoints) mapInstance.fitBounds(bounds, 80);
-  }, [mapInstance, currentPoint, routeStartPoint, routeEndPoint, pickupToDestinationPath]);
+  }, [
+    mapInstance,
+    currentPoint,
+    routeStartPoint,
+    routeEndPoint,
+    pickupToDestinationPath,
+  ]);
 
   if (!authReady || loadingDelivery) {
     return (
       <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center p-6">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="mt-4 text-sm text-slate-600">Loading live route map...</p>
+          <p className="mt-4 text-sm text-slate-600">
+            Loading live route map...
+          </p>
         </div>
       </div>
     );
@@ -400,14 +473,18 @@ export default function CarrierLiveTrack() {
       <div className="max-w-7xl mx-auto p-4 grid grid-cols-1 xl:grid-cols-[340px,1fr] gap-4">
         <aside className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4 shadow-sm">
           <div className="rounded-xl bg-slate-50 p-4 border border-slate-200">
-            <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">Pickup</p>
+            <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">
+              Pickup
+            </p>
             <p className="font-semibold text-amber-200">
               {delivery.pickupAddress || "Pickup address unavailable"}
             </p>
           </div>
 
           <div className="rounded-xl bg-slate-50 p-4 border border-slate-200">
-            <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">Destination</p>
+            <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">
+              Destination
+            </p>
             <p className="font-semibold text-orange-200">
               {delivery.deliveryAddress || "Destination address unavailable"}
             </p>
@@ -418,10 +495,71 @@ export default function CarrierLiveTrack() {
               Main route (BLUE): Pickup (P) → Destination (D)
             </div>
             <div className="flex items-center gap-3">
-              <span className="h-2 w-10 rounded-full" style={{ backgroundColor: "#00A2FF" }} />
+              <span
+                className="h-2 w-10 rounded-full"
+                style={{ backgroundColor: "#00A2FF" }}
+              />
               <span>Pickup → destination route</span>
             </div>
           </div>
+
+          <div className="rounded-xl bg-slate-50 p-4 border border-slate-200 space-y-3">
+            <p className="text-xs uppercase tracking-wide text-slate-500">
+              Quick locate
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => focusPoint(pickupPoint)}
+                className="rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-200"
+              >
+                Pickup
+              </button>
+              <button
+                type="button"
+                onClick={() => focusPoint(currentPoint)}
+                className="rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-200"
+              >
+                Current
+              </button>
+              <button
+                type="button"
+                onClick={() => focusPoint(routeEndPoint)}
+                className="rounded-full bg-pink-100 px-3 py-1.5 text-xs font-semibold text-pink-900 hover:bg-pink-200"
+              >
+                Destination
+              </button>
+            </div>
+          </div>
+
+          {visibleManagedSegments.length > 0 && (
+            <div className="rounded-xl bg-slate-50 p-4 border border-slate-200 space-y-3">
+              <p className="text-xs uppercase tracking-wide text-slate-500">
+                Visible route rules
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {visibleManagedSegments.map((segment) => {
+                  const style = getRouteNetworkSegmentStyle(segment);
+                  return (
+                    <button
+                      key={segment.id}
+                      type="button"
+                      onClick={() => focusSegment(segment)}
+                      className="rounded-full border px-3 py-1.5 text-xs font-semibold"
+                      style={{
+                        borderColor: style.strokeColor,
+                        color: style.strokeColor,
+                        backgroundColor: `${style.strokeColor}14`,
+                      }}
+                    >
+                      {segment.name} •{" "}
+                      {formatRouteNetworkSegmentType(segment.type)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </aside>
 
         <section className="rounded-2xl border border-slate-200 bg-white overflow-hidden min-h-[70vh] shadow-sm">
@@ -429,13 +567,34 @@ export default function CarrierLiveTrack() {
             center={mapCenter}
             zoom={13}
             onLoad={(map) => setMapInstance(map)}
-            mapContainerStyle={{ width: "100%", height: "100%", minHeight: "70vh" }}
+            mapContainerStyle={{
+              width: "100%",
+              height: "100%",
+              minHeight: "70vh",
+            }}
             options={{
               streetViewControl: false,
               mapTypeControl: true,
               fullscreenControl: true,
             }}
           >
+            {visibleManagedSegments.map((segment) => {
+              const style = getRouteNetworkSegmentStyle(segment);
+              return (
+                <Polyline
+                  key={`managed-${segment.id}`}
+                  path={[segment.start, segment.end]}
+                  options={{
+                    strokeColor: style.strokeColor,
+                    strokeOpacity: style.strokeOpacity,
+                    strokeWeight: style.strokeWeight,
+                    zIndex: 15,
+                  }}
+                  onClick={() => focusSegment(segment)}
+                />
+              );
+            })}
+
             {googleDirections && (
               <DirectionsRenderer
                 directions={googleDirections}
@@ -535,6 +694,21 @@ export default function CarrierLiveTrack() {
                 }}
               />
             )}
+
+            {(delivery.routeReviews || [])
+              .filter((review) => review.start && review.end)
+              .map((review, index) => (
+                <Polyline
+                  key={`review-${index}`}
+                  path={[review.start!, review.end!]}
+                  options={{
+                    strokeColor: review.temporary ? "#f59e0b" : "#dc2626",
+                    strokeOpacity: 1,
+                    strokeWeight: 5,
+                    zIndex: 25,
+                  }}
+                />
+              ))}
           </GoogleMap>
         </section>
       </div>
