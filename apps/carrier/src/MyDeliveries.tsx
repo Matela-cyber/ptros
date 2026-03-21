@@ -1,11 +1,16 @@
 import { useState, useEffect } from "react";
 import { db, auth } from "@config";
 import {
+  addDoc,
+  arrayUnion,
   collection,
+  doc,
   query,
   where,
   orderBy,
   onSnapshot,
+  Timestamp,
+  updateDoc,
 } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
 import { CarrierService } from "./carrierService";
@@ -41,6 +46,8 @@ interface Delivery {
   recipientPhone?: string;
   deliveryInstructions?: string;
   earnings?: number;
+  pickupLocation?: { lat: number; lng: number };
+  deliveryLocation?: { lat: number; lng: number };
 }
 
 export default function MyDeliveries() {
@@ -57,6 +64,12 @@ export default function MyDeliveries() {
     null,
   );
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
+  const [routeReportDelivery, setRouteReportDelivery] =
+    useState<Delivery | null>(null);
+  const [routeReportType, setRouteReportType] = useState("blocked_path");
+  const [routeReportNote, setRouteReportNote] = useState("");
+  const [routeReportTemporary, setRouteReportTemporary] = useState(true);
+  const [submittingRouteReport, setSubmittingRouteReport] = useState(false);
 
   const { updateStatus, getAvailableStatuses, getStatusInfo } =
     useDeliveryStatus();
@@ -106,6 +119,8 @@ export default function MyDeliveries() {
             recipientName: data.recipientName || data.customerName,
             recipientPhone: data.recipientPhone || data.customerPhone,
             deliveryInstructions: data.deliveryInstructions,
+            pickupLocation: data.pickupLocation,
+            deliveryLocation: data.deliveryLocation,
           });
         });
         setDeliveries(deliveryList);
@@ -306,6 +321,87 @@ export default function MyDeliveries() {
       "_blank",
       "noopener,noreferrer",
     );
+  };
+
+  const submitRouteReport = async () => {
+    if (!routeReportDelivery || !routeReportNote.trim()) {
+      toast.error("Please describe the route issue or shortcut");
+      return;
+    }
+
+    setSubmittingRouteReport(true);
+    try {
+      const profile = await CarrierService.getCarrierProfile();
+      const currentPoint = profile?.currentLocation
+        ? {
+            lat: profile.currentLocation.lat,
+            lng: profile.currentLocation.lng,
+          }
+        : null;
+
+      const endPoint =
+        routeReportType === "shortcut_suggestion"
+          ? routeReportDelivery.deliveryLocation || currentPoint
+          : routeReportDelivery.deliveryLocation ||
+            routeReportDelivery.pickupLocation ||
+            currentPoint;
+
+      await addDoc(collection(db, "routeReports"), {
+        deliveryId: routeReportDelivery.id,
+        trackingCode: routeReportDelivery.trackingCode || null,
+        type: routeReportType,
+        source: "carrier",
+        status: "open",
+        note: routeReportNote.trim(),
+        reason: routeReportNote.trim(),
+        temporary: routeReportTemporary,
+        start: currentPoint,
+        end: endPoint,
+        vehicleType: profile?.vehicleType || null,
+        createdByName: profile?.fullName || "Carrier",
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      });
+
+      await updateDoc(doc(db, "deliveries", routeReportDelivery.id), {
+        routeFeedback: arrayUnion({
+          type: routeReportType,
+          reason: routeReportNote.trim(),
+          note: routeReportNote.trim(),
+          source: "carrier",
+          reportedAt: new Date().toISOString(),
+          start: currentPoint,
+          end: endPoint,
+          temporary: routeReportTemporary,
+        }),
+        ...(routeReportType !== "shortcut_suggestion"
+          ? {
+              routeReviews: arrayUnion({
+                type: routeReportType,
+                temporary: routeReportTemporary,
+                reason: routeReportNote.trim(),
+                start: currentPoint,
+                end: endPoint,
+                status: "active",
+                createdAt: Timestamp.now(),
+                source: "carrier",
+              }),
+            }
+          : {}),
+        updatedAt: Timestamp.now(),
+      });
+
+      toast.success("Route report submitted for coordinator review");
+      setRouteReportDelivery(null);
+      setRouteReportType("blocked_path");
+      setRouteReportNote("");
+      setRouteReportTemporary(true);
+    } catch (error) {
+      console.error("Error submitting route report:", error);
+      toast.error("Failed to submit route report");
+    } finally {
+      setSubmittingRouteReport(false);
+    }
   };
 
   if (loading) {
@@ -670,6 +766,16 @@ export default function MyDeliveries() {
                     >
                       Live Track
                     </button>
+                    {["accepted", "picked_up", "in_transit", "stuck"].includes(
+                      delivery.status,
+                    ) && (
+                      <button
+                        onClick={() => setRouteReportDelivery(delivery)}
+                        className="text-sm px-2.5 py-1.5 rounded-md bg-amber-100 text-amber-700 hover:bg-amber-200 font-semibold"
+                      >
+                        Route Report
+                      </button>
+                    )}
                   </div>
 
                   <div className="text-xs text-gray-500">
@@ -783,6 +889,96 @@ export default function MyDeliveries() {
                     "✓ Complete Delivery"
                   )}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {routeReportDelivery && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white shadow-xl">
+            <div className="p-6">
+              <div className="mb-4 flex items-start justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800">
+                    Report Route Intelligence
+                  </h2>
+                  <p className="text-sm text-gray-500">
+                    Share blocked roads, wrong map roads, or shortcuts while the
+                    route is fresh.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setRouteReportDelivery(null)}
+                  className="text-2xl text-gray-400 hover:text-gray-600"
+                >
+                  <i className="fa-solid fa-xmark" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Report type
+                  </label>
+                  <select
+                    value={routeReportType}
+                    onChange={(e) => setRouteReportType(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                  >
+                    <option value="blocked_path">Blocked path</option>
+                    <option value="bad_road">Bad road</option>
+                    <option value="unsafe_segment">Unsafe segment</option>
+                    <option value="wrong_map_road">Wrong map road</option>
+                    <option value="shortcut_suggestion">
+                      Shortcut suggestion
+                    </option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    What should the coordinator know?
+                  </label>
+                  <textarea
+                    value={routeReportNote}
+                    onChange={(e) => setRouteReportNote(e.target.value)}
+                    rows={4}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                    placeholder="Example: bridge closed after rain, use left gravel path for motorcycles only"
+                  />
+                </div>
+
+                <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={routeReportTemporary}
+                    onChange={(e) => setRouteReportTemporary(e.target.checked)}
+                  />
+                  Temporary issue / condition
+                </label>
+
+                <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">
+                  This report will use your current live position as the route
+                  start point when available.
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setRouteReportDelivery(null)}
+                    className="flex-1 rounded-lg bg-gray-100 px-4 py-2.5 font-semibold text-gray-700 hover:bg-gray-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={submitRouteReport}
+                    disabled={submittingRouteReport || !routeReportNote.trim()}
+                    className="flex-1 rounded-lg bg-amber-600 px-4 py-2.5 font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+                  >
+                    {submittingRouteReport ? "Submitting…" : "Submit report"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

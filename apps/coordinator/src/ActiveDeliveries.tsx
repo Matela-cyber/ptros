@@ -8,13 +8,12 @@ import {
   onSnapshot,
   updateDoc,
   doc,
-  where,
-  getDocs,
 } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
 import { Link, useSearchParams } from "react-router-dom";
 import { format } from "date-fns";
 import { writeTimestamp, getTimeServiceStatus } from "./services/timeService";
+import { assignDeliveryIntelligently } from "./services/routeIntelligenceService";
 import {
   FaBox,
   FaChartLine,
@@ -34,9 +33,13 @@ interface Delivery {
   carrierName?: string;
   priority: string;
   paymentAmount: number;
+  packageWeight?: number;
+  packageValue?: number;
   createdAt: Date;
   pickupDateTime?: Date;
   deliveryDate?: Date;
+  pickupLocation?: { lat: number; lng: number };
+  deliveryLocation?: { lat: number; lng: number };
 }
 
 export default function ActiveDeliveries() {
@@ -86,9 +89,13 @@ export default function ActiveDeliveries() {
             carrierName: data.carrierName,
             priority: data.priority || "standard",
             paymentAmount: data.paymentAmount || 0,
+            packageWeight: data.packageWeight || 0,
+            packageValue: data.packageValue || 0,
             createdAt: data.createdAt?.toDate() || new Date(),
             pickupDateTime: data.pickupDateTime?.toDate(),
             deliveryDate: data.deliveryDate?.toDate(),
+            pickupLocation: data.pickupLocation,
+            deliveryLocation: data.deliveryLocation,
           };
           deliveryList.push(delivery);
 
@@ -183,40 +190,13 @@ export default function ActiveDeliveries() {
 
   // Assign carrier to delivery
   const assignCarrier = async (deliveryId: string) => {
-    // In real app, you would show a modal to select carrier
-    // For now, we'll assign to first available carrier
     try {
-      const carriersQuery = query(
-        collection(db, "users"),
-        where("role", "==", "carrier"),
-        where("isApproved", "==", true),
-        where("status", "==", "active"),
+      const result = await assignDeliveryIntelligently(deliveryId);
+      const recommendation = result.selected;
+      toast.success(
+        `Smart assigned to ${recommendation.fullName} • ${recommendation.remainingCapacityKg.toFixed(0)}kg left • ${recommendation.distanceToPickupKm.toFixed(1)}km away`,
+        { duration: 4500 },
       );
-      const carriersSnapshot = await getDocs(carriersQuery);
-
-      if (carriersSnapshot.empty) {
-        toast.error("No available carriers");
-        return;
-      }
-
-      const firstCarrier = carriersSnapshot.docs[0];
-
-      // Get server timestamp (from Realtime DB with Firestore fallback)
-      const timestamp = await writeTimestamp(
-        `deliveries/${deliveryId}/assigned`,
-      );
-      const timeServiceStatus = getTimeServiceStatus();
-
-      await updateDoc(doc(db, "deliveries", deliveryId), {
-        status: "assigned",
-        carrierId: firstCarrier.id,
-        carrierName: firstCarrier.data().fullName,
-        assignedAt: timestamp,
-        updatedAt: timestamp,
-        timeSource: timeServiceStatus.primarySource,
-      });
-
-      toast.success(`Assigned to ${firstCarrier.data().fullName}`);
     } catch (error) {
       console.error("Error assigning carrier:", error);
       toast.error("Failed to assign carrier");
@@ -596,7 +576,7 @@ export default function ActiveDeliveries() {
                             onClick={() => assignCarrier(delivery.id)}
                             className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200 text-center"
                           >
-                            Assign
+                            Smart Assign
                           </button>
                         )}
 
@@ -705,7 +685,7 @@ export default function ActiveDeliveries() {
                     onClick={() => assignCarrier(delivery.id)}
                     className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded text-sm hover:bg-yellow-200"
                   >
-                    Assign
+                    Smart Assign
                   </button>
                 </div>
               ))}

@@ -19,8 +19,10 @@ import {
   FaGear,
   FaHourglassHalf,
   FaLocationDot,
+  FaMapLocationDot,
   FaMotorcycle,
   FaPlus,
+  FaRoute,
   FaUsers,
 } from "react-icons/fa6";
 
@@ -114,6 +116,16 @@ export default function Sidebar() {
     { path: "/carriers/active", icon: FaMotorcycle, label: "Active Carriers" },
     { path: "/customers", icon: FaUsers, label: "Customers" },
     { path: "/tracking/live", icon: FaLocationDot, label: "Live Tracking" },
+    {
+      path: "/routes/optimization",
+      icon: FaRoute,
+      label: "Route Optimization",
+    },
+    {
+      path: "/routes/management",
+      icon: FaMapLocationDot,
+      label: "Map Management",
+    },
     { path: "/analytics", icon: FaChartLine, label: "Analytics" },
     { path: "/settings", icon: FaGear, label: "Settings" },
   ];

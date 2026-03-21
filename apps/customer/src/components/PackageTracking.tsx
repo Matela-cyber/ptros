@@ -49,6 +49,18 @@ interface DeliveryData {
     otp?: string;
     verified?: boolean;
   };
+  routeReviews?: Array<{
+    type: string;
+    reason?: string;
+    source?: string;
+    temporary?: boolean;
+  }>;
+  routeFeedback?: Array<{
+    type: string;
+    reason?: string;
+    note?: string;
+    source?: string;
+  }>;
 }
 
 interface CarrierLocation {
@@ -120,6 +132,8 @@ export default function PackageTrackingPage({
           otpCode: data.otpCode,
           otpVerified: data.otpVerified,
           proofOfDelivery: data.proofOfDelivery,
+          routeReviews: data.routeReviews || [],
+          routeFeedback: data.routeFeedback || [],
         });
         setLoading(false);
       } else {
@@ -314,6 +328,9 @@ export default function PackageTrackingPage({
   const shouldShowOtp =
     !!delivery &&
     ["picked_up", "in_transit", "out_for_delivery"].includes(delivery.status);
+  const freshnessMinutes = carrierLocation?.timestamp
+    ? Math.max(0, Math.round((Date.now() - carrierLocation.timestamp) / 60000))
+    : null;
 
   if (loading) {
     return (
@@ -637,6 +654,47 @@ export default function PackageTrackingPage({
               </div>
             )}
 
+            {(delivery.routeReviews?.length ||
+              delivery.routeFeedback?.length) && (
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                  Route Advisories
+                </h3>
+                <div className="space-y-3">
+                  {delivery.routeReviews?.slice(0, 3).map((review, index) => (
+                    <div
+                      key={`review-${index}`}
+                      className="rounded-lg border border-amber-200 bg-amber-50 p-3"
+                    >
+                      <p className="font-semibold text-amber-800">
+                        {review.type.replace(/_/g, " ")}
+                      </p>
+                      <p className="text-sm text-amber-700">
+                        {review.reason || "Route under review"}
+                      </p>
+                    </div>
+                  ))}
+                  {delivery.routeFeedback
+                    ?.slice(0, 2)
+                    .map((feedback, index) => (
+                      <div
+                        key={`feedback-${index}`}
+                        className="rounded-lg border border-blue-200 bg-blue-50 p-3"
+                      >
+                        <p className="font-semibold text-blue-800">
+                          {feedback.type.replace(/_/g, " ")}
+                        </p>
+                        <p className="text-sm text-blue-700">
+                          {feedback.reason ||
+                            feedback.note ||
+                            "Carrier reported a route note."}
+                        </p>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
             {/* Customer Info */}
             <div className="bg-white rounded-lg shadow p-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">
@@ -673,6 +731,15 @@ export default function PackageTrackingPage({
                     "MMM dd, yyyy hh:mm a",
                   )}
                 </p>
+                {freshnessMinutes !== null && (
+                  <p className="mt-1 text-xs text-blue-700">
+                    {freshnessMinutes <= 3
+                      ? `Live now • ${freshnessMinutes}m old`
+                      : freshnessMinutes <= 15
+                        ? `Delayed • ${freshnessMinutes}m old`
+                        : `Stale • ${freshnessMinutes}m old`}
+                  </p>
+                )}
               </div>
             )}
           </div>

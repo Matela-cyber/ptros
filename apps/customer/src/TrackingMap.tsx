@@ -54,6 +54,18 @@ interface Delivery {
     otp?: string;
     verified?: boolean;
   };
+  routeReviews?: Array<{
+    type: string;
+    reason?: string;
+    source?: string;
+    temporary?: boolean;
+  }>;
+  routeFeedback?: Array<{
+    type: string;
+    reason?: string;
+    note?: string;
+    source?: string;
+  }>;
 }
 
 interface MarkerData {
@@ -111,7 +123,9 @@ export default function TrackingMap({ user }: Props) {
   const inTransitDeliveries = deliveries.filter((d) =>
     ["in_transit", "out_for_delivery"].includes(d.status),
   );
-  const deliveredDeliveries = deliveries.filter((d) => d.status === "delivered");
+  const deliveredDeliveries = deliveries.filter(
+    (d) => d.status === "delivered",
+  );
   const pinnedDeliveryId = (searchParams.get("deliveryId") || "").trim();
 
   const statusFilteredDeliveries =
@@ -149,8 +163,12 @@ export default function TrackingMap({ user }: Props) {
   useEffect(() => {
     if (consumedRouteTargetRef.current || loading) return;
 
-    const hasPinnedDelivery = Boolean((searchParams.get("deliveryId") || "").trim());
-    const hasTrackingCode = Boolean((searchParams.get("trackingCode") || "").trim());
+    const hasPinnedDelivery = Boolean(
+      (searchParams.get("deliveryId") || "").trim(),
+    );
+    const hasTrackingCode = Boolean(
+      (searchParams.get("trackingCode") || "").trim(),
+    );
 
     if (!hasPinnedDelivery && !hasTrackingCode) return;
 
@@ -285,6 +303,8 @@ export default function TrackingMap({ user }: Props) {
             otpCode: data.otpCode,
             otpVerified: data.otpVerified,
             proofOfDelivery: data.proofOfDelivery,
+            routeReviews: data.routeReviews || [],
+            routeFeedback: data.routeFeedback || [],
           });
         });
 
@@ -315,7 +335,9 @@ export default function TrackingMap({ user }: Props) {
   // Keep selected delivery in sync with current filter
   useEffect(() => {
     if (pinnedDeliveryId) {
-      const pinnedMatch = visibleDeliveries.find((d) => d.id === pinnedDeliveryId);
+      const pinnedMatch = visibleDeliveries.find(
+        (d) => d.id === pinnedDeliveryId,
+      );
 
       if (pinnedMatch) {
         if (selectedDelivery !== pinnedMatch.id) {
@@ -351,7 +373,12 @@ export default function TrackingMap({ user }: Props) {
     if (visibleDeliveries.length > 0) return;
 
     toast.error(`No order found for ${normalizedTrackingCodeFilter}`);
-  }, [normalizedTrackingCodeFilter, deliveries.length, visibleDeliveries.length, loading]);
+  }, [
+    normalizedTrackingCodeFilter,
+    deliveries.length,
+    visibleDeliveries.length,
+    loading,
+  ]);
 
   // Initialize Google Map (only after the map container is mounted)
   useEffect(() => {
@@ -453,7 +480,9 @@ export default function TrackingMap({ user }: Props) {
 
     const liveTrack = deliveryTracksMap[delivery.id];
     const effectiveCurrentLocation =
-      liveTrack && typeof liveTrack.lat === "number" && typeof liveTrack.lng === "number"
+      liveTrack &&
+      typeof liveTrack.lat === "number" &&
+      typeof liveTrack.lng === "number"
         ? {
             lat: liveTrack.lat,
             lng: liveTrack.lng,
@@ -727,7 +756,12 @@ export default function TrackingMap({ user }: Props) {
         mapInstance.current.fitBounds(bounds, 50);
       }
     }
-  }, [visibleDeliveries, deliveryTracksMap, selectedDelivery, googleMapsLoaded]);
+  }, [
+    visibleDeliveries,
+    deliveryTracksMap,
+    selectedDelivery,
+    googleMapsLoaded,
+  ]);
 
   // Debounced marker updates
   useEffect(() => {
@@ -744,7 +778,13 @@ export default function TrackingMap({ user }: Props) {
         clearTimeout(markersUpdateTimeoutRef.current);
       }
     };
-  }, [visibleDeliveries, deliveryTracksMap, selectedDelivery, googleMapsLoaded, updateMarkers]);
+  }, [
+    visibleDeliveries,
+    deliveryTracksMap,
+    selectedDelivery,
+    googleMapsLoaded,
+    updateMarkers,
+  ]);
 
   const centerOnDelivery = (deliveryId: string) => {
     const delivery = deliveries.find((d) => d.id === deliveryId);
@@ -837,6 +877,18 @@ export default function TrackingMap({ user }: Props) {
 
   const selectedDeliveryData = selectedDelivery
     ? visibleDeliveries.find((delivery) => delivery.id === selectedDelivery)
+    : null;
+  const selectedLiveTrack = selectedDeliveryData
+    ? deliveryTracksMap[selectedDeliveryData.id]
+    : null;
+  const selectedLastUpdateMs =
+    typeof selectedLiveTrack?.timestamp === "number"
+      ? selectedLiveTrack.timestamp
+      : selectedDeliveryData?.currentLocation?.timestamp instanceof Date
+        ? selectedDeliveryData.currentLocation.timestamp.getTime()
+        : null;
+  const selectedFreshnessMinutes = selectedLastUpdateMs
+    ? Math.max(0, Math.round((Date.now() - selectedLastUpdateMs) / 60000))
     : null;
   const selectedRoutePalette = getRoutePalette(
     selectedDeliveryData?.status || "in_transit",
@@ -986,7 +1038,8 @@ export default function TrackingMap({ user }: Props) {
 
       <div className="mb-6 flex items-center justify-between">
         <p className="text-sm text-gray-500">
-          Showing <span className="font-semibold">{visibleDeliveries.length}</span>{" "}
+          Showing{" "}
+          <span className="font-semibold">{visibleDeliveries.length}</span>{" "}
           order{visibleDeliveries.length === 1 ? "" : "s"}
         </p>
         <button
@@ -1003,7 +1056,9 @@ export default function TrackingMap({ user }: Props) {
         <div className="bg-white rounded-xl shadow p-8 text-center">
           <div className="text-6xl mb-4">📦</div>
           <h3 className="text-xl font-semibold text-gray-700 mb-2">
-            {deliveries.length === 0 ? "No active orders" : "No orders in this filter"}
+            {deliveries.length === 0
+              ? "No active orders"
+              : "No orders in this filter"}
           </h3>
           <p className="text-gray-500">
             {deliveries.length === 0
@@ -1205,6 +1260,30 @@ export default function TrackingMap({ user }: Props) {
                                 </div>
                               </div>
                             )}
+                            <div>
+                              <div className="text-sm text-gray-600">
+                                Tracking freshness
+                              </div>
+                              <div className="mt-1">
+                                {selectedFreshnessMinutes === null ? (
+                                  <span className="inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
+                                    Waiting for live update
+                                  </span>
+                                ) : selectedFreshnessMinutes <= 3 ? (
+                                  <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                                    Live now • {selectedFreshnessMinutes}m old
+                                  </span>
+                                ) : selectedFreshnessMinutes <= 15 ? (
+                                  <span className="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                                    Delayed • {selectedFreshnessMinutes}m old
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
+                                    Stale • {selectedFreshnessMinutes}m old
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                             {[
                               "picked_up",
                               "in_transit",
@@ -1233,6 +1312,50 @@ export default function TrackingMap({ user }: Props) {
                             )}
                           </div>
                         </div>
+
+                        {(delivery.routeReviews?.length ||
+                          delivery.routeFeedback?.length) && (
+                          <div className="bg-white rounded-xl shadow p-6">
+                            <h4 className="text-lg font-bold text-gray-800 mb-4">
+                              Route Advisories
+                            </h4>
+                            <div className="space-y-3 text-sm">
+                              {delivery.routeReviews
+                                ?.slice(0, 3)
+                                .map((review, index) => (
+                                  <div
+                                    key={`review-${index}`}
+                                    className="rounded-lg border border-amber-200 bg-amber-50 p-3"
+                                  >
+                                    <p className="font-semibold text-amber-800">
+                                      {review.type.replace(/_/g, " ")}
+                                    </p>
+                                    <p className="text-amber-700">
+                                      {review.reason ||
+                                        "Route adjustment under review"}
+                                    </p>
+                                  </div>
+                                ))}
+                              {delivery.routeFeedback
+                                ?.slice(0, 2)
+                                .map((feedback, index) => (
+                                  <div
+                                    key={`feedback-${index}`}
+                                    className="rounded-lg border border-blue-200 bg-blue-50 p-3"
+                                  >
+                                    <p className="font-semibold text-blue-800">
+                                      {feedback.type.replace(/_/g, " ")}
+                                    </p>
+                                    <p className="text-blue-700">
+                                      {feedback.reason ||
+                                        feedback.note ||
+                                        "Carrier shared route guidance."}
+                                    </p>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Route Details */}
                         <div className="bg-white rounded-xl shadow p-6">
