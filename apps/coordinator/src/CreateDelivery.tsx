@@ -659,37 +659,6 @@ export default function CreateDelivery() {
     return Math.max(50, valueFee + distanceFee);
   };
 
-  const getVehicleCapacityKg = (vehicleType?: string): number => {
-    const type = (vehicleType || "").toLowerCase();
-    if (type.includes("bike") || type.includes("bicycle")) return 10;
-    if (type.includes("motor") || type.includes("scooter")) return 25;
-    if (type.includes("sedan") || type.includes("car")) return 120;
-    if (type.includes("pickup") || type.includes("van")) return 800;
-    if (type.includes("truck")) return 3000;
-    return 150;
-  };
-
-  const toRad = (value: number) => (value * Math.PI) / 180;
-
-  const haversineKm = (
-    lat1: number,
-    lng1: number,
-    lat2: number,
-    lng2: number,
-  ) => {
-    const R = 6371;
-    const dLat = toRad(lat2 - lat1);
-    const dLng = toRad(lng2 - lng1);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(toRad(lat1)) *
-        Math.cos(toRad(lat2)) *
-        Math.sin(dLng / 2) *
-        Math.sin(dLng / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  };
-
   const generateCarrierRecommendations = async (
     pickup: Coordinates,
     packageWeight?: number,

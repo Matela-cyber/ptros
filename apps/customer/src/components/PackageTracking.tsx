@@ -1,7 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { GoogleMap, Marker, DirectionsRenderer } from "@react-google-maps/api";
-import { db, realtimeDb } from "@config";
+import {
+  DirectionsRenderer,
+  GoogleMap,
+  Marker,
+  Polyline,
+} from "@react-google-maps/api";
+import {
+  db,
+  realtimeDb,
+  formatRouteNetworkSegmentType,
+  getRouteNetworkSegmentStyle,
+  isRouteNetworkSegmentRelevant,
+  subscribeRouteNetworkSegments,
+  type RouteNetworkSegment,
+} from "@config";
 import { doc, onSnapshot } from "firebase/firestore";
 import { ref as rtdbRef, onValue } from "firebase/database";
 import { toast, Toaster } from "react-hot-toast";
@@ -54,12 +67,16 @@ interface DeliveryData {
     reason?: string;
     source?: string;
     temporary?: boolean;
+    start?: { lat: number; lng: number };
+    end?: { lat: number; lng: number };
   }>;
   routeFeedback?: Array<{
     type: string;
     reason?: string;
     note?: string;
     source?: string;
+    start?: { lat: number; lng: number };
+    end?: { lat: number; lng: number };
   }>;
 }
 
@@ -80,8 +97,12 @@ export default function PackageTrackingPage({
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const [delivery, setDelivery] = useState<DeliveryData | null>(null);
+  const [managedSegments, setManagedSegments] = useState<RouteNetworkSegment[]>(
+    [],
+  );
   const [carrierLocation, setCarrierLocation] =
     useState<CarrierLocation | null>(null);
+  const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
   const [toPickupDirections, setToPickupDirections] = useState<any>(null);
   const [toDropoffDirections, setToDropoffDirections] = useState<any>(null);
   const [fullPlanDirections, setFullPlanDirections] = useState<any>(null);
@@ -144,6 +165,10 @@ export default function PackageTrackingPage({
 
     return () => unsubscribe();
   }, [id, navigate, isGuest]);
+
+  useEffect(() => {
+    return subscribeRouteNetworkSegments(setManagedSegments);
+  }, []);
 
   // Subscribe to real-time carrier location
   useEffect(() => {
@@ -332,6 +357,41 @@ export default function PackageTrackingPage({
     ? Math.max(0, Math.round((Date.now() - carrierLocation.timestamp) / 60000))
     : null;
 
+  const visibleManagedSegments = useMemo(
+    () =>
+      managedSegments.filter(
+        (segment) =>
+          segment.status === "active" &&
+          isRouteNetworkSegmentRelevant(segment, [
+            delivery?.pickupLocation,
+            delivery?.deliveryLocation,
+            carrierLocation,
+            delivery?.currentLocation,
+          ]),
+      ),
+    [
+      carrierLocation,
+      delivery?.currentLocation,
+      delivery?.deliveryLocation,
+      delivery?.pickupLocation,
+      managedSegments,
+    ],
+  );
+
+  const focusPoint = (point?: { lat: number; lng: number } | null) => {
+    if (!mapInstance || !point) return;
+    mapInstance.panTo(point);
+    mapInstance.setZoom(16);
+  };
+
+  const focusSegment = (segment: RouteNetworkSegment) => {
+    if (!mapInstance || !window.google?.maps) return;
+    const bounds = new window.google.maps.LatLngBounds();
+    bounds.extend(segment.start);
+    bounds.extend(segment.end);
+    mapInstance.fitBounds(bounds, 80);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -405,6 +465,7 @@ export default function PackageTrackingPage({
                   <GoogleMap
                     zoom={mapZoom}
                     center={mapCenter}
+                    onLoad={(map) => setMapInstance(map)}
                     mapContainerStyle={{ height: "100%", width: "100%" }}
                     options={{
                       disableDefaultUI: false,
@@ -417,6 +478,23 @@ export default function PackageTrackingPage({
                       ],
                     }}
                   >
+                    {visibleManagedSegments.map((segment) => {
+                      const style = getRouteNetworkSegmentStyle(segment);
+                      return (
+                        <Polyline
+                          key={`managed-${segment.id}`}
+                          path={[segment.start, segment.end]}
+                          onClick={() => focusSegment(segment)}
+                          options={{
+                            strokeColor: style.strokeColor,
+                            strokeOpacity: style.strokeOpacity,
+                            strokeWeight: style.strokeWeight,
+                            zIndex: 5,
+                          }}
+                        />
+                      );
+                    })}
+
                     {fullPlanDirections && (
                       <DirectionsRenderer
                         directions={fullPlanDirections}
@@ -466,6 +544,42 @@ export default function PackageTrackingPage({
                             strokeOpacity: 0.95,
                             strokeWeight: 6,
                           },
+                        }}
+                      />
+                    )}
+
+                    {delivery.pickupLocation && (
+                      <Marker
+                        position={{
+                          lat: delivery.pickupLocation.lat,
+                          lng: delivery.pickupLocation.lng,
+                        }}
+                        title="Pickup"
+                        icon={{
+                          path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
+                          scale: 6,
+                          fillColor: "#fbbf24",
+                          fillOpacity: 1,
+                          strokeColor: "#fff",
+                          strokeWeight: 2,
+                        }}
+                      />
+                    )}
+
+                    {delivery.deliveryLocation && (
+                      <Marker
+                        position={{
+                          lat: delivery.deliveryLocation.lat,
+                          lng: delivery.deliveryLocation.lng,
+                        }}
+                        title="Destination"
+                        icon={{
+                          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                          scale: 6,
+                          fillColor: "#fb923c",
+                          fillOpacity: 1,
+                          strokeColor: "#fff",
+                          strokeWeight: 2,
                         }}
                       />
                     )}
@@ -555,6 +669,61 @@ export default function PackageTrackingPage({
                     </ul>
                   </div>
                 </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => focusPoint(delivery.pickupLocation)}
+                    className="rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-200"
+                  >
+                    Locate pickup
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      focusPoint(carrierLocation || delivery.currentLocation)
+                    }
+                    className="rounded-full bg-blue-100 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-200"
+                  >
+                    Locate current
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => focusPoint(delivery.deliveryLocation)}
+                    className="rounded-full bg-orange-100 px-3 py-1.5 text-xs font-semibold text-orange-800 hover:bg-orange-200"
+                  >
+                    Locate destination
+                  </button>
+                </div>
+
+                {visibleManagedSegments.length > 0 && (
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-semibold uppercase text-slate-600">
+                      Visible route rules
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {visibleManagedSegments.map((segment) => {
+                        const style = getRouteNetworkSegmentStyle(segment);
+                        return (
+                          <button
+                            key={segment.id}
+                            type="button"
+                            onClick={() => focusSegment(segment)}
+                            className="rounded-full border px-3 py-1.5 text-xs font-semibold"
+                            style={{
+                              borderColor: style.strokeColor,
+                              color: style.strokeColor,
+                              backgroundColor: `${style.strokeColor}12`,
+                            }}
+                          >
+                            {segment.name} •{" "}
+                            {formatRouteNetworkSegmentType(segment.type)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -672,6 +841,15 @@ export default function PackageTrackingPage({
                       <p className="text-sm text-amber-700">
                         {review.reason || "Route under review"}
                       </p>
+                      {review.start && (
+                        <button
+                          type="button"
+                          onClick={() => focusPoint(review.start)}
+                          className="mt-2 text-xs font-semibold text-amber-800 underline"
+                        >
+                          Locate on map
+                        </button>
+                      )}
                     </div>
                   ))}
                   {delivery.routeFeedback
@@ -689,6 +867,15 @@ export default function PackageTrackingPage({
                             feedback.note ||
                             "Carrier reported a route note."}
                         </p>
+                        {feedback.start && (
+                          <button
+                            type="button"
+                            onClick={() => focusPoint(feedback.start)}
+                            className="mt-2 text-xs font-semibold text-blue-800 underline"
+                          >
+                            Locate on map
+                          </button>
+                        )}
                       </div>
                     ))}
                 </div>

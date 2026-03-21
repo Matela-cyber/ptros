@@ -1,4 +1,11 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  formatRouteNetworkSegmentType,
+  getRouteNetworkSegmentStyle,
+  isRouteNetworkSegmentRelevant,
+  subscribeRouteNetworkSegments,
+  type RouteNetworkSegment,
+} from "@config";
 import { GoogleMap, Marker, Polyline } from "@react-google-maps/api";
 import { Delivery } from "./types";
 import { formatCurrency, formatDate } from "./utils";
@@ -29,6 +36,11 @@ export default function CurrentJobDetails({
     Array<{ lat: number; lng: number }>
   >([]);
   const [vehicleSpecificShortcut, setVehicleSpecificShortcut] = useState(false);
+  const [managedSegments, setManagedSegments] = useState<RouteNetworkSegment[]>(
+    [],
+  );
+  const [modalMapInstance, setModalMapInstance] =
+    useState<google.maps.Map | null>(null);
 
   if (!delivery) {
     return (
@@ -46,6 +58,10 @@ export default function CurrentJobDetails({
 
   const isAccepted = delivery.status === "accepted";
   const isAssigned = delivery.status === "assigned";
+
+  useEffect(() => {
+    return subscribeRouteNetworkSegments(setManagedSegments);
+  }, []);
 
   const handleStatusUpdate = async (
     status: "picked_up" | "in_transit" | "stuck" | "delivered",
@@ -163,6 +179,26 @@ export default function CurrentJobDetails({
           lng: delivery.currentLocation.lng,
         }
       : { lat: -29.31, lng: 27.48 });
+
+  const visibleManagedSegments = useMemo(
+    () =>
+      managedSegments.filter(
+        (segment) =>
+          segment.status === "active" &&
+          isRouteNetworkSegmentRelevant(segment, [
+            pickupPoint,
+            deliveryPoint,
+            currentPoint,
+          ]),
+      ),
+    [currentPoint, deliveryPoint, managedSegments, pickupPoint],
+  );
+
+  const focusPointOnModalMap = (point?: { lat: number; lng: number }) => {
+    if (!modalMapInstance || !point) return;
+    modalMapInstance.panTo(point);
+    modalMapInstance.setZoom(16);
+  };
 
   const onShortcutMapClick = (event: google.maps.MapMouseEvent) => {
     if (!event.latLng) return;
@@ -638,10 +674,27 @@ export default function CurrentJobDetails({
                     <GoogleMap
                       zoom={14}
                       center={mapCenter}
+                      onLoad={(map) => setModalMapInstance(map)}
                       onClick={onShortcutMapClick}
                       mapContainerStyle={{ width: "100%", height: "100%" }}
                       options={{ disableDefaultUI: false }}
                     >
+                      {visibleManagedSegments.map((segment) => {
+                        const style = getRouteNetworkSegmentStyle(segment);
+                        return (
+                          <Polyline
+                            key={`managed-${segment.id}`}
+                            path={[segment.start, segment.end]}
+                            options={{
+                              strokeColor: style.strokeColor,
+                              strokeOpacity: style.strokeOpacity,
+                              strokeWeight: style.strokeWeight,
+                              zIndex: 12,
+                            }}
+                          />
+                        );
+                      })}
+
                       {carrierToPickupPath.length > 1 && (
                         <Polyline
                           path={carrierToPickupPath}
@@ -780,6 +833,16 @@ export default function CurrentJobDetails({
                       className="top-2 right-2 max-w-[220px]"
                       items={[
                         {
+                          color: "#16a34a",
+                          opacity: 0.92,
+                          label: "Managed shortcut",
+                        },
+                        {
+                          color: "#dc2626",
+                          opacity: 0.95,
+                          label: "Blocked / restricted",
+                        },
+                        {
                           color: "#fbbf24",
                           opacity: 0.4,
                           label: "Carrier → Pickup",
@@ -810,14 +873,61 @@ export default function CurrentJobDetails({
 
                   <div className="flex items-center justify-between text-xs text-gray-600">
                     <span>Selected points: {shortcutPoints.length}/2</span>
-                    <button
-                      type="button"
-                      onClick={() => setShortcutPoints([])}
-                      className="rounded border border-gray-300 px-2 py-1 hover:bg-gray-100"
-                    >
-                      Reset points
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => focusPointOnModalMap(pickupPoint)}
+                        className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-800 hover:bg-amber-100"
+                      >
+                        Pickup
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => focusPointOnModalMap(currentPoint)}
+                        className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-800 hover:bg-emerald-100"
+                      >
+                        Current
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => focusPointOnModalMap(deliveryPoint)}
+                        className="rounded border border-orange-200 bg-orange-50 px-2 py-1 text-orange-800 hover:bg-orange-100"
+                      >
+                        Dropoff
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShortcutPoints([])}
+                        className="rounded border border-gray-300 px-2 py-1 hover:bg-gray-100"
+                      >
+                        Reset points
+                      </button>
+                    </div>
                   </div>
+
+                  {visibleManagedSegments.length > 0 && (
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      {visibleManagedSegments.map((segment) => {
+                        const style = getRouteNetworkSegmentStyle(segment);
+                        return (
+                          <button
+                            key={segment.id}
+                            type="button"
+                            onClick={() => focusPointOnModalMap(segment.start)}
+                            className="rounded-full border px-3 py-1.5 font-semibold"
+                            style={{
+                              borderColor: style.strokeColor,
+                              color: style.strokeColor,
+                              backgroundColor: `${style.strokeColor}12`,
+                            }}
+                          >
+                            {segment.name} •{" "}
+                            {formatRouteNetworkSegmentType(segment.type)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   <label className="inline-flex items-center gap-2 text-sm text-gray-700">
                     <input

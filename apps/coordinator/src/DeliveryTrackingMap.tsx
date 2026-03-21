@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { GoogleMap, Marker, Polyline } from "@react-google-maps/api";
-import { db, realtimeDb } from "@config";
+import {
+  db,
+  realtimeDb,
+  formatRouteNetworkSegmentType,
+  getRouteNetworkSegmentStyle,
+  isRouteNetworkSegmentRelevant,
+  subscribeRouteNetworkSegments,
+  type RouteNetworkSegment,
+} from "@config";
 import {
   arrayUnion,
   collection,
@@ -179,8 +187,12 @@ export default function DeliveryTrackingMap() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const [delivery, setDelivery] = useState<DeliveryData | null>(null);
+  const [managedSegments, setManagedSegments] = useState<RouteNetworkSegment[]>(
+    [],
+  );
   const [carrierLocation, setCarrierLocation] =
     useState<CarrierLocation | null>(null);
+  const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
   const [loading, setLoading] = useState(true);
   const [snapshots, setSnapshots] = useState<RouteSnapshot[]>([]);
   const [replayProgress, setReplayProgress] = useState(100);
@@ -258,6 +270,10 @@ export default function DeliveryTrackingMap() {
 
     return () => unsubscribe();
   }, [id, navigate]);
+
+  useEffect(() => {
+    return subscribeRouteNetworkSegments(setManagedSegments);
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -474,6 +490,41 @@ export default function DeliveryTrackingMap() {
     () => offsetPathMeters(pickupToDeliveryPath, 7),
     [pickupToDeliveryPath],
   );
+
+  const visibleManagedSegments = useMemo(
+    () =>
+      managedSegments.filter(
+        (segment) =>
+          segment.status === "active" &&
+          isRouteNetworkSegmentRelevant(segment, [
+            delivery?.pickupLocation,
+            delivery?.deliveryLocation,
+            carrierLocation,
+            delivery?.currentLocation,
+          ]),
+      ),
+    [
+      carrierLocation,
+      delivery?.currentLocation,
+      delivery?.deliveryLocation,
+      delivery?.pickupLocation,
+      managedSegments,
+    ],
+  );
+
+  const focusPoint = (point?: { lat: number; lng: number } | null) => {
+    if (!mapInstance || !point) return;
+    mapInstance.panTo(point);
+    mapInstance.setZoom(16);
+  };
+
+  const focusSegment = (segment: RouteNetworkSegment) => {
+    if (!mapInstance || !window.google?.maps) return;
+    const bounds = new window.google.maps.LatLngBounds();
+    bounds.extend(segment.start);
+    bounds.extend(segment.end);
+    mapInstance.fitBounds(bounds, 80);
+  };
 
   const getStatusLabel = (status: string) => {
     const labels: { [key: string]: string } = {
@@ -796,10 +847,28 @@ export default function DeliveryTrackingMap() {
               <GoogleMap
                 zoom={15}
                 center={mapCenter}
+                onLoad={(map) => setMapInstance(map)}
                 onClick={onMapClick}
                 mapContainerStyle={{ height: "100%", width: "100%" }}
                 options={{ disableDefaultUI: false }}
               >
+                {visibleManagedSegments.map((segment) => {
+                  const style = getRouteNetworkSegmentStyle(segment);
+                  return (
+                    <Polyline
+                      key={`managed-${segment.id}`}
+                      path={[segment.start, segment.end]}
+                      onClick={() => focusSegment(segment)}
+                      options={{
+                        strokeColor: style.strokeColor,
+                        strokeOpacity: style.strokeOpacity,
+                        strokeWeight: style.strokeWeight,
+                        zIndex: 18,
+                      }}
+                    />
+                  );
+                })}
+
                 {/* Carrier to Pickup Path (Yellow with low opacity) */}
                 {carrierToPickupDisplayPath &&
                   carrierToPickupDisplayPath.length > 1 && (
@@ -1064,6 +1133,24 @@ export default function DeliveryTrackingMap() {
             className="w-full"
             items={[
               {
+                color: "#16a34a",
+                opacity: 0.92,
+                label: "Shortcut",
+                description: "Managed local shortcut",
+              },
+              {
+                color: "#dc2626",
+                opacity: 0.95,
+                label: "Blocked path",
+                description: "Managed road block",
+              },
+              {
+                color: "#7c3aed",
+                opacity: 0.9,
+                label: "Restricted path",
+                description: "Vehicle or road restriction",
+              },
+              {
                 color: "#a855f7",
                 opacity: 0.72,
                 label: "Carrier → Pickup",
@@ -1111,6 +1198,64 @@ export default function DeliveryTrackingMap() {
             ]}
           />
         </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <button
+            type="button"
+            onClick={() => focusPoint(delivery.pickupLocation)}
+            className="rounded-full bg-amber-100 px-3 py-1.5 font-semibold text-amber-800 hover:bg-amber-200"
+          >
+            Locate pickup
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              focusPoint(carrierLocation || delivery.currentLocation)
+            }
+            className="rounded-full bg-emerald-100 px-3 py-1.5 font-semibold text-emerald-800 hover:bg-emerald-200"
+          >
+            Locate carrier
+          </button>
+          <button
+            type="button"
+            onClick={() => focusPoint(delivery.deliveryLocation)}
+            className="rounded-full bg-orange-100 px-3 py-1.5 font-semibold text-orange-800 hover:bg-orange-200"
+          >
+            Locate delivery
+          </button>
+          <span className="rounded-full bg-slate-100 px-3 py-1.5 font-semibold text-slate-700">
+            {visibleManagedSegments.length} route rule(s) visible
+          </span>
+        </div>
+
+        {visibleManagedSegments.length > 0 && (
+          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-sm font-semibold text-slate-800">
+              Visible route rules for this delivery
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {visibleManagedSegments.map((segment) => {
+                const style = getRouteNetworkSegmentStyle(segment);
+                return (
+                  <button
+                    key={segment.id}
+                    type="button"
+                    onClick={() => focusSegment(segment)}
+                    className="rounded-full border px-3 py-1.5 text-xs font-semibold"
+                    style={{
+                      borderColor: style.strokeColor,
+                      color: style.strokeColor,
+                      backgroundColor: `${style.strokeColor}12`,
+                    }}
+                  >
+                    {segment.name} •{" "}
+                    {formatRouteNetworkSegmentType(segment.type)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {(delivery.routeFeedback?.length || learnedSegments.length) && (
