@@ -469,46 +469,6 @@ export default function CreateDelivery() {
     };
   };
 
-  const selectKnownLocation = (
-    type: "pickup" | "delivery",
-    location: KnownLocation,
-  ) => {
-    if (type === "pickup") {
-      setPickupConfirmed(false);
-      setPickupLocation({
-        name: location.name,
-        lat: location.lat,
-        lng: location.lng,
-      });
-      setFormData((prev) => ({
-        ...prev,
-        pickupAddress: location.name,
-        pickupCoordinates: {
-          lat: location.lat,
-          lng: location.lng,
-          address: location.name,
-        },
-      }));
-      return;
-    }
-
-    setDeliveryConfirmed(false);
-    setDeliveryLocation({
-      name: location.name,
-      lat: location.lat,
-      lng: location.lng,
-    });
-    setFormData((prev) => ({
-      ...prev,
-      deliveryAddress: location.name,
-      deliveryCoordinates: {
-        lat: location.lat,
-        lng: location.lng,
-        address: location.name,
-      },
-    }));
-  };
-
   const handleMapLocationSelect = async (
     type: "pickup" | "delivery",
     lat: number,
