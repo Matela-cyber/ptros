@@ -1,6 +1,6 @@
 // apps/customer/src/CreateOrder.tsx
 import AddressAutocomplete from "./AddressAutocomplete";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { db } from "@config";
 import {
   collection,
@@ -14,6 +14,183 @@ import { toast, Toaster } from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import { useGeocoder } from "./hooks/useGeocoder";
 
+const LESOTHO_DEFAULT_CENTER = { lat: -29.3142, lng: 27.4833 };
+
+declare global {
+  interface Window { google: any; }
+}
+
+function AddressMapPreview({
+  lat,
+  lng,
+  label,
+  clickable = false,
+  onPick,
+  fullHeight = false,
+}: {
+  lat: number;
+  lng: number;
+  label: string;
+  clickable?: boolean;
+  onPick?: (lat: number, lng: number) => void;
+  fullHeight?: boolean;
+}) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const markerRef = useRef<any>(null);
+  const clickListenerRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (!mapRef.current || !window.google?.maps) return;
+    if (!mapInstanceRef.current) {
+      mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
+        center: { lat, lng },
+        zoom: 15,
+        disableDefaultUI: true,
+        zoomControl: true,
+      });
+    }
+
+    if (!markerRef.current) {
+      markerRef.current = new window.google.maps.Marker({
+        position: { lat, lng },
+        map: mapInstanceRef.current,
+        title: label,
+      });
+    }
+
+    markerRef.current.setPosition({ lat, lng });
+    markerRef.current.setTitle(label);
+    mapInstanceRef.current.setCenter({ lat, lng });
+
+    if (clickListenerRef.current) {
+      window.google.maps.event.removeListener(clickListenerRef.current);
+      clickListenerRef.current = null;
+    }
+
+    if (clickable && onPick) {
+      clickListenerRef.current = mapInstanceRef.current.addListener(
+        "click",
+        (e: any) => {
+          const nextLat = e?.latLng?.lat?.();
+          const nextLng = e?.latLng?.lng?.();
+          if (typeof nextLat === "number" && typeof nextLng === "number") {
+            markerRef.current?.setPosition({ lat: nextLat, lng: nextLng });
+            onPick(nextLat, nextLng);
+          }
+        }
+      );
+    }
+
+    return () => {
+      if (clickListenerRef.current && window.google?.maps?.event) {
+        window.google.maps.event.removeListener(clickListenerRef.current);
+        clickListenerRef.current = null;
+      }
+    };
+  }, [lat, lng, label, clickable, onPick]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+    mapRef.current.style.cursor = clickable ? "crosshair" : "default";
+  }, [clickable]);
+
+  return (
+    <div
+      className={`${fullHeight ? "h-full" : "mt-3"} border border-green-200 rounded-lg overflow-hidden shadow-sm bg-white`}
+    >
+      <div className="bg-green-50 px-3 py-1.5 text-xs text-green-700 font-medium flex items-center gap-1.5">
+        <span>📍</span>
+        <span className="truncate">
+          {clickable ? "Click map to pin exact location:" : "Confirm location:"} {label}
+        </span>
+      </div>
+      <div ref={mapRef} style={{ height: fullHeight ? "calc(100% - 34px)" : "200px" }} />
+    </div>
+  );
+}
+
+function FullscreenMapPicker({
+  title,
+  lat,
+  lng,
+  label,
+  loading = false,
+  onClose,
+  onPick,
+}: {
+  title: string;
+  lat: number;
+  lng: number;
+  label: string;
+  loading?: boolean;
+  onClose: () => void;
+  onPick: (lat: number, lng: number) => void;
+}) {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !loading) {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [loading, onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex flex-col">
+      <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200 shadow-sm">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+          <p className="text-sm text-gray-600">
+            Click anywhere on the map to drop a pin and confirm the exact location.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={loading}
+          className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          Close
+        </button>
+      </div>
+
+      <div className="flex-1 p-4">
+        <div className="relative h-full rounded-2xl overflow-hidden bg-white shadow-2xl">
+          <AddressMapPreview
+            lat={lat}
+            lng={lng}
+            label={label}
+            clickable
+            onPick={onPick}
+            fullHeight
+          />
+
+          {loading && (
+            <div className="absolute inset-0 bg-white/75 flex items-center justify-center">
+              <div className="flex items-center gap-3 rounded-xl bg-white px-5 py-4 shadow-lg border border-blue-100">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                <span className="text-sm font-medium text-blue-700">
+                  Confirming pinned location...
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type Props = { user: any };
 
 interface Coordinates {
@@ -24,7 +201,39 @@ interface Coordinates {
 
 export default function CreateOrder({ user }: Props) {
   const navigate = useNavigate();
-  const { geocodeAddress } = useGeocoder();
+  const { geocodeAddress, reverseGeocode } = useGeocoder();
+
+  // Called when user selects a suggestion from the pickup autocomplete dropdown
+  const handlePickupPlaceSelect = (place: any) => {
+    if (!place?.geometry?.location) return;
+    const loc = place.geometry.location;
+    const lat = typeof loc.lat === "function" ? loc.lat() : loc.lat;
+    const lng = typeof loc.lng === "function" ? loc.lng() : loc.lng;
+    setFormData((prev) => ({
+      ...prev,
+      pickupCoordinates: {
+        lat,
+        lng,
+        address: place.formatted_address || prev.pickupAddress,
+      },
+    }));
+  };
+
+  // Called when user selects a suggestion from the delivery autocomplete dropdown
+  const handleDeliveryPlaceSelect = (place: any) => {
+    if (!place?.geometry?.location) return;
+    const loc = place.geometry.location;
+    const lat = typeof loc.lat === "function" ? loc.lat() : loc.lat;
+    const lng = typeof loc.lng === "function" ? loc.lng() : loc.lng;
+    setFormData((prev) => ({
+      ...prev,
+      deliveryCoordinates: {
+        lat,
+        lng,
+        address: place.formatted_address || prev.deliveryAddress,
+      },
+    }));
+  };
 
   // Form state with all detailed fields
   const [formData, setFormData] = useState({
@@ -67,6 +276,49 @@ export default function CreateOrder({ user }: Props) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
+  const [showPickupManualMap, setShowPickupManualMap] = useState(false);
+  const [showDeliveryManualMap, setShowDeliveryManualMap] = useState(false);
+  const [resolvingPickupPin, setResolvingPickupPin] = useState(false);
+  const [resolvingDeliveryPin, setResolvingDeliveryPin] = useState(false);
+
+  const formatPinnedAddress = (lat: number, lng: number) =>
+    `Pinned location (${lat.toFixed(6)}, ${lng.toFixed(6)})`;
+
+  const handlePickupMapPick = async (lat: number, lng: number) => {
+    setResolvingPickupPin(true);
+    const resolvedAddress = await reverseGeocode(lat, lng);
+    const nextAddress = resolvedAddress || formatPinnedAddress(lat, lng);
+
+    setFormData((prev) => ({
+      ...prev,
+      pickupAddress: nextAddress,
+      pickupCoordinates: {
+        lat,
+        lng,
+        address: nextAddress,
+      },
+    }));
+    setResolvingPickupPin(false);
+    setShowPickupManualMap(false);
+  };
+
+  const handleDeliveryMapPick = async (lat: number, lng: number) => {
+    setResolvingDeliveryPin(true);
+    const resolvedAddress = await reverseGeocode(lat, lng);
+    const nextAddress = resolvedAddress || formatPinnedAddress(lat, lng);
+
+    setFormData((prev) => ({
+      ...prev,
+      deliveryAddress: nextAddress,
+      deliveryCoordinates: {
+        lat,
+        lng,
+        address: nextAddress,
+      },
+    }));
+    setResolvingDeliveryPin(false);
+    setShowDeliveryManualMap(false);
+  };
 
   // Load user profile
   useEffect(() => {
@@ -645,16 +897,31 @@ export default function CreateOrder({ user }: Props) {
               <AddressAutocomplete
                 value={formData.pickupAddress}
                 onChange={handlePickupAddressChange}
+                onSelect={handlePickupPlaceSelect}
                 placeholder="Start typing address..."
               />
-              {formData.pickupCoordinates && (
-                <div className="mt-2 flex items-center text-sm text-green-600">
-                  <span className="mr-2">✓</span>
-                  <span>
-                    Coordinates ready: {formData.pickupCoordinates.lat.toFixed(6)},{" "}
-                    {formData.pickupCoordinates.lng.toFixed(6)}
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowPickupManualMap((prev) => !prev)}
+                  className="text-sm px-3 py-1.5 rounded-md border border-blue-300 text-blue-700 hover:bg-blue-50"
+                >
+                  {showPickupManualMap
+                    ? "Close fullscreen map"
+                    : "Open fullscreen map picker"}
+                </button>
+                {resolvingPickupPin && (
+                  <span className="text-xs text-blue-600">
+                    Resolving selected point...
                   </span>
-                </div>
+                )}
+              </div>
+              {formData.pickupCoordinates && (
+                <AddressMapPreview
+                  lat={formData.pickupCoordinates.lat}
+                  lng={formData.pickupCoordinates.lng}
+                  label={formData.pickupAddress || "Pickup location"}
+                />
               )}
             </div>
 
@@ -747,16 +1014,31 @@ export default function CreateOrder({ user }: Props) {
               <AddressAutocomplete
                 value={formData.deliveryAddress}
                 onChange={handleDeliveryAddressChange}
+                onSelect={handleDeliveryPlaceSelect}
                 placeholder="Start typing address..."
               />
-              {formData.deliveryCoordinates && (
-                <div className="mt-2 flex items-center text-sm text-green-600">
-                  <span className="mr-2">✓</span>
-                  <span>
-                    Coordinates ready: {formData.deliveryCoordinates.lat.toFixed(6)},{" "}
-                    {formData.deliveryCoordinates.lng.toFixed(6)}
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowDeliveryManualMap((prev) => !prev)}
+                  className="text-sm px-3 py-1.5 rounded-md border border-blue-300 text-blue-700 hover:bg-blue-50"
+                >
+                  {showDeliveryManualMap
+                    ? "Close fullscreen map"
+                    : "Open fullscreen destination picker"}
+                </button>
+                {resolvingDeliveryPin && (
+                  <span className="text-xs text-blue-600">
+                    Resolving selected point...
                   </span>
-                </div>
+                )}
+              </div>
+              {formData.deliveryCoordinates && (
+                <AddressMapPreview
+                  lat={formData.deliveryCoordinates.lat}
+                  lng={formData.deliveryCoordinates.lng}
+                  label={formData.deliveryAddress || "Delivery destination"}
+                />
               )}
             </div>
 
@@ -1081,6 +1363,30 @@ export default function CreateOrder({ user }: Props) {
           </p>
         </div>
       </div>
+
+      {showPickupManualMap && (
+        <FullscreenMapPicker
+          title="Pick pickup location"
+          lat={formData.pickupCoordinates?.lat ?? LESOTHO_DEFAULT_CENTER.lat}
+          lng={formData.pickupCoordinates?.lng ?? LESOTHO_DEFAULT_CENTER.lng}
+          label={formData.pickupAddress || "Pickup location"}
+          loading={resolvingPickupPin}
+          onClose={() => setShowPickupManualMap(false)}
+          onPick={handlePickupMapPick}
+        />
+      )}
+
+      {showDeliveryManualMap && (
+        <FullscreenMapPicker
+          title="Pick delivery destination"
+          lat={formData.deliveryCoordinates?.lat ?? LESOTHO_DEFAULT_CENTER.lat}
+          lng={formData.deliveryCoordinates?.lng ?? LESOTHO_DEFAULT_CENTER.lng}
+          label={formData.deliveryAddress || "Delivery destination"}
+          loading={resolvingDeliveryPin}
+          onClose={() => setShowDeliveryManualMap(false)}
+          onPick={handleDeliveryMapPick}
+        />
+      )}
     </div>
   );
 }

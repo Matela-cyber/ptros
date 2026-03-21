@@ -55,9 +55,12 @@ export default function AddressAutocomplete({
     setSuggestions([]);
 
     if (onSelect && placesServiceRef.current) {
-      placesServiceRef.current.getDetails({ placeId }, (place: any) => {
-        onSelect(place);
-      });
+      placesServiceRef.current.getDetails(
+        { placeId, fields: ["geometry", "formatted_address", "name"] },
+        (place: any) => {
+          onSelect(place);
+        }
+      );
     }
   };
 
@@ -85,9 +88,11 @@ export default function AddressAutocomplete({
               }
               className="w-full text-left px-4 py-2 hover:bg-gray-100 border-b last:border-b-0"
             >
-              <p className="font-medium text-sm">{suggestion.main_text}</p>
+              <p className="font-medium text-sm">
+                {suggestion.structured_formatting?.main_text || suggestion.description}
+              </p>
               <p className="text-xs text-gray-500">
-                {suggestion.secondary_text}
+                {suggestion.structured_formatting?.secondary_text || ""}
               </p>
             </button>
           ))}

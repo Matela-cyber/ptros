@@ -22,6 +22,7 @@ type Props = {
 export default function AppRouter({ user }: Props) {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -48,11 +49,28 @@ export default function AppRouter({ user }: Props) {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 min-w-0 flex flex-col">
-        <Header user={user} userProfile={userProfile} />
-        <main className="flex-1 p-6">
+    <div className="min-h-screen bg-gray-50 lg:flex">
+      <Sidebar
+        mobileOpen={mobileSidebarOpen}
+        onClose={() => setMobileSidebarOpen(false)}
+      />
+
+      {mobileSidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close sidebar overlay"
+          onClick={() => setMobileSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+        />
+      )}
+
+      <div className="flex min-h-screen flex-1 min-w-0 flex-col">
+        <Header
+          user={user}
+          userProfile={userProfile}
+          onToggleSidebar={() => setMobileSidebarOpen((prev) => !prev)}
+        />
+        <main className="flex-1 overflow-x-hidden p-3 sm:p-4 lg:p-6">
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route

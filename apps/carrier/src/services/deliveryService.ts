@@ -223,6 +223,27 @@ export const updateDeliveryStatus = async (
       updateData["proofOfDelivery.verifiedAt"] = null;
     } else if (status === "delivered") {
       updateData.deliveryTime = serverTimestamp();
+      // Increment carrier stats on their user document
+      const carrierId = auth.currentUser?.uid;
+      if (carrierId) {
+        try {
+          const deliverySnap = await getDocs(
+            query(collection(db, "deliveries"), where("__name__", "==", deliveryId))
+          );
+          const deliveryEarnings = deliverySnap.empty
+            ? 0
+            : deliverySnap.docs[0].data().earnings ||
+              deliverySnap.docs[0].data().estimatedEarnings ||
+              0;
+          await updateDoc(doc(db, "users", carrierId), {
+            completedDeliveries: increment(1),
+            earnings: increment(deliveryEarnings),
+            updatedAt: serverTimestamp(),
+          });
+        } catch (e) {
+          console.error("Error updating carrier stats:", e);
+        }
+      }
     }
 
     if (location) {

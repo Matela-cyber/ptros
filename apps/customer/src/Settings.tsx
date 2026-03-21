@@ -1,7 +1,18 @@
 // apps/customer/src/Settings.tsx
-import { useState } from "react";
-import { auth } from "@config";
-import { signOut, deleteUser } from "firebase/auth";
+import { useEffect, useRef, useState } from "react";
+import { auth, db } from "@config";
+import {
+  signOut,
+  deleteUser,
+  EmailAuthProvider,
+  multiFactor,
+  PhoneAuthProvider,
+  PhoneMultiFactorGenerator,
+  RecaptchaVerifier,
+  reauthenticateWithCredential,
+  updatePassword,
+} from "firebase/auth";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { toast, Toaster } from "react-hot-toast";
 
@@ -15,6 +26,76 @@ export default function Settings() {
   });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showTwoFactor, setShowTwoFactor] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmNewPassword: "",
+  });
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [mfaPhoneNumber, setMfaPhoneNumber] = useState("");
+  const [mfaPassword, setMfaPassword] = useState("");
+  const [mfaVerificationCode, setMfaVerificationCode] = useState("");
+  const [mfaVerificationId, setMfaVerificationId] = useState("");
+  const [mfaLoading, setMfaLoading] = useState(false);
+  const [mfaEnabled, setMfaEnabled] = useState(false);
+  const recaptchaContainerRef = useRef<HTMLDivElement>(null);
+  const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
+
+  useEffect(() => {
+    const loadSecurityProfile = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      setMfaEnabled(multiFactor(user).enrolledFactors.length > 0);
+
+      try {
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          setMfaPhoneNumber(String(data.phone || data.whatsapp || ""));
+        }
+      } catch (error) {
+        console.error("Error loading security profile:", error);
+      }
+    };
+
+    loadSecurityProfile();
+
+    return () => {
+      recaptchaVerifierRef.current?.clear();
+      recaptchaVerifierRef.current = null;
+    };
+  }, []);
+
+  const normalizePhoneNumber = (value: string) => {
+    const digits = value.replace(/[\s\-()]/g, "");
+
+    if (!digits) return "";
+    if (digits.startsWith("+")) return digits;
+    if (digits.startsWith("266")) return `+${digits}`;
+    if (/^\d{8}$/.test(digits)) return `+266${digits}`;
+    return digits;
+  };
+
+  const ensureRecaptchaVerifier = async () => {
+    if (recaptchaVerifierRef.current) {
+      return recaptchaVerifierRef.current;
+    }
+
+    if (!recaptchaContainerRef.current) {
+      throw new Error("reCAPTCHA container not ready");
+    }
+
+    const verifier = new RecaptchaVerifier(auth, recaptchaContainerRef.current, {
+      size: "invisible",
+    });
+
+    await verifier.render();
+    recaptchaVerifierRef.current = verifier;
+    return verifier;
+  };
 
   const handleToggle = (key: keyof typeof settings) => {
     setSettings((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -47,6 +128,243 @@ export default function Settings() {
     } finally {
       setLoading(false);
       setShowDeleteConfirm(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    const user = auth.currentUser;
+
+    if (!user) {
+      toast.error("Please login again to change password.");
+      return;
+    }
+
+    if (!user.email) {
+      toast.error("Account email not found. Please login again.");
+      return;
+    }
+
+    if (!passwordForm.currentPassword.trim()) {
+      toast.error("Enter your current password.");
+      return;
+    }
+
+    if (!passwordForm.newPassword.trim()) {
+      toast.error("Enter a new password.");
+      return;
+    }
+
+    if (passwordForm.newPassword.length < 8) {
+      toast.error("New password must be at least 8 characters.");
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmNewPassword) {
+      toast.error("New password and confirmation do not match.");
+      return;
+    }
+
+    if (passwordForm.currentPassword === passwordForm.newPassword) {
+      toast.error("New password must be different from current password.");
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const credential = EmailAuthProvider.credential(
+        user.email,
+        passwordForm.currentPassword,
+      );
+
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, passwordForm.newPassword);
+
+      toast.success("Password changed successfully.");
+      setPasswordForm({
+        currentPassword: "",
+        newPassword: "",
+        confirmNewPassword: "",
+      });
+      setShowChangePassword(false);
+    } catch (error) {
+      console.error("Error changing password:", error);
+      const err = error as { code?: string };
+
+      if (err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
+        toast.error("Current password is incorrect.");
+      } else if (err.code === "auth/weak-password") {
+        toast.error("New password is too weak.");
+      } else if (err.code === "auth/requires-recent-login") {
+        toast.error("Please log in again and retry changing your password.");
+      } else {
+        toast.error("Failed to change password. Please try again later.");
+      }
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
+  const handleStartTwoFactorEnrollment = async () => {
+    const user = auth.currentUser;
+
+    if (!user) {
+      toast.error("Please login again to configure two-factor authentication.");
+      return;
+    }
+
+    if (!user.email) {
+      toast.error("Account email not found. Please login again.");
+      return;
+    }
+
+    if (!mfaPassword.trim()) {
+      toast.error("Enter your current password to continue.");
+      return;
+    }
+
+    const normalizedPhone = normalizePhoneNumber(mfaPhoneNumber);
+    if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone)) {
+      toast.error("Enter a valid phone number with country code.");
+      return;
+    }
+
+    setMfaLoading(true);
+    try {
+      const credential = EmailAuthProvider.credential(user.email, mfaPassword);
+      await reauthenticateWithCredential(user, credential);
+
+      const verifier = await ensureRecaptchaVerifier();
+      const mfaSession = await multiFactor(user).getSession();
+      const phoneAuthProvider = new PhoneAuthProvider(auth);
+
+      const verificationId = await phoneAuthProvider.verifyPhoneNumber(
+        {
+          phoneNumber: normalizedPhone,
+          session: mfaSession,
+        },
+        verifier,
+      );
+
+      setMfaPhoneNumber(normalizedPhone);
+      setMfaVerificationId(verificationId);
+      toast.success("Verification code sent to your phone.");
+    } catch (error) {
+      console.error("Error starting 2FA enrollment:", error);
+      const err = error as { code?: string };
+
+      if (err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
+        toast.error("Current password is incorrect.");
+      } else if (err.code === "auth/operation-not-allowed") {
+        toast.error("Phone authentication must be enabled in Firebase Console.");
+      } else if (err.code === "auth/invalid-phone-number") {
+        toast.error("Phone number format is invalid.");
+      } else if (err.code === "auth/quota-exceeded") {
+        toast.error("SMS quota exceeded. Please try again later.");
+      } else {
+        toast.error("Failed to start two-factor setup. Please try again.");
+      }
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleConfirmTwoFactorEnrollment = async () => {
+    const user = auth.currentUser;
+
+    if (!user) {
+      toast.error("Please login again to configure two-factor authentication.");
+      return;
+    }
+
+    if (!mfaVerificationId || !mfaVerificationCode.trim()) {
+      toast.error("Enter the SMS verification code.");
+      return;
+    }
+
+    setMfaLoading(true);
+    try {
+      const phoneCredential = PhoneAuthProvider.credential(
+        mfaVerificationId,
+        mfaVerificationCode.trim(),
+      );
+      const multiFactorAssertion =
+        PhoneMultiFactorGenerator.assertion(phoneCredential);
+
+      await multiFactor(user).enroll(multiFactorAssertion, mfaPhoneNumber);
+      await updateDoc(doc(db, "users", user.uid), {
+        phone: mfaPhoneNumber,
+        twoFactorEnabled: true,
+      });
+
+      setMfaEnabled(true);
+      setMfaVerificationId("");
+      setMfaVerificationCode("");
+      setMfaPassword("");
+      toast.success("Two-factor authentication enabled.");
+    } catch (error) {
+      console.error("Error confirming 2FA enrollment:", error);
+      const err = error as { code?: string };
+
+      if (err.code === "auth/invalid-verification-code") {
+        toast.error("Invalid SMS code. Please try again.");
+      } else {
+        toast.error("Failed to enable two-factor authentication.");
+      }
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleDisableTwoFactor = async () => {
+    const user = auth.currentUser;
+
+    if (!user) {
+      toast.error("Please login again to update two-factor settings.");
+      return;
+    }
+
+    if (!user.email) {
+      toast.error("Account email not found. Please login again.");
+      return;
+    }
+
+    if (!mfaPassword.trim()) {
+      toast.error("Enter your current password to disable two-factor authentication.");
+      return;
+    }
+
+    const factor = multiFactor(user).enrolledFactors[0];
+    if (!factor) {
+      setMfaEnabled(false);
+      toast.error("No enrolled second factor was found.");
+      return;
+    }
+
+    setMfaLoading(true);
+    try {
+      const credential = EmailAuthProvider.credential(user.email, mfaPassword);
+      await reauthenticateWithCredential(user, credential);
+      await multiFactor(user).unenroll(factor);
+      await updateDoc(doc(db, "users", user.uid), {
+        twoFactorEnabled: false,
+      });
+
+      setMfaEnabled(false);
+      setMfaVerificationId("");
+      setMfaVerificationCode("");
+      setMfaPassword("");
+      toast.success("Two-factor authentication disabled.");
+    } catch (error) {
+      console.error("Error disabling 2FA:", error);
+      const err = error as { code?: string };
+
+      if (err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
+        toast.error("Current password is incorrect.");
+      } else {
+        toast.error("Failed to disable two-factor authentication.");
+      }
+    } finally {
+      setMfaLoading(false);
     }
   };
 
@@ -158,12 +476,227 @@ export default function Settings() {
         {/* Security */}
         <div className="bg-white rounded-xl shadow p-6">
           <h2 className="text-xl font-bold mb-6">Security</h2>
-          <button className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 mb-3">
+          <button
+            onClick={() => setShowChangePassword((prev) => !prev)}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 mb-3"
+          >
             🔐 Change Password
           </button>
-          <button className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
+
+          {showChangePassword && (
+            <div className="mb-3 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Current Password
+                </label>
+                <input
+                  type="password"
+                  value={passwordForm.currentPassword}
+                  onChange={(e) =>
+                    setPasswordForm((prev) => ({
+                      ...prev,
+                      currentPassword: e.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  autoComplete="current-password"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  New Password
+                </label>
+                <input
+                  type="password"
+                  value={passwordForm.newPassword}
+                  onChange={(e) =>
+                    setPasswordForm((prev) => ({
+                      ...prev,
+                      newPassword: e.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Confirm New Password
+                </label>
+                <input
+                  type="password"
+                  value={passwordForm.confirmNewPassword}
+                  onChange={(e) =>
+                    setPasswordForm((prev) => ({
+                      ...prev,
+                      confirmNewPassword: e.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowChangePassword(false);
+                    setPasswordForm({
+                      currentPassword: "",
+                      newPassword: "",
+                      confirmNewPassword: "",
+                    });
+                  }}
+                  className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleChangePassword}
+                  disabled={changingPassword}
+                  className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {changingPassword ? "Updating..." : "Update Password"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={() => setShowTwoFactor((prev) => !prev)}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50"
+          >
             🔑 Two-Factor Authentication
           </button>
+
+          {showTwoFactor && (
+            <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-gray-800">SMS two-factor authentication</p>
+                  <p className="text-sm text-gray-500">
+                    Protect your account with a one-time code sent by SMS.
+                  </p>
+                </div>
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                    mfaEnabled
+                      ? "bg-green-100 text-green-700"
+                      : "bg-gray-200 text-gray-700"
+                  }`}
+                >
+                  {mfaEnabled ? "Enabled" : "Disabled"}
+                </span>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  value={mfaPhoneNumber}
+                  onChange={(e) => setMfaPhoneNumber(e.target.value)}
+                  placeholder="e.g. +26650123456"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={mfaEnabled || Boolean(mfaVerificationId)}
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Current Password
+                </label>
+                <input
+                  type="password"
+                  value={mfaPassword}
+                  onChange={(e) => setMfaPassword(e.target.value)}
+                  placeholder="Enter your current password"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  autoComplete="current-password"
+                />
+              </div>
+
+              {!mfaEnabled && mfaVerificationId && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Verification Code
+                  </label>
+                  <input
+                    type="text"
+                    value={mfaVerificationCode}
+                    onChange={(e) => setMfaVerificationCode(e.target.value)}
+                    placeholder="Enter SMS code"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    inputMode="numeric"
+                  />
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                {!mfaEnabled && !mfaVerificationId && (
+                  <button
+                    type="button"
+                    onClick={handleStartTwoFactorEnrollment}
+                    disabled={mfaLoading}
+                    className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {mfaLoading ? "Sending code..." : "Send Verification Code"}
+                  </button>
+                )}
+
+                {!mfaEnabled && mfaVerificationId && (
+                  <button
+                    type="button"
+                    onClick={handleConfirmTwoFactorEnrollment}
+                    disabled={mfaLoading}
+                    className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {mfaLoading ? "Enabling..." : "Confirm & Enable"}
+                  </button>
+                )}
+
+                {mfaEnabled && (
+                  <button
+                    type="button"
+                    onClick={handleDisableTwoFactor}
+                    disabled={mfaLoading}
+                    className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {mfaLoading ? "Disabling..." : "Disable 2FA"}
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowTwoFactor(false);
+                    setMfaPassword("");
+                    setMfaVerificationCode("");
+                    setMfaVerificationId("");
+                  }}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-white"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div
+                ref={recaptchaContainerRef}
+                className="min-h-[1px]"
+                aria-hidden="true"
+              />
+
+              <p className="text-xs text-gray-500">
+                Make sure Phone Authentication is enabled in Firebase Console and
+                your phone number uses international format.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Account Actions */}

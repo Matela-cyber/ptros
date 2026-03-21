@@ -1,9 +1,57 @@
 // apps/customer/src/Sidebar.tsx
 import { NavLink } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { auth, db } from "@config";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 
-export default function Sidebar() {
+type SidebarProps = {
+  mobileOpen?: boolean;
+  onClose?: () => void;
+};
+
+export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [activeOrdersCount, setActiveOrdersCount] = useState(0);
+
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) {
+      setActiveOrdersCount(0);
+      return;
+    }
+
+    const q = query(
+      collection(db, "deliveries"),
+      where("customerId", "==", user.uid),
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const activeStatuses = new Set([
+          "assigned",
+          "picked_up",
+          "in_transit",
+          "out_for_delivery",
+        ]);
+
+        let count = 0;
+        snapshot.forEach((doc) => {
+          const status = String(doc.data().status || "");
+          if (activeStatuses.has(status)) {
+            count += 1;
+          }
+        });
+
+        setActiveOrdersCount(count);
+      },
+      (error) => {
+        console.error("Error loading active orders count:", error);
+      },
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   const navItems = [
     { path: "/dashboard", icon: "home", label: "Home" },
@@ -130,34 +178,40 @@ export default function Sidebar() {
     }
   };
 
+  const handleNavClick = () => {
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      onClose?.();
+    }
+  };
+
   return (
     <aside
-      className={`bg-blue-900 text-white ${
-        collapsed ? "w-20" : "w-64"
-      } transition-all duration-300 flex flex-col h-screen sticky top-0 shrink-0`}
+      className={`fixed inset-y-0 left-0 z-40 flex h-screen w-64 shrink-0 flex-col bg-emerald-900 text-white transition-transform duration-300 lg:sticky lg:top-0 lg:translate-x-0 ${
+        mobileOpen ? "translate-x-0" : "-translate-x-full"
+      } ${collapsed ? "lg:w-20" : "lg:w-64"}`}
     >
       {/* Logo */}
-      <div className="p-6 border-b border-blue-800">
+      <div className="p-6 border-b border-emerald-800">
         <div className="flex items-center justify-between">
           {!collapsed && (
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center">
-                <span className="text-blue-900 font-bold text-xl">P</span>
+                <span className="text-emerald-900 font-bold text-xl">P</span>
               </div>
               <div>
                 <h2 className="text-xl font-bold">PTROS</h2>
-                <p className="text-xs text-blue-300">Customer</p>
+                <p className="text-xs text-emerald-200">Customer</p>
               </div>
             </div>
           )}
           {collapsed && (
             <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center mx-auto">
-              <span className="text-blue-900 font-bold text-xl">P</span>
+              <span className="text-emerald-900 font-bold text-xl">P</span>
             </div>
           )}
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="text-blue-300 hover:text-white"
+            className="hidden text-emerald-200 hover:text-white lg:block"
           >
             {collapsed ? "→" : "←"}
           </button>
@@ -171,11 +225,12 @@ export default function Sidebar() {
             <li key={item.path}>
               <NavLink
                 to={item.path}
+                onClick={handleNavClick}
                 className={({ isActive }) =>
                   `flex items-center px-4 py-3 rounded-lg transition-colors whitespace-nowrap ${
                     isActive
-                      ? "bg-blue-800 text-white"
-                      : "text-blue-200 hover:bg-blue-800 hover:text-white"
+                      ? "bg-emerald-800 text-white"
+                      : "text-emerald-100 hover:bg-emerald-800 hover:text-white"
                   }`
                 }
               >
@@ -189,11 +244,16 @@ export default function Sidebar() {
 
       {/* Quick Stats (only when expanded) */}
       {!collapsed && (
-        <div className="p-4 border-t border-blue-800">
-          <div className="bg-blue-800 rounded-lg p-4">
-            <p className="text-xs text-blue-300 mb-2">Active Orders</p>
-            <p className="text-2xl font-bold">3</p>
-          </div>
+        <div className="p-4 border-t border-emerald-800">
+          <NavLink
+            to="/orders?filter=active"
+            onClick={handleNavClick}
+            className="block bg-emerald-800 rounded-lg p-4 transition-colors hover:bg-emerald-700"
+          >
+            <p className="text-xs text-emerald-200 mb-2">Active Orders</p>
+            <p className="text-2xl font-bold">{activeOrdersCount}</p>
+            <p className="mt-1 text-xs text-emerald-200">Tap to view active orders →</p>
+          </NavLink>
         </div>
       )}
     </aside>

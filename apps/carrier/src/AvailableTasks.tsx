@@ -3,6 +3,7 @@ import { CarrierService } from "./carrierService";
 import { Delivery } from "./types";
 import { toast, Toaster } from "react-hot-toast";
 import { useGPSLocation } from "./hooks";
+import { getCarrierLiveTrackUrl } from "./liveTrackUrl";
 
 export default function AvailableTasks() {
   const [tab, setTab] = useState<"assigned" | "available">("assigned");
@@ -14,7 +15,11 @@ export default function AvailableTasks() {
   const { isSharing, startSharing } = useGPSLocation();
 
   const openLiveTrack = (deliveryId: string) => {
-    window.open(`/g/track/${deliveryId}`, "_blank", "noopener,noreferrer");
+    window.open(
+      getCarrierLiveTrackUrl(deliveryId),
+      "_blank",
+      "noopener,noreferrer",
+    );
   };
 
   useEffect(() => {
