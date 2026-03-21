@@ -6,22 +6,24 @@ import {
   arrayUnion,
   collection,
   doc,
-  getDocs,
   limit,
   onSnapshot,
   orderBy,
   query,
   Timestamp,
   updateDoc,
-  where,
 } from "firebase/firestore";
 import { ref as rtdbRef, onValue } from "firebase/database";
 import { toast, Toaster } from "react-hot-toast";
-import { decodePolyline, haversineKm } from "./routeHistory";
+import { decodePolyline } from "./routeHistory";
 import MapLegend from "./components/MapLegend";
 import OptimizationReasonDisplay, {
   OptimizationReason,
 } from "./components/OptimizationReasonDisplay";
+import {
+  recommendReassignmentCandidates,
+  submitRouteReport,
+} from "./services/routeIntelligenceService";
 
 interface DeliveryData {
   id: string;
@@ -57,6 +59,7 @@ interface DeliveryData {
     address?: string;
   };
   packageValue?: number;
+  packageWeight?: number;
   paymentMethod?: string;
   route?: {
     polyline?: string;
@@ -241,6 +244,7 @@ export default function DeliveryTrackingMap() {
         pickupLocation: data.pickupLocation,
         deliveryLocation: data.deliveryLocation,
         packageValue: data.packageValue,
+        packageWeight: data.packageWeight,
         paymentMethod: data.paymentMethod,
         route: data.route,
         routeHistory: data.routeHistory,
@@ -503,25 +507,28 @@ export default function DeliveryTrackingMap() {
     }
 
     try {
+      await submitRouteReport({
+        deliveryId: id,
+        trackingCode: delivery.trackingCode,
+        type: routeIssueCategory as
+          | "blocked_path"
+          | "bad_road"
+          | "unsafe_segment"
+          | "wrong_map_road",
+        source: "coordinator",
+        note: routeIssueReason.trim(),
+        reason: routeIssueReason.trim(),
+        temporary: routeIssueTemporary,
+        start: reviewPoints[0],
+        end: reviewPoints[1],
+        createdByName: "Coordinator",
+      });
+
       await updateDoc(doc(db, "deliveries", id), {
-        routeReviews: arrayUnion({
-          type: routeIssueCategory,
-          temporary: routeIssueTemporary,
-          reason: routeIssueReason.trim(),
-          start: reviewPoints[0],
-          end: reviewPoints[1],
-          expiresAt: routeIssueTemporary
-            ? Timestamp.fromMillis(
-                Date.now() + routeIssueExpiresHours * 60 * 60 * 1000,
-              )
-            : null,
-          createdAt: Timestamp.now(),
-          source: "coordinator",
-          status: "active",
-        }),
         routeControl: {
           hasBlockedSegments: true,
           lastReviewAt: Timestamp.now(),
+          expiresInHours: routeIssueTemporary ? routeIssueExpiresHours : null,
         },
         updatedAt: Timestamp.now(),
       });
@@ -560,41 +567,24 @@ export default function DeliveryTrackingMap() {
     setRecommending(true);
 
     try {
-      const q = query(
-        collection(db, "users"),
-        where("role", "==", "carrier"),
-        where("isApproved", "==", true),
-        where("status", "in", ["active", "busy"]),
-        limit(20),
-      );
+      const ranked = await recommendReassignmentCandidates({
+        deliveryId: delivery.id,
+        trackingCode: delivery.trackingCode,
+        carrierId: delivery.carrierId,
+        pickupLocation: delivery.pickupLocation,
+        deliveryLocation: delivery.deliveryLocation,
+        currentLocation: carrierLocation,
+        packageWeightKg: delivery.packageWeight,
+        packageValue: delivery.packageValue,
+        priority: delivery.priority,
+      });
 
-      const snap = await getDocs(q);
-      const candidates: CarrierCandidate[] = snap.docs
-        .map((d) => {
-          const data = d.data() as any;
-          const loc = data.currentLocation;
-          if (!loc?.lat || !loc?.lng || d.id === delivery.carrierId)
-            return null;
-          const learnedShortcutCount =
-            Number(data?.routeLearningStats?.shortcutsReported || 0) || 0;
-          return {
-            id: d.id,
-            fullName: data.fullName || "Carrier",
-            distanceKm: haversineKm(
-              { lat: carrierLocation.lat, lng: carrierLocation.lng },
-              { lat: loc.lat, lng: loc.lng },
-            ),
-            shortcutContributionScore: Math.min(learnedShortcutCount, 20),
-          };
-        })
-        .filter(Boolean)
-        .sort(
-          (a, b) =>
-            (a as CarrierCandidate).distanceKm -
-            (b as CarrierCandidate).distanceKm -
-            ((a as CarrierCandidate).shortcutContributionScore * 0.06 -
-              (b as CarrierCandidate).shortcutContributionScore * 0.06),
-        ) as CarrierCandidate[];
+      const candidates: CarrierCandidate[] = ranked.map((candidate) => ({
+        id: candidate.id,
+        fullName: candidate.fullName,
+        distanceKm: candidate.distanceToPickupKm,
+        shortcutContributionScore: candidate.shortcutContributionScore,
+      }));
 
       if (!candidates.length) {
         toast.error("No alternative carriers with valid location found.");

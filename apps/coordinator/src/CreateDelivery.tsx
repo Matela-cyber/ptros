@@ -20,6 +20,7 @@ import {
   saveCustomLocation,
   type KnownLocation,
 } from "./services/locationsService";
+import { getCarrierRecommendationsForDraft } from "./services/routeIntelligenceService";
 import {
   FaBox,
   FaCircleCheck,
@@ -695,154 +696,40 @@ export default function CreateDelivery() {
   ) => {
     setRecommendationLoading(true);
     try {
-      const activeDeliveriesQuery = query(
-        collection(db, "deliveries"),
-        where("status", "in", [
-          "assigned",
-          "accepted",
-          "picked_up",
-          "in_transit",
-          "out_for_delivery",
-        ]),
-      );
-      const activeDeliveriesSnapshot = await getDocs(activeDeliveriesQuery);
-
-      const activeByCarrier: Record<
-        string,
-        { count: number; destination?: { lat: number; lng: number } }
-      > = {};
-
-      activeDeliveriesSnapshot.forEach((activeDoc) => {
-        const data = activeDoc.data();
-        if (!data.carrierId) return;
-        if (!activeByCarrier[data.carrierId]) {
-          activeByCarrier[data.carrierId] = {
-            count: 0,
-            destination: undefined,
-          };
-        }
-        activeByCarrier[data.carrierId].count += 1;
-
-        if (
-          !activeByCarrier[data.carrierId].destination &&
-          data.deliveryLocation?.lat &&
-          data.deliveryLocation?.lng
-        ) {
-          activeByCarrier[data.carrierId].destination = {
-            lat: data.deliveryLocation.lat,
-            lng: data.deliveryLocation.lng,
-          };
-        }
+      const weighted = await getCarrierRecommendationsForDraft({
+        pickupLocation: pickup,
+        deliveryLocation: formData.deliveryCoordinates,
+        pickupAddress: formData.pickupAddress,
+        deliveryAddress: formData.deliveryAddress,
+        packageWeightKg: packageWeight,
+        packageValue: formData.packageValue ? Number(formData.packageValue) : 0,
+        packageDimensions: formData.packageDimensions,
+        priority: formData.priority,
       });
 
-      const weighted = carriers
-        .filter(
-          (carrier) =>
-            carrier.currentLocation?.lat && carrier.currentLocation?.lng,
-        )
-        .map((carrier) => {
-          const loc = carrier.currentLocation!;
-          const activeInfo = activeByCarrier[carrier.id] || { count: 0 };
-          const distanceToPickupKm = haversineKm(
-            loc.lat,
-            loc.lng,
-            pickup.lat,
-            pickup.lng,
-          );
-
-          const vehicleCapacityKg = getVehicleCapacityKg(carrier.vehicleType);
-          const weightKg = packageWeight || 0;
-          const overweight = weightKg > 0 && weightKg > vehicleCapacityKg;
-          const shortcutContributionScore = Math.min(
-            Number(carrier.routeLearningStats?.shortcutsReported || 0),
-            20,
-          );
-
-          const availabilityPenalty =
-            carrier.status === "active"
-              ? 0
-              : carrier.status === "busy"
-                ? 12
-                : 25;
-
-          const workloadPenalty = activeInfo.count * 14;
-
-          let estimatedDetourKm = 0;
-          if (carrier.status === "busy" && activeInfo.destination) {
-            const directToCurrentDestination = haversineKm(
-              loc.lat,
-              loc.lng,
-              activeInfo.destination.lat,
-              activeInfo.destination.lng,
-            );
-            const viaPickupToCurrentDestination =
-              haversineKm(loc.lat, loc.lng, pickup.lat, pickup.lng) +
-              haversineKm(
-                pickup.lat,
-                pickup.lng,
-                activeInfo.destination.lat,
-                activeInfo.destination.lng,
-              );
-            estimatedDetourKm = Math.max(
-              0,
-              viaPickupToCurrentDestination - directToCurrentDestination,
-            );
-          }
-
-          const directionPenalty = estimatedDetourKm * 2.8;
-          const capacityPenalty = overweight ? 999 : 0;
-          const distancePenalty = distanceToPickupKm * 2.3;
-
-          const recommendationScore =
-            distancePenalty +
-            availabilityPenalty +
-            workloadPenalty +
-            directionPenalty +
-            capacityPenalty -
-            shortcutContributionScore * 0.8;
-
-          const reasonParts = [
-            `${distanceToPickupKm.toFixed(1)}km from pickup`,
-            carrier.status === "active"
-              ? "available now"
-              : `status: ${carrier.status}`,
-            `${activeInfo.count} active deliveries`,
-          ];
-
-          if (estimatedDetourKm > 0.5) {
-            reasonParts.push(`detour ~${estimatedDetourKm.toFixed(1)}km`);
-          }
-
-          if (overweight) {
-            reasonParts.push(`package exceeds ${vehicleCapacityKg}kg capacity`);
-          }
-
-          if (shortcutContributionScore > 0) {
-            reasonParts.push(
-              `${shortcutContributionScore} shortcut learning contributions`,
-            );
-          }
-
-          const autoAssignable =
-            !overweight &&
-            (carrier.status === "active" ||
-              (carrier.status === "busy" && estimatedDetourKm <= 4));
-
-          return {
-            ...carrier,
-            activeDeliveries: activeInfo.count,
-            distanceToPickupKm,
-            estimatedDetourKm,
-            recommendationScore,
-            recommendationReason: reasonParts.join(" • "),
-            autoAssignable,
-            shortcutContributionScore,
-          } as CarrierRecommendation;
-        })
-        .sort((a, b) => a.recommendationScore - b.recommendationScore)
-        .slice(0, 5);
-
-      setRecommendedCarriers(weighted);
+      setRecommendedCarriers(
+        weighted.map((carrier) => ({
+          id: carrier.id,
+          email: carriers.find((item) => item.id === carrier.id)?.email || "",
+          fullName: carrier.fullName,
+          phone: carriers.find((item) => item.id === carrier.id)?.phone || "",
+          vehicleType: carrier.vehicleType,
+          status: carrier.status,
+          isApproved: true,
+          currentLocation: carriers.find((item) => item.id === carrier.id)
+            ?.currentLocation,
+          routeLearningStats: {
+            shortcutsReported: carrier.shortcutContributionScore,
+          },
+          recommendationScore: carrier.recommendationScore,
+          distanceToPickupKm: carrier.distanceToPickupKm,
+          estimatedDetourKm: carrier.estimatedDetourKm,
+          activeDeliveries: carrier.activeDeliveries,
+          recommendationReason: carrier.recommendationReason,
+          autoAssignable: carrier.autoAssignable,
+          shortcutContributionScore: carrier.shortcutContributionScore,
+        })),
+      );
     } catch (error) {
       console.error("Error generating carrier recommendations:", error);
       setRecommendedCarriers([]);
