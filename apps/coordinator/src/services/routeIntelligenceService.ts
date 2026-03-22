@@ -1,4 +1,8 @@
-import { db } from "@config";
+import {
+  db,
+  syncDeliveryLocationGraphStructure,
+  type DeliveryGraphSyncResult,
+} from "@config";
 import {
   addDoc,
   arrayUnion,
@@ -919,7 +923,17 @@ export const assignDeliveryIntelligently = async (deliveryId: string) => {
     }),
   });
 
-  return { selected, recommendations };
+  let graphSyncResult: DeliveryGraphSyncResult | null = null;
+  try {
+    graphSyncResult = await syncDeliveryLocationGraphStructure({
+      deliveryId,
+      trigger: "assigned",
+    });
+  } catch (syncError) {
+    console.warn("Graph sync after assignment failed:", syncError);
+  }
+
+  return { selected, recommendations, graphSyncResult };
 };
 
 export const recommendReassignmentCandidates = async (

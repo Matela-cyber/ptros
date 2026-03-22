@@ -1,6 +1,6 @@
 // apps/coordinator/src/ActiveDeliveries.tsx
 import { useState, useEffect } from "react";
-import { db } from "@config";
+import { db, syncDeliveryLocationGraphStructure } from "@config";
 import {
   collection,
   query,
@@ -181,7 +181,40 @@ export default function ActiveDeliveries() {
         ...(newStatus === "in_transit" && { inTransitAt: timestamp }),
         ...(newStatus === "delivered" && { deliveredAt: timestamp }),
       });
-      toast.success(`Status updated to ${newStatus.replace("_", " ")}`);
+
+      const syncTrigger =
+        newStatus === "accepted"
+          ? "accepted"
+          : newStatus === "picked_up"
+            ? "picked_up"
+            : newStatus === "in_transit"
+              ? "in_transit"
+              : newStatus === "out_for_delivery"
+                ? "out_for_delivery"
+                : newStatus === "delivered"
+                  ? "delivered"
+                  : "status_change";
+
+      const syncResult = await syncDeliveryLocationGraphStructure({
+        deliveryId,
+        trigger: syncTrigger,
+      });
+
+      if (syncResult.success) {
+        const warningSuffix =
+          syncResult.warnings.length > 0
+            ? ` • with ${syncResult.warnings.length} warning(s)`
+            : "";
+        toast.success(
+          `Status updated to ${newStatus.replace("_", " ")} • Graph sync OK${warningSuffix}`,
+          { duration: 5000 },
+        );
+      } else {
+        toast.error(
+          `Status updated, but graph sync failed: ${syncResult.message}`,
+          { duration: 7000 },
+        );
+      }
     } catch (error) {
       console.error("Error updating status:", error);
       toast.error("Failed to update status");
@@ -193,8 +226,16 @@ export default function ActiveDeliveries() {
     try {
       const result = await assignDeliveryIntelligently(deliveryId);
       const recommendation = result.selected;
+      const graphSync = result.graphSyncResult;
+      const syncText = graphSync
+        ? graphSync.success
+          ? graphSync.warnings.length
+            ? `Graph sync OK with ${graphSync.warnings.length} warning(s)`
+            : "Graph sync OK"
+          : `Graph sync failed: ${graphSync.message}`
+        : "Graph sync not executed";
       toast.success(
-        `Smart assigned to ${recommendation.fullName} • ${recommendation.remainingCapacityKg.toFixed(0)}kg left • ${recommendation.distanceToPickupKm.toFixed(1)}km away`,
+        `Smart assigned to ${recommendation.fullName} • ${recommendation.remainingCapacityKg.toFixed(0)}kg left • ${recommendation.distanceToPickupKm.toFixed(1)}km away • ${syncText}`,
         { duration: 4500 },
       );
     } catch (error) {
