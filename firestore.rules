@@ -14,15 +14,27 @@ service cloud.firestore {
     }
 
     function isCoordinator() {
-      return isAuth() && getUserRoleFromDoc(request.auth.uid) == 'coordinator';
+      return isAuth() && (
+        getUserRoleFromDoc(request.auth.uid) == 'coordinator'
+        || getUserRoleFromDoc(request.auth.uid) == 'Coordinator'
+        || getUserRoleFromDoc(request.auth.uid) == 'admin'
+        || getUserRoleFromDoc(request.auth.uid) == 'Admin'
+        || getUserRoleFromDoc(request.auth.uid) == 'super_admin'
+      );
     }
 
     function isCarrier() {
-      return isAuth() && getUserRoleFromDoc(request.auth.uid) == 'carrier';
+      return isAuth() && (
+        getUserRoleFromDoc(request.auth.uid) == 'carrier'
+        || getUserRoleFromDoc(request.auth.uid) == 'Carrier'
+      );
     }
 
     function isCustomer() {
-      return isAuth() && getUserRoleFromDoc(request.auth.uid) == 'customer';
+      return isAuth() && (
+        getUserRoleFromDoc(request.auth.uid) == 'customer'
+        || getUserRoleFromDoc(request.auth.uid) == 'Customer'
+      );
     }
 
     
@@ -93,6 +105,7 @@ service cloud.firestore {
           'deliveryTime',
           'acceptedAt',
           'updatedAt',
+          'locationGraph',
           'statusHistory',
           'routeHistory',
           'routeHistoryMeta',
@@ -259,6 +272,50 @@ service cloud.firestore {
 
       // Coordinator controls moderation workflow and lifecycle updates
       allow update, delete: if isCoordinator();
+    }
+
+    // ==================== LOCATION GRAPH — NODES ====================
+    // Persistent location nodes (pickup, dropoff, carrier_current, delivery_current, hub, etc.)
+    // Written by coordinator assignment logic; read by coordinator, carrier, and customer for
+    // route optimization, visualization, and analytics.
+    match /locationNodes/{nodeId} {
+      // Read: authenticated roles can consume graph intelligence
+      allow read: if isCoordinator() || isCarrier() || isCustomer();
+
+      // Coordinator: full lifecycle management
+      allow create, update, delete: if isCoordinator();
+
+      // Carrier: constrained writes only
+      // - Carrier node must belong to self
+      // - Delivery node must include deliveryId and belong to carrier-assigned delivery
+      allow create, update: if isCarrier() && (
+        (
+          request.resource.data.entityType == 'carrier'
+          && request.resource.data.entityId == request.auth.uid
+        )
+        ||
+        (
+          request.resource.data.entityType == 'delivery'
+          && request.resource.data.deliveryId is string
+          && get(/databases/$(database)/documents/deliveries/$(request.resource.data.deliveryId)).data.carrierId == request.auth.uid
+        )
+      );
+    }
+
+    // ==================== LOCATION GRAPH — EDGES ====================
+    // Road-distance / cost edges between location node pairs.
+    // Source of truth for optimization scores, travel time, and fuel estimates.
+    match /locationNodeEdges/{edgeId} {
+      // Read: authenticated roles can consume graph intelligence
+      allow read: if isCoordinator() || isCarrier() || isCustomer();
+
+      // Coordinator: full lifecycle management
+      allow create, update, delete: if isCoordinator();
+
+      // Carrier: constrained write for own assigned delivery graph edges only
+      allow create, update: if isCarrier()
+        && request.resource.data.deliveryId is string
+        && get(/databases/$(database)/documents/deliveries/$(request.resource.data.deliveryId)).data.carrierId == request.auth.uid;
     }
 
     // ==================== DEFAULT DENY ====================

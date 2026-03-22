@@ -27,6 +27,7 @@ const LOCATION_NODES_COLLECTION = "locationNodes";
 const LOCATION_NODE_EDGES_COLLECTION = "locationNodeEdges";
 
 interface UpsertLocationNodeInput {
+  deliveryId?: string;
   nodeType: LocationNodeType;
   name: string;
   coordinates: LocationNodeCoordinates;
@@ -41,6 +42,7 @@ interface UpsertLocationNodeInput {
 }
 
 interface UpsertLocationNodeEdgeInput {
+  deliveryId?: string;
   fromNodeId: string;
   toNodeId: string;
   directed?: boolean;
@@ -222,6 +224,7 @@ export const upsertLocationNode = async (
         nodeType: input.nodeType,
         name: input.name,
         coordinates: input.coordinates,
+        deliveryId: input.deliveryId || null,
         description: input.description || "",
         tags: input.tags || [],
         capacity: input.capacity || null,
@@ -240,6 +243,7 @@ export const upsertLocationNode = async (
     status: "active",
     name: input.name,
     coordinates: input.coordinates,
+    deliveryId: input.deliveryId || null,
     entityType: input.entityType || null,
     entityId: input.entityId || null,
     description: input.description || "",
@@ -263,6 +267,7 @@ export const upsertLocationNodeEdge = async (
     collection(db, LOCATION_NODE_EDGES_COLLECTION),
     where("fromNodeId", "==", input.fromNodeId),
     where("toNodeId", "==", input.toNodeId),
+    where("deliveryId", "==", input.deliveryId || null),
   );
 
   const existing = await getDocs(edgeQ);
@@ -287,6 +292,7 @@ export const upsertLocationNodeEdge = async (
   }
 
   const created = await addDoc(collection(db, LOCATION_NODE_EDGES_COLLECTION), {
+    deliveryId: input.deliveryId || null,
     fromNodeId: input.fromNodeId,
     toNodeId: input.toNodeId,
     status: input.status || "active",
@@ -304,6 +310,7 @@ export const upsertLocationNodeEdge = async (
 };
 
 export const upsertBidirectionalNodeEdge = async (
+  deliveryId: string | undefined,
   aNodeId: string,
   bNodeId: string,
   costsAB: LocationNodeEdgeCost,
@@ -312,6 +319,7 @@ export const upsertBidirectionalNodeEdge = async (
 ) => {
   const [ab, ba] = await Promise.all([
     upsertLocationNodeEdge({
+      deliveryId,
       fromNodeId: aNodeId,
       toNodeId: bNodeId,
       directed: false,
@@ -319,6 +327,7 @@ export const upsertBidirectionalNodeEdge = async (
       costs: costsAB,
     }),
     upsertLocationNodeEdge({
+      deliveryId,
       fromNodeId: bNodeId,
       toNodeId: aNodeId,
       directed: false,
@@ -357,6 +366,7 @@ export const buildDeliveryGraphSnapshot = async (
 ) => {
   const pickup = input.pickupLocation
     ? await upsertLocationNode({
+        deliveryId: input.deliveryId,
         nodeType: "pickup",
         name:
           input.pickupAddress ||
@@ -370,6 +380,7 @@ export const buildDeliveryGraphSnapshot = async (
 
   const dropoff = input.dropoffLocation
     ? await upsertLocationNode({
+        deliveryId: input.deliveryId,
         nodeType: "dropoff",
         name:
           input.deliveryAddress ||
@@ -388,6 +399,7 @@ export const buildDeliveryGraphSnapshot = async (
 
   const deliveryCurrent = input.deliveryCurrentLocation
     ? await upsertLocationNode({
+        deliveryId: input.deliveryId,
         nodeType: "delivery_current",
         name: `Delivery current • ${input.trackingCode || input.deliveryId}`,
         coordinates: input.deliveryCurrentLocation,
@@ -401,6 +413,7 @@ export const buildDeliveryGraphSnapshot = async (
 
   const carrierCurrent = input.carrierLocation
     ? await upsertLocationNode({
+        deliveryId: input.deliveryId,
         nodeType: "carrier_current",
         name: input.carrierName || "Carrier current",
         coordinates: input.carrierLocation,
@@ -429,6 +442,7 @@ export const buildDeliveryGraphSnapshot = async (
   if (pickup && dropoff && input.pickupLocation && input.dropoffLocation) {
     edgeWrites.push(
       upsertBidirectionalNodeEdge(
+        input.deliveryId,
         pickup.id,
         dropoff.id,
         mergeEdgeCosts(
@@ -448,6 +462,7 @@ export const buildDeliveryGraphSnapshot = async (
   ) {
     edgeWrites.push(
       upsertBidirectionalNodeEdge(
+        input.deliveryId,
         carrierCurrent.id,
         pickup.id,
         mergeEdgeCosts(
@@ -467,6 +482,7 @@ export const buildDeliveryGraphSnapshot = async (
   ) {
     edgeWrites.push(
       upsertBidirectionalNodeEdge(
+        input.deliveryId,
         carrierCurrent.id,
         dropoff.id,
         mergeEdgeCosts(
@@ -486,6 +502,7 @@ export const buildDeliveryGraphSnapshot = async (
   ) {
     edgeWrites.push(
       upsertBidirectionalNodeEdge(
+        input.deliveryId,
         deliveryCurrent.id,
         dropoff.id,
         mergeEdgeCosts(

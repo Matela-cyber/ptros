@@ -44,6 +44,7 @@ export interface LocationNode {
   status: LocationNodeStatus;
   name: string;
   coordinates: LocationNodeCoordinates;
+  deliveryId?: string;
   entityType?: "delivery" | "carrier" | "customer" | "route" | "system";
   entityId?: string;
   description?: string;
@@ -72,6 +73,7 @@ export interface LocationNodeEdge {
   id: string;
   fromNodeId: string;
   toNodeId: string;
+  deliveryId?: string;
   status: LocationEdgeStatus;
   directed: boolean;
   costs: LocationNodeEdgeCost;

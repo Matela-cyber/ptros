@@ -19,6 +19,12 @@
           ".write": "auth != null"
         }
       }
+    },
+    "locationNodeLive": {
+      "$nodeId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
     }
   }
 }

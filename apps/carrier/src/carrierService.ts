@@ -1,4 +1,9 @@
-import { db, auth, realtimeDb } from "@config";
+import {
+  db,
+  auth,
+  realtimeDb,
+  syncDeliveryLocationGraphStructure,
+} from "@config";
 import {
   addDoc,
   arrayUnion,
@@ -485,6 +490,29 @@ export class CarrierService {
 
       await updateDoc(doc(db, "deliveries", deliveryId), updates);
 
+      try {
+        await syncDeliveryLocationGraphStructure({
+          deliveryId,
+          trigger:
+            status === "accepted"
+              ? "accepted"
+              : status === "picked_up"
+                ? "picked_up"
+                : status === "in_transit"
+                  ? "in_transit"
+                  : status === "out_for_delivery"
+                    ? "out_for_delivery"
+                    : status === "delivered"
+                      ? "delivered"
+                      : "status_change",
+        });
+      } catch (graphError) {
+        console.warn(
+          "Graph sync after delivery status update failed:",
+          graphError,
+        );
+      }
+
       if (
         ["picked_up", "in_transit", "out_for_delivery", "delivered"].includes(
           status,
@@ -743,6 +771,15 @@ export class CarrierService {
         updatedAt: Timestamp.now(),
       });
 
+      try {
+        await syncDeliveryLocationGraphStructure({
+          deliveryId,
+          trigger: "accepted",
+        });
+      } catch (graphError) {
+        console.warn("Graph sync after acceptTask failed:", graphError);
+      }
+
       // Update carrier status to busy
       await updateDoc(doc(db, "users", user.uid), {
         status: "busy",
@@ -805,6 +842,18 @@ export class CarrierService {
         acceptedAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       });
+
+      try {
+        await syncDeliveryLocationGraphStructure({
+          deliveryId,
+          trigger: "accepted",
+        });
+      } catch (graphError) {
+        console.warn(
+          "Graph sync after acceptAssignedDelivery failed:",
+          graphError,
+        );
+      }
 
       return true;
     } catch (error) {
