@@ -1010,7 +1010,7 @@ export class CarrierService {
           // For good accuracy (<100m), use normal 10m distance threshold
           const isLowAccuracy = location.accuracy && location.accuracy > 1000;
           const distanceThreshold = isLowAccuracy ? 0 : MIN_DISTANCE_THRESHOLD;
-          const timeThreshold = isLowAccuracy ? 10000 : MIN_TIME_THRESHOLD_MS; // 10s for low accuracy, 30s for good
+          const timeThreshold = isLowAccuracy ? 5000 : MIN_TIME_THRESHOLD_MS; // max 5s cadence for realtime freshness
 
           if (distance > distanceThreshold) {
             shouldUpdate = true;
@@ -1114,7 +1114,7 @@ export class CarrierService {
                   ? 0
                   : MIN_DISTANCE_THRESHOLD;
                 const timeThreshold = isLowAccuracy
-                  ? 10000
+                  ? 5000
                   : MIN_TIME_THRESHOLD_MS;
 
                 if (distance > distanceThreshold) {
