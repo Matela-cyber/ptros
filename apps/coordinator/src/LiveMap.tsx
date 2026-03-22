@@ -885,26 +885,47 @@ export default function LiveMap() {
       ]
         .filter(Boolean)
         .forEach((entry: any) => {
-          routeMarkersRef.current.push(
-            new window.google.maps.Marker({
-              position: entry.point,
-              map: mapInstance.current,
-              label: {
-                text: entry.label,
-                color: "#0f172a",
-                fontWeight: "700",
-              },
-              icon: {
-                path: window.google.maps.SymbolPath.CIRCLE,
-                fillColor: entry.color,
-                fillOpacity: 1,
-                strokeColor: "#ffffff",
-                strokeWeight: 2,
-                scale: 7,
-              },
-              title: `${delivery.trackingCode} ${entry.label === "P" ? "pickup" : "delivery"}`,
-            }),
-          );
+          const marker = new window.google.maps.Marker({
+            position: entry.point,
+            map: mapInstance.current,
+            label: {
+              text: entry.label,
+              color: "#0f172a",
+              fontWeight: "700",
+            },
+            icon: {
+              path: window.google.maps.SymbolPath.CIRCLE,
+              fillColor: entry.color,
+              fillOpacity: 1,
+              strokeColor: "#ffffff",
+              strokeWeight: 2,
+              scale: 7,
+            },
+            title: `${delivery.trackingCode} ${entry.label === "P" ? "pickup" : "delivery"}`,
+          });
+
+          marker.addListener("click", () => {
+            if (!sharedInfoWindowRef.current || !mapInstance.current) {
+              return;
+            }
+
+            const locationLabel = entry.label === "P" ? "Pickup" : "Dropoff";
+            const address =
+              entry.label === "P"
+                ? delivery.pickupAddress
+                : delivery.deliveryAddress;
+
+            sharedInfoWindowRef.current.setContent(`
+              <div style="font-family:Arial,sans-serif;min-width:200px;max-width:260px;padding:4px;">
+                <h4 style="margin:0 0 6px;font-size:14px;color:#1e293b;">${locationLabel} • ${delivery.trackingCode}</h4>
+                <p style="margin:0 0 4px;font-size:12px;color:#475569;">${address || "Address unavailable"}</p>
+                <p style="margin:0;font-size:12px;color:#64748b;">Status: ${(delivery.status || "unknown").replace(/_/g, " ")}</p>
+              </div>
+            `);
+            sharedInfoWindowRef.current.open(mapInstance.current, marker);
+          });
+
+          routeMarkersRef.current.push(marker);
         });
     });
 

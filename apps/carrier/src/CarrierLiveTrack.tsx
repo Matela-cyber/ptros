@@ -12,6 +12,7 @@ import {
 import {
   DirectionsRenderer,
   GoogleMap,
+  InfoWindow,
   Marker,
   Polyline,
 } from "@react-google-maps/api";
@@ -136,6 +137,11 @@ export default function CarrierLiveTrack() {
   const [googleDirections, setGoogleDirections] =
     useState<google.maps.DirectionsResult | null>(null);
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
+  const [selectedMapInfo, setSelectedMapInfo] = useState<{
+    position: MapPoint;
+    title: string;
+    details: string[];
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleBack = () => {
@@ -648,6 +654,13 @@ export default function CarrierLiveTrack() {
               <Marker
                 position={routeStartPoint}
                 title="Pickup (P)"
+                onClick={() =>
+                  setSelectedMapInfo({
+                    position: routeStartPoint,
+                    title: "Pickup location",
+                    details: [delivery.pickupAddress || "Pickup unavailable"],
+                  })
+                }
                 label={{ text: "P", color: "#0f172a", fontWeight: "700" }}
                 icon={{
                   path: google.maps.SymbolPath.CIRCLE,
@@ -664,6 +677,15 @@ export default function CarrierLiveTrack() {
               <Marker
                 position={routeEndPoint}
                 title="Destination (D)"
+                onClick={() =>
+                  setSelectedMapInfo({
+                    position: routeEndPoint,
+                    title: "Dropoff location",
+                    details: [
+                      delivery.deliveryAddress || "Destination unavailable",
+                    ],
+                  })
+                }
                 label={{ text: "D", color: "#ffffff", fontWeight: "700" }}
                 icon={{
                   path: google.maps.SymbolPath.CIRCLE,
@@ -680,6 +702,16 @@ export default function CarrierLiveTrack() {
               <Marker
                 position={currentPoint}
                 title="Current position"
+                onClick={() =>
+                  setSelectedMapInfo({
+                    position: currentPoint,
+                    title: "Package location",
+                    details: [
+                      `Tracking: ${delivery.trackingCode || delivery.id}`,
+                      `Status: ${formatStatus(delivery.status)}`,
+                    ],
+                  })
+                }
                 icon={{
                   path: google.maps.SymbolPath.CIRCLE,
                   scale: 11,
@@ -705,6 +737,24 @@ export default function CarrierLiveTrack() {
                   }}
                 />
               ))}
+
+            {selectedMapInfo && (
+              <InfoWindow
+                position={selectedMapInfo.position}
+                onCloseClick={() => setSelectedMapInfo(null)}
+              >
+                <div className="min-w-[180px] text-xs text-slate-700">
+                  <p className="text-sm font-semibold text-slate-900">
+                    {selectedMapInfo.title}
+                  </p>
+                  <div className="mt-1 space-y-0.5">
+                    {selectedMapInfo.details.map((line, index) => (
+                      <p key={`${line}-${index}`}>{line}</p>
+                    ))}
+                  </div>
+                </div>
+              </InfoWindow>
+            )}
           </GoogleMap>
         </section>
       </div>

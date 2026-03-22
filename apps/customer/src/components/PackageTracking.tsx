@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import {
   DirectionsRenderer,
   GoogleMap,
+  InfoWindow,
   Marker,
   Polyline,
 } from "@react-google-maps/api";
@@ -109,6 +110,11 @@ export default function PackageTrackingPage({
   const [routeMeta, setRouteMeta] = useState<{
     distanceText?: string;
     durationText?: string;
+  } | null>(null);
+  const [selectedMapInfo, setSelectedMapInfo] = useState<{
+    position: { lat: number; lng: number };
+    title: string;
+    details: string[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
   // Fixed zoom level for the tracking map - could be made dynamic in future
@@ -599,6 +605,16 @@ export default function PackageTrackingPage({
                           lng: delivery.pickupLocation.lng,
                         }}
                         title="Pickup"
+                        onClick={() =>
+                          setSelectedMapInfo({
+                            position: {
+                              lat: delivery.pickupLocation!.lat,
+                              lng: delivery.pickupLocation!.lng,
+                            },
+                            title: "Pickup location",
+                            details: [delivery.pickupAddress],
+                          })
+                        }
                         icon={{
                           path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
                           scale: 6,
@@ -617,6 +633,16 @@ export default function PackageTrackingPage({
                           lng: delivery.deliveryLocation.lng,
                         }}
                         title="Destination"
+                        onClick={() =>
+                          setSelectedMapInfo({
+                            position: {
+                              lat: delivery.deliveryLocation!.lat,
+                              lng: delivery.deliveryLocation!.lng,
+                            },
+                            title: "Dropoff location",
+                            details: [delivery.deliveryAddress],
+                          })
+                        }
                         icon={{
                           path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
                           scale: 6,
@@ -636,6 +662,19 @@ export default function PackageTrackingPage({
                           lng: delivery.currentLocation.lng,
                         }}
                         title="Current Location"
+                        onClick={() =>
+                          setSelectedMapInfo({
+                            position: {
+                              lat: delivery.currentLocation!.lat,
+                              lng: delivery.currentLocation!.lng,
+                            },
+                            title: "Package location",
+                            details: [
+                              `Tracking: ${delivery.trackingCode}`,
+                              `Status: ${getStatusLabel(delivery.status)}`,
+                            ],
+                          })
+                        }
                         icon={{
                           path: google.maps.SymbolPath.CIRCLE,
                           scale: 8,
@@ -655,6 +694,21 @@ export default function PackageTrackingPage({
                           lng: carrierLocation.lng,
                         }}
                         title={delivery.carrierName || "Carrier"}
+                        onClick={() =>
+                          setSelectedMapInfo({
+                            position: {
+                              lat: carrierLocation.lat,
+                              lng: carrierLocation.lng,
+                            },
+                            title: delivery.carrierName || "Carrier location",
+                            details: [
+                              `Status: ${getStatusLabel(delivery.status)}`,
+                              delivery.carrierPhone
+                                ? `Phone: ${delivery.carrierPhone}`
+                                : "Phone unavailable",
+                            ],
+                          })
+                        }
                         icon={{
                           path: google.maps.SymbolPath.CIRCLE,
                           scale: 10,
@@ -664,6 +718,24 @@ export default function PackageTrackingPage({
                           strokeWeight: 2,
                         }}
                       />
+                    )}
+
+                    {selectedMapInfo && (
+                      <InfoWindow
+                        position={selectedMapInfo.position}
+                        onCloseClick={() => setSelectedMapInfo(null)}
+                      >
+                        <div className="min-w-[180px] text-xs text-slate-700">
+                          <p className="text-sm font-semibold text-slate-900">
+                            {selectedMapInfo.title}
+                          </p>
+                          <div className="mt-1 space-y-0.5">
+                            {selectedMapInfo.details.map((line, index) => (
+                              <p key={`${line}-${index}`}>{line}</p>
+                            ))}
+                          </div>
+                        </div>
+                      </InfoWindow>
                     )}
                   </GoogleMap>
                 )}

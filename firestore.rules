@@ -99,6 +99,7 @@ service cloud.firestore {
           'routeHistorySnapshots',
           'routeContext',
           'routeFeedback',
+          'routeReviews',
           'optimizationReasons'
         ]);
 
@@ -206,6 +207,58 @@ service cloud.firestore {
       // COORDINATOR: full access for reading/saving curated locations
       allow read, write: if isCoordinator();
       allow create, update, delete: if isCoordinator();
+    }
+
+    // ==================== NOTIFICATIONS COLLECTION ====================
+    // User-facing notifications (customer portal + coordinator tooling)
+    match /notifications/{notificationId} {
+      // Owner can read notifications addressed to them, coordinators can read all
+      allow read: if isCoordinator()
+        || (isAuth() && resource.data.userId == request.auth.uid);
+
+      // Coordinators and carriers can create notifications for users
+      // Customers may create only self-addressed notifications (dev/sample flows)
+      allow create: if isCoordinator()
+        || isCarrier()
+        || (isCustomer() && request.resource.data.userId == request.auth.uid);
+
+      // Owner can mark own notification read, coordinators can update all
+      allow update: if isCoordinator()
+        || (isAuth()
+          && resource.data.userId == request.auth.uid
+          && request.resource.data.userId == resource.data.userId);
+
+      // Prevent clients from deleting notification records directly
+      allow delete: if false;
+    }
+
+    // ==================== ROUTE NETWORK SEGMENTS ====================
+    // Shared route governance overlays (shortcuts, blocked paths, restrictions)
+    match /routeNetworkSegments/{segmentId} {
+      // Used across coordinator/carrier/customer maps
+      allow read: if isAuth();
+
+      // Coordinator curates and governs the route network
+      allow create, update, delete: if isCoordinator();
+    }
+
+    // ==================== ROUTE REPORTS ====================
+    // Reports/suggestions from carriers and coordinators for route intelligence
+    match /routeReports/{reportId} {
+      // Coordinator can review all reports
+      allow read: if isCoordinator();
+
+      // Carrier can submit report only for own assigned delivery
+      allow create: if isCarrier()
+        && request.resource.data.source == 'carrier'
+        && request.resource.data.deliveryId is string
+        && get(/databases/$(database)/documents/deliveries/$(request.resource.data.deliveryId)).data.carrierId == request.auth.uid;
+
+      // Coordinator can submit admin/coordinator-generated reports
+      allow create: if isCoordinator();
+
+      // Coordinator controls moderation workflow and lifecycle updates
+      allow update, delete: if isCoordinator();
     }
 
     // ==================== DEFAULT DENY ====================

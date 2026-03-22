@@ -6,7 +6,12 @@ import {
   subscribeRouteNetworkSegments,
   type RouteNetworkSegment,
 } from "@config";
-import { GoogleMap, Marker, Polyline } from "@react-google-maps/api";
+import {
+  GoogleMap,
+  InfoWindow,
+  Marker,
+  Polyline,
+} from "@react-google-maps/api";
 import { Delivery } from "./types";
 import { formatCurrency, formatDate } from "./utils";
 import { useDeliveryStatus } from "./hooks/useDeliveryStatus";
@@ -41,6 +46,11 @@ export default function CurrentJobDetails({
   );
   const [modalMapInstance, setModalMapInstance] =
     useState<google.maps.Map | null>(null);
+  const [selectedMapInfo, setSelectedMapInfo] = useState<{
+    position: { lat: number; lng: number };
+    title: string;
+    details: string[];
+  } | null>(null);
 
   useEffect(() => {
     return subscribeRouteNetworkSegments(setManagedSegments);
@@ -762,6 +772,13 @@ export default function CurrentJobDetails({
                         <Marker
                           position={pickupPoint}
                           title="Pickup"
+                          onClick={() =>
+                            setSelectedMapInfo({
+                              position: pickupPoint,
+                              title: "Pickup location",
+                              details: [delivery.pickupAddress],
+                            })
+                          }
                           icon={{
                             path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
                             scale: 5,
@@ -777,6 +794,13 @@ export default function CurrentJobDetails({
                         <Marker
                           position={deliveryPoint}
                           title="Dropoff"
+                          onClick={() =>
+                            setSelectedMapInfo({
+                              position: deliveryPoint,
+                              title: "Dropoff location",
+                              details: [delivery.deliveryAddress],
+                            })
+                          }
                           icon={{
                             path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
                             scale: 5,
@@ -792,6 +816,16 @@ export default function CurrentJobDetails({
                         <Marker
                           position={currentPoint}
                           title="Current position"
+                          onClick={() =>
+                            setSelectedMapInfo({
+                              position: currentPoint,
+                              title: "Package location",
+                              details: [
+                                `Tracking: ${delivery.trackingCode}`,
+                                `Status: ${delivery.status.replace("_", " ")}`,
+                              ],
+                            })
+                          }
                           icon={{
                             path: google.maps.SymbolPath.CIRCLE,
                             scale: 7,
@@ -811,6 +845,24 @@ export default function CurrentJobDetails({
                           label={`${index + 1}`}
                         />
                       ))}
+
+                      {selectedMapInfo && (
+                        <InfoWindow
+                          position={selectedMapInfo.position}
+                          onCloseClick={() => setSelectedMapInfo(null)}
+                        >
+                          <div className="min-w-[180px] text-xs text-slate-700">
+                            <p className="text-sm font-semibold text-slate-900">
+                              {selectedMapInfo.title}
+                            </p>
+                            <div className="mt-1 space-y-0.5">
+                              {selectedMapInfo.details.map((line, index) => (
+                                <p key={`${line}-${index}`}>{line}</p>
+                              ))}
+                            </div>
+                          </div>
+                        </InfoWindow>
+                      )}
 
                       {shortcutPoints.length === 2 && (
                         <Polyline
