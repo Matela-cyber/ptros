@@ -27,3 +27,4 @@ export const realtimeDb = getDatabase(app);
 
 export default app;
 export * from "./routeNetwork";
+export * from "./locationGraph";

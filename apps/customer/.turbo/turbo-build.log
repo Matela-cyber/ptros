@@ -4,7 +4,7 @@
 
 [36mvite v5.4.21 [32mbuilding for production...[36m[39m
 transforming...
-[32m✓[39m 385 modules transformed.
+[32m✓[39m 386 modules transformed.
 rendering chunks...
 computing gzip size...
 [2mdist/[22m[32mindex.html                 [39m[1m[2m    0.47 kB[22m[1m[22m[2m │ gzip:   0.31 kB[22m
@@ -15,4 +15,4 @@ computing gzip size...
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
-[32m✓ built in 20.43s[39m
+[32m✓ built in 15.15s[39m

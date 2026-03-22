@@ -1,14 +1,6 @@
 // apps/coordinator/src/LiveMap.tsx
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import {
-  db,
-  realtimeDb,
-  formatRouteNetworkSegmentType,
-  getDisplayRouteNetworkSegments,
-  getRouteNetworkSegmentStyle,
-  subscribeRouteNetworkSegments,
-  type RouteNetworkSegment,
-} from "@config";
+import { db, realtimeDb } from "@config";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import {
   ref as rtdbRef,
@@ -26,7 +18,6 @@ import {
   FaGlobe,
 } from "react-icons/fa6";
 import { IconType } from "react-icons";
-import { decodePolyline } from "./routeHistory";
 
 declare global {
   interface Window {
@@ -68,12 +59,6 @@ interface Delivery {
     lat: number;
     lng: number;
   };
-  route?: {
-    polyline?: string;
-  };
-  routeHistory?: {
-    activePolyline?: string;
-  };
 }
 
 interface CarrierProfile {
@@ -109,12 +94,6 @@ interface ActiveDelivery {
     lat: number;
     lng: number;
   };
-  route?: {
-    polyline?: string;
-  };
-  routeHistory?: {
-    activePolyline?: string;
-  };
 }
 
 interface MarkerData {
@@ -137,9 +116,6 @@ export default function LiveMap() {
   const [activeDeliveries, setActiveDeliveries] = useState<ActiveDelivery[]>(
     [],
   );
-  const [managedSegments, setManagedSegments] = useState<RouteNetworkSegment[]>(
-    [],
-  );
   const [tracksMap, setTracksMap] = useState<Record<string, any>>({});
   const [deliveryTracksMap, setDeliveryTracksMap] = useState<
     Record<string, any>
@@ -153,6 +129,7 @@ export default function LiveMap() {
   const [showRoadNames, setShowRoadNames] = useState<boolean>(true);
   const [showPlaces, setShowPlaces] = useState<boolean>(true);
   const [showTraffic, setShowTraffic] = useState<boolean>(false);
+  const [showStraightLinks, setShowStraightLinks] = useState<boolean>(false);
   const [is3DEnabled, setIs3DEnabled] = useState<boolean>(false);
   const [satelliteLoaded, setSatelliteLoaded] = useState<boolean>(false);
 
@@ -274,10 +251,6 @@ export default function LiveMap() {
     };
   }, []);
 
-  useEffect(() => {
-    return subscribeRouteNetworkSegments(setManagedSegments);
-  }, []);
-
   // Load carrier metadata and active deliveries from Firestore
   useEffect(() => {
     const carriersQuery = query(
@@ -344,8 +317,6 @@ export default function LiveMap() {
             currentLocation: data.currentLocation,
             pickupLocation: data.pickupLocation,
             deliveryLocation: data.deliveryLocation,
-            route: data.route,
-            routeHistory: data.routeHistory,
           });
         });
 
@@ -767,7 +738,7 @@ export default function LiveMap() {
             fillOpacity: 1,
             strokeColor: "#FFFFFF",
             strokeWeight: 2,
-            scale: markerData.type === "carrier" ? 10 : 8,
+            scale: markerData.type === "carrier" ? 12 : 16,
           };
 
           const marker = new window.google.maps.Marker({
@@ -775,6 +746,8 @@ export default function LiveMap() {
             map: null, // Will be added to map via clustering
             icon,
             title: markerData.title,
+            // Carriers sit above delivery-current circles; P/D markers (zIndex 30) are always on top
+            zIndex: markerData.type === "carrier" ? 20 : 10,
           });
 
           marker.addListener("click", () => {
@@ -827,49 +800,25 @@ export default function LiveMap() {
       const pickupPoint = delivery.pickupLocation;
       const deliveryPoint = delivery.deliveryLocation;
       const currentPoint = delivery.currentLocation;
-      const plannedPath = decodePolyline(delivery.route?.polyline || "");
-      const activePath = decodePolyline(
-        delivery.routeHistory?.activePolyline || "",
-      );
-
-      const fallbackPath =
-        pickupPoint && deliveryPoint ? [pickupPoint, deliveryPoint] : [];
-      const routeColor =
-        delivery.status === "out_for_delivery"
-          ? "#0ea5e9"
-          : delivery.status === "in_transit"
-            ? "#f59e0b"
-            : "#8b5cf6";
-
-      const baselinePath = plannedPath.length > 1 ? plannedPath : fallbackPath;
-      if (baselinePath.length > 1) {
-        routePolylinesRef.current.push(
-          new window.google.maps.Polyline({
-            path: baselinePath,
-            geodesic: true,
-            strokeColor: "#94a3b8",
-            strokeOpacity: 0.45,
-            strokeWeight: 4,
-            map: mapInstance.current,
-          }),
-        );
-      }
-
-      const liveRoutePath =
-        activePath.length > 1
-          ? activePath
-          : currentPoint && pickupPoint
+      const straightLinkPath =
+        pickupPoint && currentPoint && deliveryPoint
+          ? [pickupPoint, currentPoint, deliveryPoint]
+          : pickupPoint && currentPoint
             ? [pickupPoint, currentPoint]
-            : [];
+            : currentPoint && deliveryPoint
+              ? [currentPoint, deliveryPoint]
+              : pickupPoint && deliveryPoint
+                ? [pickupPoint, deliveryPoint]
+                : [];
 
-      if (liveRoutePath.length > 1) {
+      if (showStraightLinks && straightLinkPath.length > 1) {
         routePolylinesRef.current.push(
           new window.google.maps.Polyline({
-            path: liveRoutePath,
+            path: straightLinkPath,
             geodesic: true,
-            strokeColor: routeColor,
-            strokeOpacity: 0.95,
-            strokeWeight: 5,
+            strokeColor: "#8b5cf6",
+            strokeOpacity: 0.85,
+            strokeWeight: 3,
             map: mapInstance.current,
           }),
         );
@@ -888,6 +837,7 @@ export default function LiveMap() {
           const marker = new window.google.maps.Marker({
             position: entry.point,
             map: mapInstance.current,
+            zIndex: 30,
             label: {
               text: entry.label,
               color: "#0f172a",
@@ -929,34 +879,11 @@ export default function LiveMap() {
         });
     });
 
-    const contextPoints = visibleDeliveries.flatMap((delivery) => [
-      delivery.pickupLocation,
-      delivery.deliveryLocation,
-      delivery.currentLocation,
-    ]);
-
-    getDisplayRouteNetworkSegments(managedSegments, contextPoints, {
-      thresholdKm: 12,
-      fallbackLimit: 150,
-    }).forEach((segment) => {
-      const style = getRouteNetworkSegmentStyle(segment);
-      routePolylinesRef.current.push(
-        new window.google.maps.Polyline({
-          path: [segment.start, segment.end],
-          geodesic: true,
-          strokeColor: style.strokeColor,
-          strokeOpacity: style.strokeOpacity,
-          strokeWeight: style.strokeWeight,
-          map: mapInstance.current,
-        }),
-      );
-    });
-
     return () => {
       routePolylinesRef.current.forEach((polyline) => polyline.setMap(null));
       routeMarkersRef.current.forEach((marker) => marker.setMap(null));
     };
-  }, [deliveries, googleMapsLoaded, managedSegments, selectedType]);
+  }, [deliveries, googleMapsLoaded, selectedType, showStraightLinks]);
 
   // Keep auto-fit behavior only for initial load and marker-type filter changes.
   useEffect(() => {
@@ -1056,6 +983,7 @@ export default function LiveMap() {
     setShowRoadNames(true);
     setShowPlaces(true);
     setShowTraffic(false);
+    setShowStraightLinks(false);
     setIs3DEnabled(false);
   };
 
@@ -1286,6 +1214,21 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
                     type="checkbox"
+                    checked={showStraightLinks}
+                    onChange={(e) => setShowStraightLinks(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+                <span className="text-sm font-medium text-gray-700">
+                  Straight Links
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
                     checked={is3DEnabled}
                     onChange={(e) => setIs3DEnabled(e.target.checked)}
                     className="sr-only peer"
@@ -1321,12 +1264,10 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
                 </span>
               </div>
               <div className="flex items-center">
-                <div className="w-3 h-3 rounded-full bg-slate-400 mr-2"></div>
-                <span className="text-sm">Planned / live routes</span>
-              </div>
-              <div className="flex items-center">
-                <div className="w-3 h-3 rounded-full bg-green-600 mr-2"></div>
-                <span className="text-sm">Managed route rules</span>
+                <div className="w-3 h-3 rounded-full bg-violet-500 mr-2"></div>
+                <span className="text-sm">
+                  Straight links {showStraightLinks ? "on" : "off"}
+                </span>
               </div>
               {showTraffic && (
                 <div className="flex items-center">
@@ -1422,6 +1363,7 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
             Current map:{" "}
             <strong>{mapStyles.find((s) => s.id === mapStyle)?.name}</strong>
             {showTraffic && " • Traffic enabled"}
+            {showStraightLinks && " • Straight links enabled"}
             {is3DEnabled && " • 3D View enabled"}
             {mapStyle === "satellite" &&
               !satelliteLoaded &&
@@ -1535,16 +1477,6 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {deliveries.map((delivery) => {
-              const relevantSegments = getDisplayRouteNetworkSegments(
-                managedSegments,
-                [
-                  delivery.pickupLocation,
-                  delivery.deliveryLocation,
-                  delivery.currentLocation,
-                ],
-                { thresholdKm: 12, fallbackLimit: 20 },
-              );
-
               return (
                 <div
                   key={delivery.id}
@@ -1558,9 +1490,6 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
                       <div className="text-sm text-gray-600 capitalize">
                         {delivery.status.replace(/_/g, " ")}
                       </div>
-                    </div>
-                    <div className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                      {relevantSegments.length} route rule(s)
                     </div>
                   </div>
 
@@ -1617,28 +1546,6 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
                       </button>
                     )}
                   </div>
-
-                  {relevantSegments.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {relevantSegments.slice(0, 3).map((segment) => {
-                        const style = getRouteNetworkSegmentStyle(segment);
-                        return (
-                          <span
-                            key={segment.id}
-                            className="rounded-full border px-2.5 py-1 text-[11px] font-semibold"
-                            style={{
-                              borderColor: style.strokeColor,
-                              color: style.strokeColor,
-                              backgroundColor: `${style.strokeColor}12`,
-                            }}
-                          >
-                            {segment.name} •{" "}
-                            {formatRouteNetworkSegmentType(segment.type)}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
                 </div>
               );
             })}

@@ -1065,6 +1065,7 @@ export default function DeliveryTrackingMap() {
                       lng: delivery.currentLocation.lng,
                     }}
                     title="Delivery Location"
+                    zIndex={10}
                     onClick={() =>
                       setSelectedMapInfo({
                         position: {
@@ -1080,7 +1081,7 @@ export default function DeliveryTrackingMap() {
                     }
                     icon={{
                       path: google.maps.SymbolPath.CIRCLE,
-                      scale: 8,
+                      scale: 16,
                       fillColor: "#ef4444",
                       fillOpacity: 1,
                       strokeColor: "#fff",
@@ -1096,6 +1097,7 @@ export default function DeliveryTrackingMap() {
                       lng: carrierLocation.lng,
                     }}
                     title={delivery.carrierName || "Carrier"}
+                    zIndex={20}
                     onClick={() =>
                       setSelectedMapInfo({
                         position: {
@@ -1113,7 +1115,7 @@ export default function DeliveryTrackingMap() {
                     }
                     icon={{
                       path: google.maps.SymbolPath.CIRCLE,
-                      scale: 10,
+                      scale: 12,
                       fillColor: "#22c55e",
                       fillOpacity: 1,
                       strokeColor: "#fff",
@@ -1130,6 +1132,7 @@ export default function DeliveryTrackingMap() {
                       lng: delivery.pickupLocation.lng,
                     }}
                     title="Pickup Location"
+                    zIndex={30}
                     onClick={() =>
                       setSelectedMapInfo({
                         position: {
@@ -1162,6 +1165,7 @@ export default function DeliveryTrackingMap() {
                       lng: delivery.deliveryLocation.lng,
                     }}
                     title="Delivery Destination"
+                    zIndex={30}
                     onClick={() =>
                       setSelectedMapInfo({
                         position: {

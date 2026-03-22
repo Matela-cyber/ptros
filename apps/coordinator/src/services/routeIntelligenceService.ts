@@ -13,6 +13,7 @@ import {
   where,
 } from "firebase/firestore";
 import { haversineKm, type LatLngPoint } from "../routeHistory";
+import { buildDeliveryGraphSnapshot } from "./locationGraphService.ts";
 import { getTimeServiceStatus, writeTimestamp } from "./timeService";
 
 export type NormalizedVehicleType =
@@ -74,6 +75,7 @@ export interface CarrierRecommendation {
   fullName: string;
   status: string;
   vehicleType: string;
+  carrierCurrentLocation?: LatLngPoint;
   normalizedVehicleType: NormalizedVehicleType;
   recommendationScore: number;
   recommendationReason: string;
@@ -764,6 +766,10 @@ export const getCarrierRecommendationsForDraft = async (
         fullName: carrier.fullName,
         status: carrier.status,
         vehicleType: carrier.vehicleType || "Unknown",
+        carrierCurrentLocation: {
+          lat: currentLocation.lat,
+          lng: currentLocation.lng,
+        },
         normalizedVehicleType,
         recommendationScore: Number(recommendationScore.toFixed(2)),
         recommendationReason: reasonFactors.join(" • "),
@@ -824,6 +830,41 @@ export const assignDeliveryIntelligently = async (deliveryId: string) => {
   const timestamp = await writeTimestamp(`deliveries/${deliveryId}/assigned`);
   const timeServiceStatus = getTimeServiceStatus();
 
+  let graphSnapshotNodeIds: {
+    pickupNodeId?: string;
+    dropoffNodeId?: string;
+    deliveryCurrentNodeId?: string;
+    carrierCurrentNodeId?: string;
+  } | null = null;
+
+  try {
+    graphSnapshotNodeIds = await buildDeliveryGraphSnapshot({
+      deliveryId,
+      trackingCode: data.trackingCode,
+      pickupAddress: data.pickupAddress,
+      deliveryAddress: data.deliveryAddress,
+      pickupLocation: data.pickupLocation,
+      dropoffLocation: data.deliveryLocation,
+      deliveryCurrentLocation: data.currentLocation,
+      carrierId: selected.id,
+      carrierName: selected.fullName,
+      carrierLocation: selected.carrierCurrentLocation,
+      packageWeightKg: Number(data.packageWeight || 0),
+      urgency:
+        (String(data.priority || "normal").toLowerCase() as
+          | "low"
+          | "normal"
+          | "high"
+          | "critical") || "normal",
+      deadlineAt: data.estimatedDelivery?.toDate?.() || null,
+      carrierMaxDailyKm: Number(data?.carrierMaxDailyKm || 0) || undefined,
+      carrierTraveledTodayKm:
+        Number(data?.carrierTraveledTodayKm || 0) || undefined,
+    });
+  } catch (graphError) {
+    console.warn("Location graph snapshot creation failed:", graphError);
+  }
+
   await updateDoc(doc(db, "deliveries", deliveryId), {
     status: "assigned",
     carrierId: selected.id,
@@ -831,6 +872,12 @@ export const assignDeliveryIntelligently = async (deliveryId: string) => {
     assignedAt: timestamp,
     updatedAt: timestamp,
     timeSource: timeServiceStatus.primarySource,
+    locationGraph: {
+      schemaVersion: 1,
+      mode: "location_nodes",
+      nodeRefs: graphSnapshotNodeIds,
+      updatedAt: timestamp,
+    },
     carrierRecommendations: recommendations.map((carrier, index) => ({
       rank: index + 1,
       carrierId: carrier.id,
@@ -850,6 +897,7 @@ export const assignDeliveryIntelligently = async (deliveryId: string) => {
       staleLocationMinutes: carrier.staleLocationMinutes,
       vehicleType: carrier.vehicleType,
       status: carrier.status,
+      carrierCurrentLocation: carrier.carrierCurrentLocation || null,
     })),
     optimizationReasons: arrayUnion({
       type: "carrier_assignment",
