@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { GoogleMap, Marker, Polyline } from "@react-google-maps/api";
+import {
+  GoogleMap,
+  InfoWindow,
+  Marker,
+  Polyline,
+} from "@react-google-maps/api";
 import {
   db,
   realtimeDb,
@@ -217,6 +222,11 @@ export default function DeliveryTrackingMap() {
     lat: number;
     lng: number;
   }> | null>(null);
+  const [selectedMapInfo, setSelectedMapInfo] = useState<{
+    position: { lat: number; lng: number };
+    title: string;
+    details: string[];
+  } | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -1055,6 +1065,19 @@ export default function DeliveryTrackingMap() {
                       lng: delivery.currentLocation.lng,
                     }}
                     title="Delivery Location"
+                    onClick={() =>
+                      setSelectedMapInfo({
+                        position: {
+                          lat: delivery.currentLocation!.lat,
+                          lng: delivery.currentLocation!.lng,
+                        },
+                        title: "Package location",
+                        details: [
+                          `Tracking: ${delivery.trackingCode}`,
+                          `Status: ${getStatusLabel(delivery.status)}`,
+                        ],
+                      })
+                    }
                     icon={{
                       path: google.maps.SymbolPath.CIRCLE,
                       scale: 8,
@@ -1073,6 +1096,21 @@ export default function DeliveryTrackingMap() {
                       lng: carrierLocation.lng,
                     }}
                     title={delivery.carrierName || "Carrier"}
+                    onClick={() =>
+                      setSelectedMapInfo({
+                        position: {
+                          lat: carrierLocation.lat,
+                          lng: carrierLocation.lng,
+                        },
+                        title: delivery.carrierName || "Carrier location",
+                        details: [
+                          `Status: ${getStatusLabel(delivery.status)}`,
+                          delivery.carrierPhone
+                            ? `Phone: ${delivery.carrierPhone}`
+                            : "Phone unavailable",
+                        ],
+                      })
+                    }
                     icon={{
                       path: google.maps.SymbolPath.CIRCLE,
                       scale: 10,
@@ -1092,6 +1130,19 @@ export default function DeliveryTrackingMap() {
                       lng: delivery.pickupLocation.lng,
                     }}
                     title="Pickup Location"
+                    onClick={() =>
+                      setSelectedMapInfo({
+                        position: {
+                          lat: delivery.pickupLocation!.lat,
+                          lng: delivery.pickupLocation!.lng,
+                        },
+                        title: "Pickup location",
+                        details: [
+                          delivery.pickupAddress,
+                          `Customer: ${delivery.customerName}`,
+                        ],
+                      })
+                    }
                     icon={{
                       path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
                       scale: 6,
@@ -1111,6 +1162,19 @@ export default function DeliveryTrackingMap() {
                       lng: delivery.deliveryLocation.lng,
                     }}
                     title="Delivery Destination"
+                    onClick={() =>
+                      setSelectedMapInfo({
+                        position: {
+                          lat: delivery.deliveryLocation!.lat,
+                          lng: delivery.deliveryLocation!.lng,
+                        },
+                        title: "Dropoff location",
+                        details: [
+                          delivery.deliveryAddress,
+                          `Customer: ${delivery.customerName}`,
+                        ],
+                      })
+                    }
                     icon={{
                       path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
                       scale: 6,
@@ -1120,6 +1184,24 @@ export default function DeliveryTrackingMap() {
                       strokeWeight: 2,
                     }}
                   />
+                )}
+
+                {selectedMapInfo && (
+                  <InfoWindow
+                    position={selectedMapInfo.position}
+                    onCloseClick={() => setSelectedMapInfo(null)}
+                  >
+                    <div className="min-w-[180px] text-xs text-slate-700">
+                      <p className="text-sm font-semibold text-slate-900">
+                        {selectedMapInfo.title}
+                      </p>
+                      <div className="mt-1 space-y-0.5">
+                        {selectedMapInfo.details.map((line, index) => (
+                          <p key={`${line}-${index}`}>{line}</p>
+                        ))}
+                      </div>
+                    </div>
+                  </InfoWindow>
                 )}
               </GoogleMap>
             </>
