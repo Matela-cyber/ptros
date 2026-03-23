@@ -8,6 +8,20 @@ import { setDoc, doc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { Link, useNavigate } from "react-router-dom";
 
+const FULL_NAME_ALLOWED_CHARACTERS = /[^\p{L}' -]/gu;
+const FULL_NAME_VALIDATION_PATTERN = /^[\p{L}]+(?:[ '-][\p{L}]+)*$/u;
+
+const sanitizeFullName = (value: string): string =>
+  value
+    .replace(FULL_NAME_ALLOWED_CHARACTERS, "")
+    .replace(/\s+/g, " ")
+    .replace(/^[ '-]+|[ '-]+$/g, "");
+
+const isValidFullName = (value: string): boolean => {
+  const normalizedValue = sanitizeFullName(value);
+  return normalizedValue.length >= 2 && FULL_NAME_VALIDATION_PATTERN.test(normalizedValue);
+};
+
 export default function Register() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -42,6 +56,8 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [step, setStep] = useState(1);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [profilePreview, setProfilePreview] = useState<string | null>(null);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
 
@@ -190,6 +206,17 @@ export default function Register() {
         }
       }
     } else {
+      if (name === "fullName") {
+        const sanitizedFullName = sanitizeFullName(value);
+        setFormData((prev) => ({ ...prev, fullName: sanitizedFullName }));
+
+        if (error && !sanitizedFullName) {
+          setError("");
+        }
+
+        return;
+      }
+
       setFormData((prev) => ({ ...prev, [name]: value }));
     }
   };
@@ -211,6 +238,13 @@ export default function Register() {
 
     if (!formData.fullName.trim()) {
       setError("Full name is required");
+      return false;
+    }
+
+    if (!isValidFullName(formData.fullName)) {
+      setError(
+        "Full name can only contain letters, spaces, apostrophes, and hyphens.",
+      );
       return false;
     }
 
@@ -590,9 +624,11 @@ export default function Register() {
                       value={formData.fullName}
                       onChange={handleChange}
                       className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="John Doe"
+                      inputMode="text"
+                      autoCapitalize="words"
                       required
                     />
+
                   </div>
 
                   <div>
@@ -605,7 +641,6 @@ export default function Register() {
                       value={formData.email}
                       onChange={handleChange}
                       className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="john@example.com"
                       required
                     />
                   </div>
@@ -615,16 +650,27 @@ export default function Register() {
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Password *
                       </label>
-                      <input
-                        type="password"
-                        name="password"
-                        value={formData.password}
-                        onChange={handleChange}
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="At least 8 characters"
-                        minLength={8}
-                        required
-                      />
+                      <div className="relative">
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          name="password"
+                          value={formData.password}
+                          onChange={handleChange}
+                          className="w-full p-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          minLength={8}
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword((prev) => !prev)}
+                          className="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-blue-600"
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                        >
+                          <i
+                            className={`fa-solid ${showPassword ? "fa-eye-slash" : "fa-eye"}`}
+                          ></i>
+                        </button>
+                      </div>
                       <p className="text-xs text-gray-500 mt-1">
                         Minimum 8 characters with letters and numbers
                       </p>
@@ -634,15 +680,32 @@ export default function Register() {
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Confirm Password *
                       </label>
-                      <input
-                        type="password"
-                        name="confirmPassword"
-                        value={formData.confirmPassword}
-                        onChange={handleChange}
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="Confirm your password"
-                        required
-                      />
+                      <div className="relative">
+                        <input
+                          type={showConfirmPassword ? "text" : "password"}
+                          name="confirmPassword"
+                          value={formData.confirmPassword}
+                          onChange={handleChange}
+                          className="w-full p-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowConfirmPassword((prev) => !prev)
+                          }
+                          className="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-blue-600"
+                          aria-label={
+                            showConfirmPassword
+                              ? "Hide confirm password"
+                              : "Show confirm password"
+                          }
+                        >
+                          <i
+                            className={`fa-solid ${showConfirmPassword ? "fa-eye-slash" : "fa-eye"}`}
+                          ></i>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -818,7 +881,7 @@ export default function Register() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        License Plate
+                        Vehicle ID
                       </label>
                       <input
                         type="text"
@@ -826,7 +889,7 @@ export default function Register() {
                         value={formData.licensePlate}
                         onChange={handleChange}
                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="e.g., A1234BC"
+                        placeholder="Enter vehicle ID"
                       />
                     </div>
 
@@ -877,30 +940,40 @@ export default function Register() {
                     Your Information
                   </h4>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
+                    <div className="min-w-0 space-y-1">
                       <p className="text-sm text-gray-500">Full Name</p>
-                      <p className="font-medium">{formData.fullName}</p>
+                      <p className="font-medium leading-relaxed break-words">
+                        {formData.fullName}
+                      </p>
                     </div>
-                    <div>
+                    <div className="min-w-0 space-y-1">
                       <p className="text-sm text-gray-500">Email</p>
-                      <p className="font-medium">{formData.email}</p>
+                      <p className="font-medium leading-relaxed break-words">
+                        {formData.email}
+                      </p>
                     </div>
-                    <div>
+                    <div className="min-w-0 space-y-1">
                       <p className="text-sm text-gray-500">Phone</p>
-                      <p className="font-medium">{formData.phone}</p>
+                      <p className="font-medium leading-relaxed break-words">
+                        {formData.phone}
+                      </p>
                     </div>
-                    <div>
+                    <div className="min-w-0 space-y-1">
                       <p className="text-sm text-gray-500">City</p>
-                      <p className="font-medium">{formData.city}</p>
+                      <p className="font-medium leading-relaxed break-words">
+                        {formData.city}
+                      </p>
                     </div>
-                    <div>
+                    <div className="min-w-0 space-y-1 md:col-span-2">
                       <p className="text-sm text-gray-500">Address</p>
-                      <p className="font-medium">{formData.address}</p>
+                      <p className="font-medium leading-relaxed break-words">
+                        {formData.address}
+                      </p>
                     </div>
-                    <div>
+                    <div className="min-w-0 space-y-1 md:col-span-2">
                       <p className="text-sm text-gray-500">Vehicle Type</p>
-                      <p className="font-medium">
+                      <p className="font-medium leading-relaxed break-words">
                         {formData.vehicleType || "Not specified"}
                       </p>
                     </div>

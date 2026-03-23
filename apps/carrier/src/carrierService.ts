@@ -467,6 +467,32 @@ export class CarrierService {
     }
   }
 
+  static async getDeliveredDeliveries(): Promise<Delivery[]> {
+    try {
+      const user = auth.currentUser;
+      if (!user) return [];
+
+      const q = query(
+        collection(db, "deliveries"),
+        where("carrierId", "==", user.uid),
+        where("status", "==", "delivered"),
+        orderBy("deliveryTime", "desc"),
+      );
+
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(
+        (doc) =>
+          ({
+            id: doc.id,
+            ...doc.data(),
+          }) as Delivery,
+      );
+    } catch (error) {
+      console.error("Error fetching delivered deliveries:", error);
+      return [];
+    }
+  }
+
   static async updateDeliveryStatus(
     deliveryId: string,
     status: Delivery["status"],
@@ -490,29 +516,6 @@ export class CarrierService {
 
       await updateDoc(doc(db, "deliveries", deliveryId), updates);
 
-      try {
-        await syncDeliveryLocationGraphStructure({
-          deliveryId,
-          trigger:
-            status === "accepted"
-              ? "accepted"
-              : status === "picked_up"
-                ? "picked_up"
-                : status === "in_transit"
-                  ? "in_transit"
-                  : status === "out_for_delivery"
-                    ? "out_for_delivery"
-                    : status === "delivered"
-                      ? "delivered"
-                      : "status_change",
-        });
-      } catch (graphError) {
-        console.warn(
-          "Graph sync after delivery status update failed:",
-          graphError,
-        );
-      }
-
       if (
         ["picked_up", "in_transit", "out_for_delivery", "delivered"].includes(
           status,
@@ -525,6 +528,24 @@ export class CarrierService {
           snapshotReason as "status_change" | "delivery_complete",
         );
       }
+
+      // Sync location graph with trigger mapped from status
+      const graphTrigger =
+        status === "picked_up"
+          ? "picked_up"
+          : status === "in_transit"
+            ? "in_transit"
+            : status === "out_for_delivery"
+              ? "out_for_delivery"
+              : status === "delivered"
+                ? "delivered"
+                : "status_change";
+      syncDeliveryLocationGraphStructure({
+        deliveryId,
+        trigger: graphTrigger,
+      }).catch((e) =>
+        console.warn("Graph sync failed (updateDeliveryStatus):", e),
+      );
 
       return true;
     } catch (error) {
@@ -771,20 +792,17 @@ export class CarrierService {
         updatedAt: Timestamp.now(),
       });
 
-      try {
-        await syncDeliveryLocationGraphStructure({
-          deliveryId,
-          trigger: "accepted",
-        });
-      } catch (graphError) {
-        console.warn("Graph sync after acceptTask failed:", graphError);
-      }
-
       // Update carrier status to busy
       await updateDoc(doc(db, "users", user.uid), {
         status: "busy",
         updatedAt: Timestamp.now(),
       });
+
+      // Sync location graph nodes/edges (fire-and-forget; silent on failure)
+      syncDeliveryLocationGraphStructure({
+        deliveryId,
+        trigger: "accepted",
+      }).catch((e) => console.warn("Graph sync failed (acceptTask):", e));
 
       return true;
     } catch (error) {
@@ -843,17 +861,13 @@ export class CarrierService {
         updatedAt: Timestamp.now(),
       });
 
-      try {
-        await syncDeliveryLocationGraphStructure({
-          deliveryId,
-          trigger: "accepted",
-        });
-      } catch (graphError) {
-        console.warn(
-          "Graph sync after acceptAssignedDelivery failed:",
-          graphError,
-        );
-      }
+      // Sync location graph nodes/edges (fire-and-forget; silent on failure)
+      syncDeliveryLocationGraphStructure({
+        deliveryId,
+        trigger: "accepted",
+      }).catch((e) =>
+        console.warn("Graph sync failed (acceptAssignedDelivery):", e),
+      );
 
       return true;
     } catch (error) {
@@ -1059,7 +1073,7 @@ export class CarrierService {
           // For good accuracy (<100m), use normal 10m distance threshold
           const isLowAccuracy = location.accuracy && location.accuracy > 1000;
           const distanceThreshold = isLowAccuracy ? 0 : MIN_DISTANCE_THRESHOLD;
-          const timeThreshold = isLowAccuracy ? 5000 : MIN_TIME_THRESHOLD_MS; // max 5s cadence for realtime freshness
+          const timeThreshold = isLowAccuracy ? 10000 : MIN_TIME_THRESHOLD_MS; // 10s for low accuracy, 30s for good
 
           if (distance > distanceThreshold) {
             shouldUpdate = true;
@@ -1163,7 +1177,7 @@ export class CarrierService {
                   ? 0
                   : MIN_DISTANCE_THRESHOLD;
                 const timeThreshold = isLowAccuracy
-                  ? 5000
+                  ? 10000
                   : MIN_TIME_THRESHOLD_MS;
 
                 if (distance > distanceThreshold) {
