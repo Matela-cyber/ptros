@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { db } from "@config";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faBox, faClock, faLocationDot, faPhone } from "@fortawesome/free-solid-svg-icons";
 
 export default function GuestTrack() {
   const navigate = useNavigate();
@@ -49,7 +51,9 @@ export default function GuestTrack() {
       <div className="w-full max-w-md">
         {/* Logo/Header */}
         <div className="text-center mb-8">
-          <div className="text-5xl mb-4">📦</div>
+          <div className="text-5xl mb-4 text-white">
+            <FontAwesomeIcon icon={faBox} />
+          </div>
           <h1 className="text-4xl font-bold text-white mb-2">PTROS</h1>
           <p className="text-blue-100 text-lg">Package Tracking System</p>
         </div>
@@ -123,15 +127,21 @@ export default function GuestTrack() {
         {/* Features */}
         <div className="grid grid-cols-3 gap-4 text-white text-center mb-6">
           <div>
-            <div className="text-2xl mb-2">🗺️</div>
+            <div className="text-2xl mb-2">
+              <FontAwesomeIcon icon={faLocationDot} />
+            </div>
             <p className="text-sm">Live Map</p>
           </div>
           <div>
-            <div className="text-2xl mb-2">⏱️</div>
+            <div className="text-2xl mb-2">
+              <FontAwesomeIcon icon={faClock} />
+            </div>
             <p className="text-sm">Real-time Updates</p>
           </div>
           <div>
-            <div className="text-2xl mb-2">📞</div>
+            <div className="text-2xl mb-2">
+              <FontAwesomeIcon icon={faPhone} />
+            </div>
             <p className="text-sm">Driver Contact</p>
           </div>
         </div>

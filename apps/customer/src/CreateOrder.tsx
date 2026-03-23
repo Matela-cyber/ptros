@@ -13,6 +13,15 @@ import {
 import { toast, Toaster } from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import { useGeocoder } from "./hooks/useGeocoder";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faBox,
+  faBullseye,
+  faCircleCheck,
+  faLocationDot,
+  faMoneyBillWave,
+  faTruckFast,
+} from "@fortawesome/free-solid-svg-icons";
 
 const LESOTHO_DEFAULT_CENTER = { lat: -29.3142, lng: 27.4833 };
 
@@ -100,7 +109,9 @@ function AddressMapPreview({
       className={`${fullHeight ? "h-full" : "mt-3"} border border-green-200 rounded-lg overflow-hidden shadow-sm bg-white`}
     >
       <div className="bg-green-50 px-3 py-1.5 text-xs text-green-700 font-medium flex items-center gap-1.5">
-        <span>📍</span>
+        <span>
+          <FontAwesomeIcon icon={faLocationDot} />
+        </span>
         <span className="truncate">
           {clickable ? "Click map to pin exact location:" : "Confirm location:"} {label}
         </span>
@@ -663,7 +674,10 @@ export default function CreateOrder({ user }: Props) {
       // Show success message with details
       const successMessage = (
         <div>
-          <p className="font-bold">✅ Order Created Successfully!</p>
+          <p className="font-bold">
+            <FontAwesomeIcon icon={faCircleCheck} className="mr-2 text-green-600" />
+            Order Created Successfully!
+          </p>
           <div className="mt-2 space-y-1">
             <p className="text-sm">
               <span className="font-semibold">Tracking Code:</span> {trackingCode}
@@ -676,7 +690,8 @@ export default function CreateOrder({ user }: Props) {
             )}
             {pickupCoords && deliveryCoords && (
               <p className="text-sm text-green-600">
-                ✓ Location tracking initialized at pickup point
+                <FontAwesomeIcon icon={faCircleCheck} className="mr-2" />
+                Location tracking initialized at pickup point
               </p>
             )}
             <p className="text-xs text-gray-500 mt-1">
@@ -768,7 +783,9 @@ export default function CreateOrder({ user }: Props) {
       <div className="mb-6 bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-4">
         <div className="flex items-center">
           <div className="flex-shrink-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center mr-3">
-            <span className="text-white text-sm">📍</span>
+            <span className="text-white text-sm">
+              <FontAwesomeIcon icon={faLocationDot} />
+            </span>
           </div>
           <div>
             <h3 className="font-semibold text-blue-800">Location Tracking</h3>
@@ -1259,14 +1276,17 @@ export default function CreateOrder({ user }: Props) {
         {(formData.pickupCoordinates || formData.deliveryCoordinates) && (
           <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6">
             <h3 className="text-lg font-semibold text-green-800 mb-4 flex items-center">
-              <span className="mr-2">✅</span>
+              <span className="mr-2">
+                <FontAwesomeIcon icon={faCircleCheck} />
+              </span>
               Location Tracking Ready
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {formData.pickupCoordinates && (
                 <div className="bg-white p-4 rounded-lg border border-green-200">
                   <div className="font-medium text-green-700 mb-1">
-                    📍 Pickup Location
+                    <FontAwesomeIcon icon={faLocationDot} className="mr-2" />
+                    Pickup Location
                   </div>
                   <div className="text-sm text-gray-600">
                     <div className="truncate">{formData.pickupAddress}</div>
@@ -1280,7 +1300,8 @@ export default function CreateOrder({ user }: Props) {
               {formData.deliveryCoordinates && (
                 <div className="bg-white p-4 rounded-lg border border-green-200">
                   <div className="font-medium text-green-700 mb-1">
-                    🎯 Delivery Location
+                    <FontAwesomeIcon icon={faBullseye} className="mr-2" />
+                    Delivery Location
                   </div>
                   <div className="text-sm text-gray-600">
                     <div className="truncate">{formData.deliveryAddress}</div>
@@ -1304,7 +1325,8 @@ export default function CreateOrder({ user }: Props) {
             <div>
               {formData.pickupCoordinates && formData.deliveryCoordinates && (
                 <p className="text-sm text-green-600">
-                  ✓ Ready for location-based tracking
+                  <FontAwesomeIcon icon={faCircleCheck} className="mr-2" />
+                  Ready for location-based tracking
                 </p>
               )}
             </div>
@@ -1330,7 +1352,9 @@ export default function CreateOrder({ user }: Props) {
                   </>
                 ) : (
                   <>
-                    <span className="mr-2">📦</span>
+                    <span className="mr-2">
+                      <FontAwesomeIcon icon={faBox} />
+                    </span>
                     Create Order
                   </>
                 )}
@@ -1343,21 +1367,30 @@ export default function CreateOrder({ user }: Props) {
       {/* Help Information */}
       <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <div className="text-blue-600 font-medium mb-2">📍 Location Tracking</div>
+          <div className="text-blue-600 font-medium mb-2">
+            <FontAwesomeIcon icon={faLocationDot} className="mr-2" />
+            Location Tracking
+          </div>
           <p className="text-sm text-blue-700">
             Package location starts at pickup address and updates automatically as the carrier moves.
           </p>
         </div>
 
         <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-          <div className="text-green-600 font-medium mb-2">💰 Pricing</div>
+          <div className="text-green-600 font-medium mb-2">
+            <FontAwesomeIcon icon={faMoneyBillWave} className="mr-2" />
+            Pricing
+          </div>
           <p className="text-sm text-green-700">
             Distance-based calculation: M10 per km + 15% of package value (minimum M50).
           </p>
         </div>
 
         <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
-          <div className="text-purple-600 font-medium mb-2">🚚 Carrier Assignment</div>
+          <div className="text-purple-600 font-medium mb-2">
+            <FontAwesomeIcon icon={faTruckFast} className="mr-2" />
+            Carrier Assignment
+          </div>
           <p className="text-sm text-purple-700">
             Auto-assigns nearest available carrier. OTP verification included.
           </p>

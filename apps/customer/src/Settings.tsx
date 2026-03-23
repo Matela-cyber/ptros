@@ -15,6 +15,14 @@ import {
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { toast, Toaster } from "react-hot-toast";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faKey,
+  faLock,
+  faRightFromBracket,
+  faTrashCan,
+  faTriangleExclamation,
+} from "@fortawesome/free-solid-svg-icons";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -480,7 +488,8 @@ export default function Settings() {
             onClick={() => setShowChangePassword((prev) => !prev)}
             className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 mb-3"
           >
-            🔐 Change Password
+            <FontAwesomeIcon icon={faLock} className="mr-2" />
+            Change Password
           </button>
 
           {showChangePassword && (
@@ -570,7 +579,8 @@ export default function Settings() {
             onClick={() => setShowTwoFactor((prev) => !prev)}
             className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50"
           >
-            🔑 Two-Factor Authentication
+            <FontAwesomeIcon icon={faKey} className="mr-2" />
+            Two-Factor Authentication
           </button>
 
           {showTwoFactor && (
@@ -706,13 +716,15 @@ export default function Settings() {
             onClick={handleLogout}
             className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 mb-3"
           >
-            🚪 Logout
+            <FontAwesomeIcon icon={faRightFromBracket} className="mr-2" />
+            Logout
           </button>
           <button
             onClick={() => setShowDeleteConfirm(true)}
             className="w-full px-4 py-3 border border-red-300 rounded-lg text-red-600 font-medium hover:bg-red-50"
           >
-            🗑️ Delete Account
+            <FontAwesomeIcon icon={faTrashCan} className="mr-2" />
+            Delete Account
           </button>
         </div>
 
@@ -720,7 +732,8 @@ export default function Settings() {
         {showDeleteConfirm && (
           <div className="bg-red-50 rounded-xl shadow p-6 border border-red-200">
             <h3 className="text-lg font-bold text-red-800 mb-3">
-              ⚠️ Delete Account
+              <FontAwesomeIcon icon={faTriangleExclamation} className="mr-2" />
+              Delete Account
             </h3>
             <p className="text-red-700 mb-6">
               Are you sure you want to delete your account? This action cannot be

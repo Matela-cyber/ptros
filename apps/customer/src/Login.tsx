@@ -10,6 +10,8 @@ import {
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { Link, useNavigate } from "react-router-dom";
 import type { MultiFactorResolver } from "firebase/auth";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faBox, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -232,7 +234,9 @@ export default function Login() {
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
             <div className="flex">
               <div className="flex-shrink-0">
-                <span className="text-yellow-600">⚠️</span>
+                <span className="text-yellow-600">
+                  <FontAwesomeIcon icon={faTriangleExclamation} />
+                </span>
               </div>
               <div className="ml-3">
                 <h4 className="text-sm font-medium text-yellow-800">
@@ -252,7 +256,9 @@ export default function Login() {
           <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <span className="text-red-500">⚠️</span>
+                <span className="text-red-500">
+                  <FontAwesomeIcon icon={faTriangleExclamation} />
+                </span>
               </div>
               <div className="ml-3">
                 <p className="text-red-700 text-sm">{error}</p>
@@ -403,7 +409,7 @@ export default function Login() {
           to="/g/track"
           className="w-full py-3 bg-cyan-500 text-white rounded-lg font-semibold hover:bg-cyan-600 transition flex items-center justify-center gap-2 mb-4"
         >
-          📦 Track Without Account
+          <FontAwesomeIcon icon={faBox} /> Track Without Account
         </Link>
 
         {/* Registration Link */}

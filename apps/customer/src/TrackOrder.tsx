@@ -4,6 +4,12 @@ import { useNavigate } from "react-router-dom";
 import { auth, db } from "@config";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faCheck,
+  faMapLocationDot,
+  faPhone,
+} from "@fortawesome/free-solid-svg-icons";
 
 interface TrackedOrder {
   id: string;
@@ -153,7 +159,7 @@ export default function TrackOrder() {
           className="flex h-fit w-full items-center justify-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 font-medium text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
           title="Open the live tracking map for this order"
         >
-          🗺️ View Live Map
+            <FontAwesomeIcon icon={faMapLocationDot} /> View Live Map
         </button>
       </div>
 
@@ -245,7 +251,9 @@ export default function TrackOrder() {
             <div className="space-y-4">
               <div className="flex items-start">
                 <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-4 flex-shrink-0">
-                  <span className="text-blue-600 text-lg">✓</span>
+                  <span className="text-blue-600 text-lg">
+                    <FontAwesomeIcon icon={faCheck} />
+                  </span>
                 </div>
                 <div>
                   <p className="font-medium">Order Received</p>
@@ -268,7 +276,11 @@ export default function TrackOrder() {
                         : "text-gray-400"
                     }`}
                   >
-                    {order.status !== "pending" ? "✓" : "2"}
+                    {order.status !== "pending" ? (
+                      <FontAwesomeIcon icon={faCheck} />
+                    ) : (
+                      "2"
+                    )}
                   </span>
                 </div>
                 <div>
@@ -304,7 +316,7 @@ export default function TrackOrder() {
                   >
                     {order.status === "in_transit" ||
                     order.status === "delivered"
-                      ? "✓"
+                      ? <FontAwesomeIcon icon={faCheck} />
                       : "3"}
                   </span>
                 </div>
@@ -331,7 +343,11 @@ export default function TrackOrder() {
                         : "text-gray-400"
                     }
                   >
-                    {order.status === "delivered" ? "✓" : "4"}
+                    {order.status === "delivered" ? (
+                      <FontAwesomeIcon icon={faCheck} />
+                    ) : (
+                      "4"
+                    )}
                   </span>
                 </div>
                 <div>
@@ -376,7 +392,8 @@ export default function TrackOrder() {
               here to help.
             </p>
             <button className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 font-medium">
-              📞 Contact Support
+              <FontAwesomeIcon icon={faPhone} className="mr-2" />
+              Contact Support
             </button>
           </div>
         </div>

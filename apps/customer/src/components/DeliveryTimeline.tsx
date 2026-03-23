@@ -1,11 +1,21 @@
 import { format } from "date-fns";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import type { IconDefinition } from "@fortawesome/free-solid-svg-icons";
+import {
+  faBox,
+  faCircleCheck,
+  faLocationDot,
+  faTruck,
+  faUser,
+  faVanShuttle,
+} from "@fortawesome/free-solid-svg-icons";
 
 interface TimelineEvent {
   status: string;
   label: string;
   timestamp?: Date;
   completed: boolean;
-  icon: string;
+  icon: IconDefinition;
 }
 
 interface DeliveryTimelineProps {
@@ -43,49 +53,49 @@ export default function DeliveryTimeline({
       label: "Order Placed",
       timestamp: createdAt,
       completed: statusIndex >= 0,
-      icon: "📦",
+      icon: faBox,
     },
     {
       status: "assigned",
       label: "Carrier Assigned",
       timestamp: assignedAt,
       completed: statusIndex >= 1,
-      icon: "👤",
+      icon: faUser,
     },
     {
       status: "accepted",
       label: "Delivery Accepted",
       timestamp: acceptedAt,
       completed: statusIndex >= 2,
-      icon: "✓",
+      icon: faCircleCheck,
     },
     {
       status: "picked_up",
       label: "Package Picked Up",
       timestamp: pickupTime,
       completed: statusIndex >= 3,
-      icon: "🚗",
+      icon: faVanShuttle,
     },
     {
       status: "in_transit",
       label: "In Transit",
       timestamp: pickupTime,
       completed: statusIndex >= 4,
-      icon: "🚙",
+      icon: faTruck,
     },
     {
       status: "out_for_delivery",
       label: "Out for Delivery",
       timestamp: pickupTime,
       completed: statusIndex >= 5,
-      icon: "📍",
+      icon: faLocationDot,
     },
     {
       status: "delivered",
       label: "Delivered",
       timestamp: deliveryTime,
       completed: statusIndex >= 6,
-      icon: "✅",
+      icon: faCircleCheck,
     },
   ];
 
@@ -122,7 +132,7 @@ export default function DeliveryTimeline({
                       : "bg-gray-300 text-gray-600"
                 }`}
               >
-                {event.icon}
+                <FontAwesomeIcon icon={event.icon} />
               </div>
 
               {/* Content */}

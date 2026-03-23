@@ -4,6 +4,16 @@ import { useState, useEffect } from "react";
 import { db } from "@config";
 import { doc, getDoc } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faCheck,
+  faCircleCheck,
+  faComments,
+  faMapLocationDot,
+  faPhone,
+  faPrint,
+  faShareNodes,
+} from "@fortawesome/free-solid-svg-icons";
 
 interface OrderDetail {
   id: string;
@@ -13,6 +23,7 @@ interface OrderDetail {
   deliveryAddress: string;
   packageDetails: string;
   carrierName?: string;
+  carrierPhone?: string;
   createdAt: Date;
   estimatedDelivery?: Date;
   actualDelivery?: Date;
@@ -28,11 +39,216 @@ interface OrderDetail {
   };
 }
 
+const SUPPORT_EMAIL = "support@ptros.co.ls";
+const SUPPORT_PHONE = "+2662222";
+
 export default function OrderDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const normalizePhone = (rawPhone?: string) => {
+    if (!rawPhone) return "";
+    return rawPhone.replace(/[^+\d]/g, "");
+  };
+
+  const handleCallCarrier = () => {
+    if (!order) return;
+
+    const carrierPhone = normalizePhone(order.carrierPhone);
+    const supportPhone = normalizePhone(SUPPORT_PHONE);
+    const targetPhone = carrierPhone || supportPhone;
+
+    if (!targetPhone) {
+      toast.error("No phone number is available right now.");
+      return;
+    }
+
+    if (!carrierPhone) {
+      toast("Carrier phone is unavailable. Calling support instead.");
+    }
+
+    window.location.href = `tel:${targetPhone}`;
+  };
+
+  const handleChatSupport = () => {
+    if (!order) return;
+
+    const subject = encodeURIComponent(
+      `Support request for order ${order.trackingCode}`,
+    );
+    const body = encodeURIComponent(
+      [
+        `Hello PTROS Support,`,
+        "",
+        `I need help with my order ${order.trackingCode}.`,
+        `Status: ${order.status}`,
+        `Pickup Address: ${order.pickupAddress}`,
+        `Delivery Address: ${order.deliveryAddress}`,
+        order.carrierName ? `Carrier: ${order.carrierName}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+
+    window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`;
+    toast.success("Opening support chat via email");
+  };
+
+  const handlePrintReceipt = () => {
+    if (!order) return;
+
+    const statusLabel = order.status.replace(/_/g, " ");
+    const orderedDate = order.createdAt.toLocaleString();
+    const estimatedDate = order.estimatedDelivery
+      ? order.estimatedDelivery.toLocaleString()
+      : "N/A";
+    const deliveredDate = order.actualDelivery
+      ? order.actualDelivery.toLocaleString()
+      : "N/A";
+
+    const receiptHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>PTROS Receipt - ${order.trackingCode}</title>
+          <style>
+            body {
+              font-family: Arial, Helvetica, sans-serif;
+              color: #111827;
+              margin: 0;
+              padding: 24px;
+            }
+            .receipt {
+              max-width: 760px;
+              margin: 0 auto;
+              border: 1px solid #e5e7eb;
+              border-radius: 12px;
+              padding: 24px;
+            }
+            .header {
+              border-bottom: 1px solid #e5e7eb;
+              padding-bottom: 12px;
+              margin-bottom: 16px;
+            }
+            .title {
+              font-size: 22px;
+              font-weight: 700;
+              margin: 0;
+            }
+            .subtitle {
+              margin: 6px 0 0;
+              color: #4b5563;
+              font-size: 14px;
+            }
+            .section {
+              margin-top: 16px;
+            }
+            .section h3 {
+              margin: 0 0 8px;
+              font-size: 15px;
+            }
+            .row {
+              display: flex;
+              gap: 12px;
+              margin: 6px 0;
+            }
+            .label {
+              width: 180px;
+              color: #6b7280;
+              flex-shrink: 0;
+            }
+            .value {
+              font-weight: 500;
+              word-break: break-word;
+            }
+            .footer {
+              margin-top: 20px;
+              padding-top: 12px;
+              border-top: 1px solid #e5e7eb;
+              color: #6b7280;
+              font-size: 12px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="receipt">
+            <div class="header">
+              <h1 class="title">PTROS Delivery Receipt</h1>
+              <p class="subtitle">Tracking Code: ${order.trackingCode}</p>
+            </div>
+
+            <div class="section">
+              <h3>Order Summary</h3>
+              <div class="row"><div class="label">Status</div><div class="value">${statusLabel}</div></div>
+              <div class="row"><div class="label">Ordered At</div><div class="value">${orderedDate}</div></div>
+              <div class="row"><div class="label">Estimated Delivery</div><div class="value">${estimatedDate}</div></div>
+              <div class="row"><div class="label">Delivered At</div><div class="value">${deliveredDate}</div></div>
+            </div>
+
+            <div class="section">
+              <h3>Delivery Details</h3>
+              <div class="row"><div class="label">Pickup Address</div><div class="value">${order.pickupAddress || "N/A"}</div></div>
+              <div class="row"><div class="label">Delivery Address</div><div class="value">${order.deliveryAddress || "N/A"}</div></div>
+              <div class="row"><div class="label">Package Details</div><div class="value">${order.packageDetails || "N/A"}</div></div>
+              <div class="row"><div class="label">Carrier</div><div class="value">${order.carrierName || "Not assigned"}</div></div>
+            </div>
+
+            <div class="footer">
+              Generated on ${new Date().toLocaleString()} • PTROS Customer Portal
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open("", "_blank", "noopener,noreferrer");
+    if (!printWindow) {
+      toast.error("Unable to open print window. Please allow pop-ups.");
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(receiptHtml);
+    printWindow.document.close();
+
+    printWindow.onload = () => {
+      printWindow.focus();
+      printWindow.print();
+    };
+  };
+
+  const handleShareTracking = async () => {
+    if (!order) return;
+
+    const shareUrl = `${window.location.origin}/g/track/${order.id}`;
+    const shareTitle = `Track package ${order.trackingCode}`;
+    const shareText = `Track my package ${order.trackingCode} using this link.`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: shareUrl,
+        });
+        return;
+      }
+
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success("Tracking link copied to clipboard");
+    } catch (error) {
+      // Ignore user cancellation for native share dialog
+      if ((error as any)?.name === "AbortError") {
+        return;
+      }
+
+      console.error("Error sharing tracking link:", error);
+      toast.error("Failed to share tracking link");
+    }
+  };
 
   useEffect(() => {
     const fetchOrder = async () => {
@@ -51,6 +267,7 @@ export default function OrderDetails() {
             deliveryAddress: data.deliveryAddress,
             packageDetails: data.packageDetails,
             carrierName: data.carrierName,
+            carrierPhone: data.carrierPhone,
             createdAt: data.createdAt?.toDate() || new Date(),
             estimatedDelivery: data.estimatedDelivery?.toDate(),
             actualDelivery: data.actualDelivery?.toDate(),
@@ -141,7 +358,7 @@ export default function OrderDetails() {
                   onClick={() => navigate(`/track/${order.id}`)}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium flex items-center gap-2"
                 >
-                  🗺️ Live Track
+                  <FontAwesomeIcon icon={faMapLocationDot} /> Live Track
                 </button>
                 <span
                   className={`px-4 py-2 rounded-full text-lg font-medium text-center ${
@@ -171,7 +388,7 @@ export default function OrderDetails() {
                         : "bg-gray-200 text-gray-600"
                     }`}
                   >
-                    {item.completed ? "✓" : index + 1}
+                    {item.completed ? <FontAwesomeIcon icon={faCheck} /> : index + 1}
                   </div>
                   <p
                     className={`text-sm text-center ${
@@ -263,11 +480,19 @@ export default function OrderDetails() {
           {order.status !== "delivered" && (
             <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
               <h3 className="font-bold mb-4">Need Help?</h3>
-              <button className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 font-medium">
-                📞 Contact Carrier
+              <button
+                onClick={handleCallCarrier}
+                className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 font-medium"
+              >
+                <FontAwesomeIcon icon={faPhone} className="mr-2" />
+                Contact Carrier
               </button>
-              <button className="w-full mt-2 bg-gray-200 text-gray-800 py-2 rounded-lg hover:bg-gray-300 font-medium">
-                💬 Chat Support
+              <button
+                onClick={handleChatSupport}
+                className="w-full mt-2 bg-gray-200 text-gray-800 py-2 rounded-lg hover:bg-gray-300 font-medium"
+              >
+                <FontAwesomeIcon icon={faComments} className="mr-2" />
+                Chat Support
               </button>
             </div>
           )}
@@ -275,7 +500,10 @@ export default function OrderDetails() {
           {/* Delivered Info */}
           {order.status === "delivered" && order.actualDelivery && (
             <div className="bg-green-50 rounded-xl p-6 border border-green-200">
-              <h3 className="font-bold mb-2">✓ Delivered</h3>
+              <h3 className="font-bold mb-2">
+                <FontAwesomeIcon icon={faCircleCheck} className="mr-2 text-green-600" />
+                Delivered
+              </h3>
               <p className="text-sm text-green-800">
                 Your package was delivered on{" "}
                 {order.actualDelivery.toLocaleDateString()}
@@ -286,11 +514,19 @@ export default function OrderDetails() {
           {/* Actions */}
           <div className="bg-white rounded-xl shadow p-6">
             <h3 className="font-bold mb-4">Actions</h3>
-            <button className="w-full px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 font-medium mb-2">
-              📱 Share Tracking
+            <button
+              onClick={handleShareTracking}
+              className="w-full px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 font-medium mb-2"
+            >
+              <FontAwesomeIcon icon={faShareNodes} className="mr-2" />
+              Share Tracking
             </button>
-            <button className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium">
-              🖨️ Print Receipt
+            <button
+              onClick={handlePrintReceipt}
+              className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+            >
+              <FontAwesomeIcon icon={faPrint} className="mr-2" />
+              Print Receipt
             </button>
           </div>
         </div>

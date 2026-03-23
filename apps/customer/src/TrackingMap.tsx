@@ -14,6 +14,17 @@ import { ref as rtdbRef, onValue } from "firebase/database";
 import { Toaster, toast } from "react-hot-toast";
 import { useSearchParams } from "react-router-dom";
 import MapLegend from "./components/MapLegend";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faBox,
+  faCarSide,
+  faCircleCheck,
+  faClipboardList,
+  faLocationDot,
+  faMapLocationDot,
+  faTruck,
+  type IconDefinition,
+} from "@fortawesome/free-solid-svg-icons";
 
 declare global {
   interface Window {
@@ -200,7 +211,7 @@ export default function TrackingMap({ user }: Props) {
   useEffect(() => {
     const checkGoogleMaps = () => {
       if (window.google?.maps) {
-        console.log("✅ Google Maps API is loaded");
+        console.log("Google Maps API is loaded");
         setGoogleMapsLoaded(true);
         return true;
       }
@@ -405,7 +416,7 @@ export default function TrackingMap({ user }: Props) {
     if (!googleMapsLoaded || !window.google || !mapRef.current) return;
     if (mapInstance.current) return;
 
-    console.log("🔄 Initializing Tracking Map...");
+    console.log("Initializing Tracking Map...");
 
     try {
       const mapOptions = {
@@ -429,7 +440,7 @@ export default function TrackingMap({ user }: Props) {
 
       const map = new window.google.maps.Map(mapRef.current, mapOptions);
       mapInstance.current = map;
-      console.log("✅ Tracking Map initialized successfully");
+      console.log("Tracking Map initialized successfully");
 
       const onTilesLoaded = window.google.maps.event.addListenerOnce(
         map,
@@ -478,7 +489,7 @@ export default function TrackingMap({ user }: Props) {
         }
       };
     } catch (error) {
-      console.error("❌ Error initializing map:", error);
+      console.error("Error initializing map:", error);
       setMapError(
         "Failed to initialize map. Please check console for details.",
       );
@@ -527,7 +538,7 @@ export default function TrackingMap({ user }: Props) {
         title: "Pickup Location",
         content: `
           <div style="padding: 10px; min-width: 220px; font-family: system-ui;">
-            <h3 style="margin: 0 0 5px 0; color: #059669; font-size: 14px; font-weight: 600;">📍 Pickup Point</h3>
+            <h3 style="margin: 0 0 5px 0; color: #059669; font-size: 14px; font-weight: 600;">Pickup Point</h3>
             <p style="margin: 0 0 5px 0; color: #4B5563; font-size: 12px;">${delivery.pickupAddress}</p>
             <p style="margin: 0; font-size: 11px; color: #6B7280;">
               ${delivery.pickupLocation.lat.toFixed(4)}, ${delivery.pickupLocation.lng.toFixed(4)}
@@ -553,7 +564,7 @@ export default function TrackingMap({ user }: Props) {
               Status: <strong>${delivery.status.replace(/_/g, " ")}</strong>
             </p>
             <p style="margin: 0 0 5px 0; font-size: 11px;">
-              📍 ${effectiveCurrentLocation.address || "Current location"}
+              Location: ${effectiveCurrentLocation.address || "Current location"}
             </p>
             ${
               delivery.carrierName
@@ -585,7 +596,7 @@ export default function TrackingMap({ user }: Props) {
         title: "Delivery Location",
         content: `
           <div style="padding: 10px; min-width: 220px; font-family: system-ui;">
-            <h3 style="margin: 0 0 5px 0; color: #DC2626; font-size: 14px; font-weight: 600;">🎯 Delivery Destination</h3>
+            <h3 style="margin: 0 0 5px 0; color: #DC2626; font-size: 14px; font-weight: 600;">Delivery Destination</h3>
             <p style="margin: 0 0 5px 0; color: #4B5563; font-size: 12px;">${delivery.deliveryAddress}</p>
             <p style="margin: 0 0 5px 0; font-size: 11px;">
               Recipient: <strong>${delivery.deliveryContactName}</strong>
@@ -958,20 +969,20 @@ export default function TrackingMap({ user }: Props) {
     }
   };
 
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = (status: string): IconDefinition => {
     switch (status) {
       case "assigned":
-        return "📋";
+        return faClipboardList;
       case "picked_up":
-        return "📦";
+        return faBox;
       case "in_transit":
-        return "🚚";
+        return faTruck;
       case "out_for_delivery":
-        return "🚗";
+        return faCarSide;
       case "delivered":
-        return "✅";
+        return faCircleCheck;
       default:
-        return "📍";
+        return faLocationDot;
     }
   };
 
@@ -1032,7 +1043,9 @@ export default function TrackingMap({ user }: Props) {
   if (mapError) {
     return (
       <div className="bg-white rounded-xl shadow p-8 text-center">
-        <div className="text-6xl mb-4">🗺️</div>
+        <div className="text-6xl mb-4 text-blue-600">
+          <FontAwesomeIcon icon={faMapLocationDot} />
+        </div>
         <h3 className="text-xl font-semibold text-gray-700 mb-2">Map Error</h3>
         <p className="text-red-600 mb-4">{mapError}</p>
         <button
@@ -1174,7 +1187,9 @@ export default function TrackingMap({ user }: Props) {
       {/* No Orders Message */}
       {visibleDeliveries.length === 0 ? (
         <div className="bg-white rounded-xl shadow p-8 text-center">
-          <div className="text-6xl mb-4">📦</div>
+          <div className="text-6xl mb-4 text-blue-600">
+            <FontAwesomeIcon icon={faBox} />
+          </div>
           <h3 className="text-xl font-semibold text-gray-700 mb-2">
             {deliveries.length === 0
               ? "No active orders"
@@ -1310,7 +1325,10 @@ export default function TrackingMap({ user }: Props) {
                         <div
                           className={`text-xs mt-1 inline-block px-2 py-1 rounded ${getStatusColor(delivery.status)}`}
                         >
-                          {getStatusIcon(delivery.status)}{" "}
+                          <FontAwesomeIcon
+                            icon={getStatusIcon(delivery.status)}
+                            className="mr-1"
+                          />
                           {delivery.status.replace(/_/g, " ")}
                         </div>
                       </div>
@@ -1358,7 +1376,10 @@ export default function TrackingMap({ user }: Props) {
                               <div
                                 className={`inline-block px-3 py-1 rounded-lg text-sm font-medium ${getStatusColor(delivery.status)}`}
                               >
-                                {getStatusIcon(delivery.status)}{" "}
+                                <FontAwesomeIcon
+                                  icon={getStatusIcon(delivery.status)}
+                                  className="mr-1"
+                                />
                                 {delivery.status.replace(/_/g, " ")}
                               </div>
                             </div>

@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { Libraries, useJsApiLoader } from "@react-google-maps/api";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
 
 const GOOGLE_MAPS_LIBRARIES: Libraries = ["places", "geometry"];
 
@@ -28,7 +30,7 @@ export default function GoogleMapsLoader({ children }: GoogleMapsLoaderProps) {
   useEffect(() => {
     if (isLoaded && window.google?.maps) {
       window.mapsReady = true;
-      console.log("✅ Google Maps loaded successfully");
+      console.log("Google Maps loaded successfully");
       window.dispatchEvent(new CustomEvent("mapsReady"));
     }
   }, [isLoaded]);
@@ -38,7 +40,8 @@ export default function GoogleMapsLoader({ children }: GoogleMapsLoaderProps) {
       <div className="min-h-screen flex items-center justify-center bg-red-50">
         <div className="text-center max-w-lg px-4">
           <p className="text-red-600 font-medium">
-            ⚠️ Google Maps configuration is missing
+            <FontAwesomeIcon icon={faTriangleExclamation} className="mr-2" />
+            Google Maps configuration is missing
           </p>
           <p className="text-gray-600 mt-2">
             Set <code>VITE_GOOGLE_MAPS_API_KEY</code> for this environment and
@@ -54,7 +57,8 @@ export default function GoogleMapsLoader({ children }: GoogleMapsLoaderProps) {
       <div className="min-h-screen flex items-center justify-center bg-red-50">
         <div className="text-center max-w-xl px-4">
           <p className="text-red-600 font-medium">
-            ⚠️ Failed to load Google Maps
+            <FontAwesomeIcon icon={faTriangleExclamation} className="mr-2" />
+            Failed to load Google Maps
           </p>
           <p className="text-gray-600 mt-2">
             If you see <code>RefererNotAllowedMapError</code>, authorize this

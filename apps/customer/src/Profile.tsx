@@ -3,6 +3,8 @@ import { useState } from "react";
 import { db } from "@config";
 import { doc, updateDoc } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCircleCheck } from "@fortawesome/free-solid-svg-icons";
 
 type Props = {
   user: any;
@@ -174,7 +176,10 @@ export default function Profile({ user, userProfile }: Props) {
               </div>
               <div>
                 <p className="text-gray-500">Verified Email</p>
-                <p className="font-medium">✓ Yes</p>
+                <p className="font-medium">
+                  <FontAwesomeIcon icon={faCircleCheck} className="mr-2 text-green-600" />
+                  Yes
+                </p>
               </div>
             </div>
           </div>
