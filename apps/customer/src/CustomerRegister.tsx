@@ -4,6 +4,8 @@ import { createUserWithEmailAndPassword } from "firebase/auth";
 import { setDoc, doc } from "firebase/firestore";
 import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCheck, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
 
 export default function CustomerRegister() {
   const navigate = useNavigate();
@@ -56,6 +58,11 @@ export default function CustomerRegister() {
   const validateStep1 = () => {
     if (!formData.fullName.trim()) {
       setError("Full name is required");
+      return false;
+    }
+
+    if (!/^[\p{L}]+([\s'\-.][\p{L}]+)*$/u.test(formData.fullName.trim())) {
+      setError("Full name can only contain letters");
       return false;
     }
 
@@ -221,7 +228,9 @@ export default function CustomerRegister() {
             <div className="bg-red-50 border-l-4 border-red-500 p-4 m-6">
               <div className="flex items-center">
                 <div className="flex-shrink-0">
-                  <span className="text-red-500">⚠️</span>
+                  <span className="text-red-500">
+                    <FontAwesomeIcon icon={faTriangleExclamation} />
+                  </span>
                 </div>
                 <div className="ml-3">
                   <p className="text-red-700">{error}</p>
@@ -249,7 +258,6 @@ export default function CustomerRegister() {
                       value={formData.fullName}
                       onChange={handleChange}
                       className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      placeholder="John Doe"
                       required
                     />
                   </div>
@@ -264,7 +272,6 @@ export default function CustomerRegister() {
                       value={formData.email}
                       onChange={handleChange}
                       className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      placeholder="john@example.com"
                       required
                     />
                   </div>
@@ -280,7 +287,6 @@ export default function CustomerRegister() {
                         value={formData.password}
                         onChange={handleChange}
                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                        placeholder="At least 8 characters"
                         minLength={8}
                         required
                       />
@@ -299,7 +305,6 @@ export default function CustomerRegister() {
                         value={formData.confirmPassword}
                         onChange={handleChange}
                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                        placeholder="Confirm your password"
                         required
                       />
                     </div>
@@ -336,7 +341,6 @@ export default function CustomerRegister() {
                       value={formData.phone}
                       onChange={handleChange}
                       className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      placeholder="+266 5000 0000"
                       required
                     />
                   </div>
@@ -370,7 +374,6 @@ export default function CustomerRegister() {
                       onChange={handleChange}
                       rows={3}
                       className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      placeholder="House number, street, area"
                       required
                     />
                   </div>
@@ -458,7 +461,9 @@ export default function CustomerRegister() {
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
                   <div className="flex">
                     <div className="flex-shrink-0">
-                      <span className="text-green-600">✓</span>
+                      <span className="text-green-600">
+                        <FontAwesomeIcon icon={faCheck} />
+                      </span>
                     </div>
                     <div className="ml-3">
                       <h4 className="text-sm font-medium text-green-800">

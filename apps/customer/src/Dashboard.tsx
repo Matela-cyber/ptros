@@ -3,6 +3,16 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { db } from "@config";
 import { collection, query, where, getDocs } from "firebase/firestore";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faBox,
+  faCircleCheck,
+  faHourglassHalf,
+  faLocationDot,
+  faMap,
+  faMoneyBillWave,
+  faPenToSquare,
+} from "@fortawesome/free-solid-svg-icons";
 
 type Props = {
   user: any;
@@ -69,25 +79,25 @@ export default function Dashboard({ user, userProfile }: Props) {
   const quickActions = [
     {
       label: "Create Order",
-      icon: "📝",
+      icon: faPenToSquare,
       path: "/orders/new",
       color: "bg-blue-600 hover:bg-blue-700",
     },
     {
       label: "Track Order",
-      icon: "📍",
+      icon: faLocationDot,
       path: "/track",
       color: "bg-green-600 hover:bg-green-700",
     },
     {
       label: "Live Tracking",
-      icon: "🗺️",
+      icon: faMap,
       path: "/track-map",
       color: "bg-cyan-600 hover:bg-cyan-700",
     },
     {
       label: "My Orders",
-      icon: "📦",
+      icon: faBox,
       path: "/orders",
       color: "bg-purple-600 hover:bg-purple-700",
     },
@@ -112,7 +122,7 @@ export default function Dashboard({ user, userProfile }: Props) {
         >
           <div className="flex items-center">
             <div className="p-3 bg-blue-100 rounded-lg mr-4">
-              <span className="text-2xl">📦</span>
+              <FontAwesomeIcon icon={faBox} className="text-2xl text-blue-600" />
             </div>
             <div>
               <p className="text-xs text-gray-500 sm:text-sm">Total Orders</p>
@@ -128,7 +138,7 @@ export default function Dashboard({ user, userProfile }: Props) {
         >
           <div className="flex items-center">
             <div className="p-3 bg-yellow-100 rounded-lg mr-4">
-              <span className="text-2xl">⏳</span>
+              <FontAwesomeIcon icon={faHourglassHalf} className="text-2xl text-yellow-700" />
             </div>
             <div>
               <p className="text-xs text-gray-500 sm:text-sm">Active Orders</p>
@@ -144,7 +154,7 @@ export default function Dashboard({ user, userProfile }: Props) {
         >
           <div className="flex items-center">
             <div className="p-3 bg-green-100 rounded-lg mr-4">
-              <span className="text-2xl">✅</span>
+              <FontAwesomeIcon icon={faCircleCheck} className="text-2xl text-green-600" />
             </div>
             <div>
               <p className="text-xs text-gray-500 sm:text-sm">Completed</p>
@@ -160,7 +170,10 @@ export default function Dashboard({ user, userProfile }: Props) {
         >
           <div className="flex items-center">
             <div className="p-3 bg-purple-100 rounded-lg mr-4">
-              <span className="text-2xl">💰</span>
+              <FontAwesomeIcon
+                icon={faMoneyBillWave}
+                className="text-2xl text-purple-600"
+              />
             </div>
             <div>
               <p className="text-xs text-gray-500 sm:text-sm">Total Spent</p>
@@ -181,7 +194,9 @@ export default function Dashboard({ user, userProfile }: Props) {
               to={action.path}
               className={`${action.color} rounded-lg p-3 text-center text-white transition transform hover:scale-105 sm:p-4`}
             >
-              <span className="mb-1 block text-2xl sm:mb-2 sm:text-3xl">{action.icon}</span>
+              <span className="mb-1 block text-2xl sm:mb-2 sm:text-3xl">
+                <FontAwesomeIcon icon={action.icon} />
+              </span>
               <span className="text-sm font-medium sm:text-base">{action.label}</span>
             </Link>
           ))}

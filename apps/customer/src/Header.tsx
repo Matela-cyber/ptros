@@ -1,9 +1,20 @@
 // apps/customer/src/Header.tsx
 import { auth } from "@config";
 import { signOut } from "firebase/auth";
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useNotifications } from "./hooks/useNotifications";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faBars,
+  faBell,
+  faBox,
+  faCaretDown,
+  faCircleCheck,
+  faCircleInfo,
+  faTriangleExclamation,
+  faXmark,
+} from "@fortawesome/free-solid-svg-icons";
 
 type Props = {
   user: any;
@@ -14,8 +25,20 @@ type Props = {
 export default function Header({ user, userProfile, onToggleSidebar }: Props) {
   const [showMenu, setShowMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
   const navigate = useNavigate();
+  const location = useLocation();
   const { notifications, unreadCount, markAsRead, markAllAsRead, clearNotification } = useNotifications();
+
+  useEffect(() => {
+    if (location.pathname === "/track-map") {
+      const params = new URLSearchParams(location.search);
+      setSearchValue((params.get("trackingCode") || "").toUpperCase());
+      return;
+    }
+
+    setSearchValue("");
+  }, [location.pathname, location.search]);
 
   const handleLogout = async () => {
     try {
@@ -42,14 +65,26 @@ export default function Header({ user, userProfile, onToggleSidebar }: Props) {
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case "delivery":
-        return "📦";
+        return faBox;
       case "order":
-        return "✅";
+        return faCircleCheck;
       case "alert":
-        return "⚠️";
+        return faTriangleExclamation;
       default:
-        return "ℹ️";
+        return faCircleInfo;
     }
+  };
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const normalized = searchValue.trim().toUpperCase();
+    if (!normalized) {
+      navigate("/track-map");
+      return;
+    }
+
+    navigate(`/track-map?trackingCode=${encodeURIComponent(normalized)}`);
   };
 
   return (
@@ -63,19 +98,25 @@ export default function Header({ user, userProfile, onToggleSidebar }: Props) {
             className="rounded-lg border border-gray-300 px-3 py-2 text-gray-700 transition-colors hover:bg-gray-100 lg:hidden"
             aria-label="Open sidebar menu"
           >
-            ☰
+            <FontAwesomeIcon icon={faBars} />
           </button>
 
-          <div className="relative min-w-0 flex-1">
+          <form
+            onSubmit={handleSearchSubmit}
+            className="relative min-w-0 flex-1"
+          >
             <input
               type="text"
-              placeholder="Search your orders..."
+              value={searchValue}
+              onChange={(e) => setSearchValue(e.target.value.toUpperCase())}
+              placeholder="Search by tracking code..."
               className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-blue-500 sm:w-64"
             />
             <svg className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
-          </div>
+            <button type="submit" className="hidden" aria-label="Search" />
+          </form>
 
           {/* Notification bell */}
           <div className="relative">
@@ -114,7 +155,9 @@ export default function Header({ user, userProfile, onToggleSidebar }: Props) {
                 {/* Notifications List */}
                 {notifications.length === 0 ? (
                   <div className="p-8 text-center text-gray-500">
-                    <div className="text-3xl mb-2">🔔</div>
+                    <div className="text-3xl mb-2">
+                      <FontAwesomeIcon icon={faBell} />
+                    </div>
                     <p>No notifications yet</p>
                   </div>
                 ) : (
@@ -130,7 +173,9 @@ export default function Header({ user, userProfile, onToggleSidebar }: Props) {
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
-                              <span className="text-lg">{getNotificationIcon(notif.type)}</span>
+                              <span className="text-lg">
+                                <FontAwesomeIcon icon={getNotificationIcon(notif.type)} />
+                              </span>
                               <p className="font-semibold text-gray-800 text-sm">{notif.title}</p>
                               {!notif.isRead && (
                                 <span className="w-2 h-2 bg-blue-600 rounded-full"></span>
@@ -152,7 +197,7 @@ export default function Header({ user, userProfile, onToggleSidebar }: Props) {
                             }}
                             className="text-gray-400 hover:text-gray-600 ml-2"
                           >
-                            ✕
+                            <FontAwesomeIcon icon={faXmark} />
                           </button>
                         </div>
                       </div>
@@ -206,7 +251,9 @@ export default function Header({ user, userProfile, onToggleSidebar }: Props) {
                   {userProfile?.fullName?.[0] || user.email?.[0] || "C"}
                 </span>
               </div>
-              <span>▼</span>
+              <span>
+                <FontAwesomeIcon icon={faCaretDown} />
+              </span>
             </button>
 
             {/* Dropdown menu */}

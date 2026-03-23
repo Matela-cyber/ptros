@@ -3,6 +3,12 @@ import { auth } from "@config";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faCheck,
+  faLightbulb,
+  faTriangleExclamation,
+} from "@fortawesome/free-solid-svg-icons";
 
 export default function ForgotPassword() {
   const navigate = useNavigate();
@@ -61,7 +67,9 @@ export default function ForgotPassword() {
           <div className="text-center">
             <div className="mb-6 flex justify-center">
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-                <span className="text-3xl">✓</span>
+                <span className="text-3xl text-green-600">
+                  <FontAwesomeIcon icon={faCheck} />
+                </span>
               </div>
             </div>
 
@@ -144,7 +152,9 @@ export default function ForgotPassword() {
           <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <span className="text-red-500">⚠️</span>
+                <span className="text-red-500">
+                  <FontAwesomeIcon icon={faTriangleExclamation} />
+                </span>
               </div>
               <div className="ml-3">
                 <p className="text-red-700 text-sm">{error}</p>
@@ -214,7 +224,8 @@ export default function ForgotPassword() {
         {/* Information Box */}
         <div className="mt-8 p-4 bg-green-50 border border-green-200 rounded-lg">
           <h4 className="text-sm font-medium text-green-800 mb-2">
-            💡 Password Reset Process
+            <FontAwesomeIcon icon={faLightbulb} className="mr-2" />
+            Password Reset Process
           </h4>
           <ul className="text-sm text-green-700 space-y-1">
             <li>• We'll send a reset link to your email</li>
