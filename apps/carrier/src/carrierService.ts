@@ -1123,7 +1123,9 @@ export class CarrierService {
         }
       },
       (err) => {
-        console.error("Geolocation error (high accuracy):", err);
+        console.error(
+          `Geolocation error (high accuracy): code=${err.code} ${err.message}`,
+        );
         // If timeout, retry with lower accuracy instead of stopping
         if (err.code === 3) {
           // TIMEOUT
@@ -1229,7 +1231,9 @@ export class CarrierService {
               }
             },
             (err) => {
-              console.error("Low accuracy geolocation also failed:", err);
+              console.error(
+                `Low accuracy geolocation also failed: code=${err.code} ${err.message}`,
+              );
               this.stopLocationSharing();
             },
             { enableHighAccuracy: false, timeout: 15000, maximumAge: 0 },
