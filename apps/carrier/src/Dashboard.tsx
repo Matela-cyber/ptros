@@ -469,6 +469,66 @@ export default function Dashboard({ user }: DashboardProps) {
           </button>
         </div>
 
+        {/* Quick Access Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <button
+            type="button"
+            onClick={() => navigate("/tasks")}
+            className="text-left bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl p-5 shadow-xl hover:shadow-emerald-500/40 hover:-translate-y-0.5 transition-all"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-emerald-100 text-xs uppercase tracking-wider font-semibold">
+                  Tasks
+                </p>
+                <p className="text-xl font-bold mt-1">Open Tasks</p>
+                <p className="text-emerald-100 text-sm mt-1">
+                  Accept assigned or available jobs
+                </p>
+              </div>
+              <i className="fa-solid fa-list-check text-2xl"></i>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate("/deliveries")}
+            className="text-left bg-gradient-to-r from-fuchsia-500 to-violet-600 text-white rounded-2xl p-5 shadow-xl hover:shadow-fuchsia-500/40 hover:-translate-y-0.5 transition-all"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-fuchsia-100 text-xs uppercase tracking-wider font-semibold">
+                  Deliveries
+                </p>
+                <p className="text-xl font-bold mt-1">My Deliveries</p>
+                <p className="text-fuchsia-100 text-sm mt-1">
+                  Update delivery statuses quickly
+                </p>
+              </div>
+              <i className="fa-solid fa-box text-2xl"></i>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate("/deliveries")}
+            className="text-left bg-gradient-to-r from-slate-700 to-gray-900 text-white rounded-2xl p-5 shadow-xl hover:shadow-gray-500/40 hover:-translate-y-0.5 transition-all"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-slate-200 text-xs uppercase tracking-wider font-semibold">
+                  Recent Deliveries
+                </p>
+                <p className="text-xl font-bold mt-1">View History</p>
+                <p className="text-slate-200 text-sm mt-1">
+                  See completed and active deliveries
+                </p>
+              </div>
+              <i className="fa-solid fa-clock-rotate-left text-2xl"></i>
+            </div>
+          </button>
+        </div>
+
         {/* Two Column Layout for Status and Active Delivery */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           {/* Status Controls - Left Column */}
@@ -612,18 +672,26 @@ export default function Dashboard({ user }: DashboardProps) {
                   </div>
 
                   <div className="mt-4">
-                    <button
-                      onClick={() =>
-                        window.open(
-                          getCarrierLiveTrackUrl(activeDelivery.id),
-                          "_blank",
-                          "noopener,noreferrer",
-                        )
-                      }
-                      className="px-4 py-2 bg-cyan-500/90 text-white rounded-lg text-sm font-semibold hover:bg-cyan-500"
-                    >
-                      Live Track
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() =>
+                          window.open(
+                            getCarrierLiveTrackUrl(activeDelivery.id),
+                            "_blank",
+                            "noopener,noreferrer",
+                          )
+                        }
+                        className="px-4 py-2 bg-cyan-500/90 text-white rounded-lg text-sm font-semibold hover:bg-cyan-500"
+                      >
+                        Live Track
+                      </button>
+                      <button
+                        onClick={() => setShowJobDetailsModal(true)}
+                        className="px-4 py-2 bg-white/20 border border-white/40 text-white rounded-lg text-sm font-semibold hover:bg-white/30"
+                      >
+                        Route Details
+                      </button>
+                    </div>
                   </div>
 
                   {/* Progress Bar */}
@@ -872,9 +940,11 @@ export default function Dashboard({ user }: DashboardProps) {
           ) : (
             <div className="divide-y divide-gray-100">
               {deliveries.map((delivery) => (
-                <div
+                <button
                   key={delivery.id}
-                  className="p-4 hover:bg-gray-50 transition-colors"
+                  type="button"
+                  onClick={() => navigate("/deliveries")}
+                  className="w-full text-left p-4 hover:bg-gray-50 transition-colors"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className="flex-1 min-w-0">
@@ -902,7 +972,7 @@ export default function Dashboard({ user }: DashboardProps) {
                       </p>
                     </div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}

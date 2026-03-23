@@ -9,10 +9,30 @@ export default function AvailableTasks() {
   const [tab, setTab] = useState<"assigned" | "available">("assigned");
   const [assignedTasks, setAssignedTasks] = useState<Delivery[]>([]);
   const [availableTasks, setAvailableTasks] = useState<Delivery[]>([]);
+  const [selectedTask, setSelectedTask] = useState<Delivery | null>(null);
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState<string | null>(null);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const { isSharing, startSharing } = useGPSLocation();
+
+  const openTaskDetails = (task: Delivery) => {
+    setSelectedTask(task);
+  };
+
+  const handleCardKeyDown = (
+    event: React.KeyboardEvent<HTMLDivElement>,
+    task: Delivery,
+  ) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openTaskDetails(task);
+    }
+  };
+
+  const withStop = (event: React.MouseEvent, action: () => void) => {
+    event.stopPropagation();
+    action();
+  };
 
   const openLiveTrack = (deliveryId: string) => {
     window.open(
@@ -77,6 +97,9 @@ export default function AvailableTasks() {
       if (success) {
         toast.success("Job accepted. Check dashboard for details.");
         setAssignedTasks((prev) => prev.filter((t) => t.id !== jobId));
+        if (selectedTask?.id === jobId) {
+          setSelectedTask(null);
+        }
       } else {
         toast.error("Failed to accept job");
       }
@@ -95,6 +118,9 @@ export default function AvailableTasks() {
       if (success) {
         toast.success("Job declined");
         setAssignedTasks((prev) => prev.filter((t) => t.id !== jobId));
+        if (selectedTask?.id === jobId) {
+          setSelectedTask(null);
+        }
       } else {
         toast.error("Failed to decline job");
       }
@@ -113,6 +139,9 @@ export default function AvailableTasks() {
       if (success) {
         toast.success("Task accepted. You are now on this delivery.");
         setAvailableTasks((prev) => prev.filter((t) => t.id !== taskId));
+        if (selectedTask?.id === taskId) {
+          setSelectedTask(null);
+        }
       } else {
         toast.error("Failed to accept task");
       }
@@ -137,6 +166,9 @@ export default function AvailableTasks() {
 
   const totalAssignedCount = assignedTasks.length;
   const totalAvailableCount = availableTasks.length;
+  const isSelectedFromAvailable =
+    !!selectedTask &&
+    availableTasks.some((task) => task.id === selectedTask.id);
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
@@ -150,6 +182,9 @@ export default function AvailableTasks() {
               <h1 className="text-2xl font-bold text-gray-800">Jobs & Tasks</h1>
               <p className="text-sm text-gray-500">
                 Accept assignments quickly and track available deliveries
+              </p>
+              <p className="text-xs text-indigo-600 mt-1 font-medium">
+                Tip: click any task card to open full details.
               </p>
             </div>
           </div>
@@ -254,7 +289,11 @@ export default function AvailableTasks() {
                 {assignedTasks.map((job) => (
                   <div
                     key={job.id}
-                    className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition p-4"
+                    className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition p-4 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openTaskDetails(job)}
+                    onKeyDown={(event) => handleCardKeyDown(event, job)}
                   >
                     {/* Status Banner */}
                     {job.status === "assigned" && (
@@ -371,13 +410,27 @@ export default function AvailableTasks() {
                     {job.status === "assigned" ? (
                       <div className="flex gap-2">
                         <button
-                          onClick={() => openLiveTrack(job.id)}
+                          onClick={(event) =>
+                            withStop(event, () => openTaskDetails(job))
+                          }
+                          className="px-3 py-3 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold rounded-lg transition"
+                        >
+                          Open Details
+                        </button>
+                        <button
+                          onClick={(event) =>
+                            withStop(event, () => openLiveTrack(job.id))
+                          }
                           className="px-3 py-3 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 font-semibold rounded-lg transition"
                         >
                           Live Track
                         </button>
                         <button
-                          onClick={() => handleAcceptAssignedJob(job.id)}
+                          onClick={(event) =>
+                            withStop(event, () =>
+                              handleAcceptAssignedJob(job.id),
+                            )
+                          }
                           disabled={accepting === job.id || !isSharing}
                           className="flex-1 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold rounded-lg transition flex items-center justify-center gap-2"
                         >
@@ -393,7 +446,11 @@ export default function AvailableTasks() {
                           )}
                         </button>
                         <button
-                          onClick={() => handleRejectAssignedJob(job.id)}
+                          onClick={(event) =>
+                            withStop(event, () =>
+                              handleRejectAssignedJob(job.id),
+                            )
+                          }
                           disabled={accepting === job.id}
                           className="flex-1 py-3 bg-red-100 hover:bg-red-200 disabled:bg-gray-200 text-red-700 font-semibold rounded-lg transition"
                         >
@@ -408,12 +465,24 @@ export default function AvailableTasks() {
                             You have accepted this job
                           </p>
                         </div>
-                        <button
-                          onClick={() => openLiveTrack(job.id)}
-                          className="px-3 py-1.5 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 font-semibold rounded-lg text-sm"
-                        >
-                          Live Track
-                        </button>
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={(event) =>
+                              withStop(event, () => openTaskDetails(job))
+                            }
+                            className="px-3 py-1.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold rounded-lg text-sm"
+                          >
+                            Open Details
+                          </button>
+                          <button
+                            onClick={(event) =>
+                              withStop(event, () => openLiveTrack(job.id))
+                            }
+                            className="px-3 py-1.5 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 font-semibold rounded-lg text-sm"
+                          >
+                            Live Track
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -443,7 +512,11 @@ export default function AvailableTasks() {
                 {availableTasks.map((task) => (
                   <div
                     key={task.id}
-                    className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition p-4"
+                    className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition p-4 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openTaskDetails(task)}
+                    onKeyDown={(event) => handleCardKeyDown(event, task)}
                   >
                     {/* Task Header */}
                     <div className="flex justify-between items-start mb-3">
@@ -536,13 +609,27 @@ export default function AvailableTasks() {
                     {/* Accept Button */}
                     <div className="flex gap-2">
                       <button
-                        onClick={() => openLiveTrack(task.id)}
+                        onClick={(event) =>
+                          withStop(event, () => openTaskDetails(task))
+                        }
+                        className="px-3 py-3 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold rounded-lg transition"
+                      >
+                        Open Details
+                      </button>
+                      <button
+                        onClick={(event) =>
+                          withStop(event, () => openLiveTrack(task.id))
+                        }
                         className="px-3 py-3 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 font-semibold rounded-lg transition"
                       >
                         Live Track
                       </button>
                       <button
-                        onClick={() => handleAcceptAvailableTask(task.id)}
+                        onClick={(event) =>
+                          withStop(event, () =>
+                            handleAcceptAvailableTask(task.id),
+                          )
+                        }
                         disabled={accepting === task.id}
                         className="flex-1 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold rounded-lg transition flex items-center justify-center gap-2"
                       >
@@ -608,6 +695,162 @@ export default function AvailableTasks() {
                 >
                   Enable Location
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Task Details Modal */}
+        {selectedTask && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
+              <div className="px-6 py-4 border-b bg-gradient-to-r from-indigo-50 to-blue-50 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">
+                    Task Details
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    {selectedTask.trackingCode || selectedTask.id}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedTask(null)}
+                  className="w-10 h-10 rounded-full bg-white border border-gray-200 text-gray-600 hover:bg-gray-100"
+                >
+                  <i className="fa-solid fa-xmark" />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto max-h-[65vh] space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <p className="text-xs text-gray-500 mb-1">Customer</p>
+                    <p className="font-semibold text-gray-800">
+                      {selectedTask.customerName || "Unknown Customer"}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-1 inline-flex items-center gap-2">
+                      <i className="fa-solid fa-phone" />
+                      {selectedTask.customerPhone || "N/A"}
+                    </p>
+                  </div>
+
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <p className="text-xs text-gray-500 mb-1">Recipient</p>
+                    <p className="font-semibold text-gray-800">
+                      {selectedTask.recipientName || "N/A"}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-1 inline-flex items-center gap-2">
+                      <i className="fa-solid fa-phone" />
+                      {selectedTask.recipientPhone || "N/A"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+                  <p className="text-xs text-emerald-700 font-semibold mb-1">
+                    Earnings
+                  </p>
+                  <p className="text-2xl font-bold text-emerald-700">
+                    L
+                    {selectedTask.earnings ||
+                      selectedTask.estimatedEarnings ||
+                      0}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                    <p className="text-xs text-blue-700 font-semibold mb-1 inline-flex items-center gap-2">
+                      <i className="fa-solid fa-location-dot" />
+                      Pickup
+                    </p>
+                    <p className="text-sm text-blue-900">
+                      {selectedTask.pickupAddress}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                    <p className="text-xs text-green-700 font-semibold mb-1 inline-flex items-center gap-2">
+                      <i className="fa-solid fa-flag-checkered" />
+                      Delivery
+                    </p>
+                    <p className="text-sm text-green-900">
+                      {selectedTask.deliveryAddress}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <p className="text-xs text-gray-600 mb-1">Package</p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {selectedTask.packageDescription || "No description"}
+                  </p>
+                  <div className="mt-2 text-sm text-gray-600 flex flex-wrap gap-4">
+                    <span>
+                      Weight: {selectedTask.packageWeight || 0}
+                      kg
+                    </span>
+                    {selectedTask.packageValue ? (
+                      <span>Value: L{selectedTask.packageValue}</span>
+                    ) : null}
+                  </div>
+                </div>
+
+                {selectedTask.deliveryInstructions && (
+                  <div className="bg-amber-50 rounded-lg p-4 border border-amber-200">
+                    <p className="text-xs font-semibold text-amber-800 mb-1 inline-flex items-center gap-2">
+                      <i className="fa-regular fa-note-sticky" />
+                      Delivery instructions
+                    </p>
+                    <p className="text-sm text-amber-900">
+                      {selectedTask.deliveryInstructions}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-6 py-4 border-t bg-white flex flex-wrap gap-2 justify-end">
+                <button
+                  onClick={() => openLiveTrack(selectedTask.id)}
+                  className="px-4 py-2 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 font-semibold rounded-lg transition"
+                >
+                  Live Track
+                </button>
+
+                {selectedTask.status === "assigned" && (
+                  <>
+                    <button
+                      onClick={() => handleRejectAssignedJob(selectedTask.id)}
+                      disabled={accepting === selectedTask.id}
+                      className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 font-semibold rounded-lg transition disabled:bg-gray-200"
+                    >
+                      Decline
+                    </button>
+                    <button
+                      onClick={() => handleAcceptAssignedJob(selectedTask.id)}
+                      disabled={accepting === selectedTask.id || !isSharing}
+                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition disabled:bg-gray-400"
+                    >
+                      {accepting === selectedTask.id
+                        ? "Accepting..."
+                        : !isSharing
+                          ? "Enable Location to Accept"
+                          : "Accept Job"}
+                    </button>
+                  </>
+                )}
+
+                {isSelectedFromAvailable && (
+                  <button
+                    onClick={() => handleAcceptAvailableTask(selectedTask.id)}
+                    disabled={accepting === selectedTask.id}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition disabled:bg-gray-400"
+                  >
+                    {accepting === selectedTask.id
+                      ? "Accepting..."
+                      : "Accept Task"}
+                  </button>
+                )}
               </div>
             </div>
           </div>
