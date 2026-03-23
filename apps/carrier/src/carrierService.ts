@@ -419,6 +419,7 @@ export class CarrierService {
         where("carrierId", "==", user.uid),
         where("status", "in", [
           "assigned",
+          "accepted",
           "picked_up",
           "in_transit",
           "out_for_delivery",
@@ -703,6 +704,7 @@ export class CarrierService {
       where("carrierId", "==", user.uid),
       where("status", "in", [
         "assigned",
+        "accepted",
         "picked_up",
         "in_transit",
         "out_for_delivery",
