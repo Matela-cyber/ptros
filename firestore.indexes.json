@@ -30,6 +30,15 @@
       "collectionGroup": "deliveries",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "carrierId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "deliveryTime", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "deliveries",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "carrierId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
