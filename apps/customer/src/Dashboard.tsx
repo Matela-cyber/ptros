@@ -1,6 +1,6 @@
 // apps/customer/src/Dashboard.tsx
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { db } from "@config";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -20,6 +20,7 @@ type Props = {
 
 export default function Dashboard({ user, userProfile }: Props) {
   const [deliveries, setDeliveries] = useState<any[]>([]);
+  const navigate = useNavigate();
   const [stats, setStats] = useState({
     totalOrders: 0,
     activeOrders: 0,
@@ -255,7 +256,16 @@ export default function Dashboard({ user, userProfile }: Props) {
                 {deliveries.map((delivery) => (
                   <tr
                     key={delivery.id}
-                    className="border-b border-gray-100 transition-colors hover:bg-gray-50"
+                    onClick={() => navigate(`/orders/${delivery.id}`)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        navigate(`/orders/${delivery.id}`);
+                      }
+                    }}
+                    tabIndex={0}
+                    role="button"
+                    className="cursor-pointer border-b border-gray-100 transition-colors hover:bg-gray-50 focus:bg-blue-50 focus:outline-none"
                   >
                     <td className="px-4 py-3 text-sm font-medium text-gray-800">
                       {delivery.trackingCode}

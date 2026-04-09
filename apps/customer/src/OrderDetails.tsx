@@ -377,21 +377,27 @@ export default function OrderDetails() {
 
           {/* Status Timeline */}
           <div className="bg-white rounded-xl shadow p-6">
-            <h3 className="text-xl font-bold mb-6">Delivery Progress</h3>
-            <div className="flex items-center justify-between">
+            <h3 className="mb-4 text-lg font-bold sm:mb-6 sm:text-xl">
+              Delivery Progress
+            </h3>
+            <div className="flex items-start justify-between gap-1.5 sm:items-center sm:gap-0">
               {getStatusSteps().map((item, index) => (
                 <div key={index} className="flex flex-col items-center flex-1">
                   <div
-                    className={`w-12 h-12 rounded-full flex items-center justify-center font-bold mb-2 ${
+                    className={`mb-1.5 flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold sm:mb-2 sm:h-12 sm:w-12 sm:text-base ${
                       item.completed
                         ? "bg-blue-600 text-white"
                         : "bg-gray-200 text-gray-600"
                     }`}
                   >
-                    {item.completed ? <FontAwesomeIcon icon={faCheck} /> : index + 1}
+                    {item.completed ? (
+                      <FontAwesomeIcon icon={faCheck} />
+                    ) : (
+                      index + 1
+                    )}
                   </div>
                   <p
-                    className={`text-sm text-center ${
+                    className={`text-center text-[11px] leading-tight sm:text-sm ${
                       item.completed ? "text-blue-600" : "text-gray-500"
                     }`}
                   >
@@ -399,7 +405,7 @@ export default function OrderDetails() {
                   </p>
                   {index < getStatusSteps().length - 1 && (
                     <div
-                      className={`h-1 w-full mx-2 mt-4 ${
+                      className={`mt-2 h-0.5 w-full mx-1 sm:mx-2 sm:mt-4 sm:h-1 ${
                         item.completed ? "bg-blue-600" : "bg-gray-200"
                       }`}
                     />
@@ -501,7 +507,10 @@ export default function OrderDetails() {
           {order.status === "delivered" && order.actualDelivery && (
             <div className="bg-green-50 rounded-xl p-6 border border-green-200">
               <h3 className="font-bold mb-2">
-                <FontAwesomeIcon icon={faCircleCheck} className="mr-2 text-green-600" />
+                <FontAwesomeIcon
+                  icon={faCircleCheck}
+                  className="mr-2 text-green-600"
+                />
                 Delivered
               </h3>
               <p className="text-sm text-green-800">
