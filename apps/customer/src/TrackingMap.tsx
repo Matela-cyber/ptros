@@ -1206,10 +1206,7 @@ export default function TrackingMap({ user }: Props) {
           {/* Map Container */}
           <div className="bg-white rounded-xl shadow overflow-hidden mb-8">
             <div className="border-b px-6 py-4 bg-gray-50">
-              <div className="flex items-center justify-between">
-                <h3 className="font-medium text-gray-700">
-                  Real-time Order Tracking
-                </h3>
+              <div className="flex items-center justify-end">
                 <div className="flex items-center space-x-4 text-sm">
                   <div className="flex items-center">
                     <div className="w-3 h-3 rounded-full bg-green-600 mr-2"></div>
