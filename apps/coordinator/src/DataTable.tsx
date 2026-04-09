@@ -6,14 +6,14 @@ type DataTableProps = {
 
 export default function DataTable({ headers, data }: DataTableProps) {
   return (
-    <div className="overflow-x-auto bg-white rounded-lg shadow-md">
+    <div className="overflow-x-auto bg-white rounded-lg border border-gray-200 shadow-sm">
       <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gradient-to-r from-primary to-primary-light">
+        <thead className="bg-gray-50">
           <tr>
             {headers.map((header, index) => (
               <th
                 key={index}
-                className="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider"
+                className="px-4 py-3 text-left text-[11px] font-semibold text-gray-600 uppercase tracking-wide"
               >
                 {header}
               </th>
@@ -24,7 +24,10 @@ export default function DataTable({ headers, data }: DataTableProps) {
           {data.map((row, rowIndex) => (
             <tr key={rowIndex} className="hover:bg-gray-50 transition-colors">
               {headers.map((header, colIndex) => (
-                <td key={colIndex} className="px-6 py-4 whitespace-nowrap text-gray-700">
+                <td
+                  key={colIndex}
+                  className="px-4 py-3 whitespace-nowrap text-sm text-gray-700"
+                >
                   {row[header.toLowerCase().replace(/ /g, "_")] || "-"}
                 </td>
               ))}

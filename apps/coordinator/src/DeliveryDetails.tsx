@@ -6,6 +6,7 @@ import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
 import { format } from "date-fns";
 import { writeTimestamp, getTimeServiceStatus } from "./services/timeService";
+import { assignDeliveryIntelligently } from "./services/routeIntelligenceService";
 import {
   FaArrowLeft,
   FaBolt,
@@ -41,6 +42,15 @@ interface CarrierProfile {
   status?: string;
 }
 
+interface ProposedCarrier {
+  carrierId: string;
+  carrierName: string;
+  recommendationScore: number;
+  recommendationReason: string;
+  selectedByCustomer: boolean;
+  selectionMode: string;
+}
+
 interface DeliveryDetails {
   id: string;
   trackingCode: string;
@@ -71,6 +81,9 @@ interface DeliveryDetails {
   notes: string;
   createdAt: Date;
   updatedAt: Date;
+  coordinatorReviewRequired?: boolean;
+  coordinatorReviewReasons?: string[];
+  proposedCarrier?: ProposedCarrier | null;
 }
 
 export default function DeliveryDetails() {
@@ -128,6 +141,9 @@ export default function DeliveryDetails() {
           notes: data.notes,
           createdAt: data.createdAt?.toDate(),
           updatedAt: data.updatedAt?.toDate(),
+          coordinatorReviewRequired: data.coordinatorReviewRequired ?? false,
+          coordinatorReviewReasons: data.coordinatorReviewReasons ?? [],
+          proposedCarrier: data.proposedCarrier ?? null,
         });
 
         // Fetch customer and carrier profiles
@@ -216,6 +232,32 @@ export default function DeliveryDetails() {
     } catch (error) {
       console.error("Error updating status:", error);
       toast.error("Failed to update status");
+    }
+  };
+
+  const smartAssignCarrier = async () => {
+    if (!delivery) return;
+
+    try {
+      const result = await assignDeliveryIntelligently(delivery.id);
+      const recommendation = result.selected;
+      const graphSync = result.graphSyncResult;
+      const syncText = graphSync
+        ? graphSync.success
+          ? graphSync.warnings.length
+            ? `Graph sync OK with ${graphSync.warnings.length} warning(s)`
+            : "Graph sync OK"
+          : `Graph sync failed: ${graphSync.message}`
+        : "Graph sync not executed";
+
+      toast.success(
+        `Smart assigned to ${recommendation.fullName} • ${parseFloat(recommendation.remainingCapacityKg.toFixed(2))}kg left • ${parseFloat(recommendation.distanceToPickupKm.toFixed(2))}km away • ${syncText}`,
+        { duration: 4500 },
+      );
+      await loadDelivery(delivery.id);
+    } catch (error) {
+      console.error("Error assigning carrier:", error);
+      toast.error("Failed to assign carrier");
     }
   };
 
@@ -379,6 +421,15 @@ export default function DeliveryDetails() {
 
           {/* Status Actions */}
           <div className="flex space-x-3">
+            {(delivery.status === "pending" ||
+              delivery.status === "created") && (
+              <button
+                onClick={smartAssignCarrier}
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+              >
+                Smart Assign Carrier
+              </button>
+            )}
             {delivery.status === "pending" && (
               <button
                 onClick={() => updateStatus("assigned")}
@@ -620,7 +671,126 @@ export default function DeliveryDetails() {
               </div>
             </div>
           ) : (
-            <p className="text-gray-500">No carrier assigned yet</p>
+            <div className="space-y-4">
+              {delivery?.coordinatorReviewRequired &&
+              delivery.coordinatorReviewReasons &&
+              delivery.coordinatorReviewReasons.length > 0 ? (
+                <>
+                  <div className="flex items-center gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    <span className="text-lg">⚠️</span>
+                    <p className="text-sm font-semibold">
+                      Awaiting coordinator assignment
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase mb-2">
+                      Reasons not auto-assigned
+                    </p>
+                    <ul className="space-y-2">
+                      {delivery.coordinatorReviewReasons.map((reason) => {
+                        const reasonInfo: Record<
+                          string,
+                          { label: string; detail: string; color: string }
+                        > = {
+                          missing_verified_coordinates: {
+                            label: "Unverified GPS Coordinates",
+                            detail:
+                              "Addresses could not be confirmed on map. Resolve location accuracy before assigning.",
+                            color: "red",
+                          },
+                          no_recommended_carrier_available: {
+                            label: "No Carrier Available",
+                            detail:
+                              "No suitable carrier was found nearby at the time of order. Manually select one.",
+                            color: "orange",
+                          },
+                          carrier_capacity_or_availability_risk: {
+                            label: "Carrier Capacity / Availability Risk",
+                            detail:
+                              "The suggested carrier exceeded safe workload or availability limits. Review before confirming.",
+                            color: "yellow",
+                          },
+                          urgent_priority_requires_coordinator_confirmation: {
+                            label: "Urgent Priority — Manual Approval Required",
+                            detail:
+                              "Urgent deliveries require a coordinator to confirm assignment before dispatch.",
+                            color: "purple",
+                          },
+                        };
+                        const info = reasonInfo[reason] ?? {
+                          label: reason,
+                          detail: "Unknown review flag.",
+                          color: "gray",
+                        };
+                        const colorMap: Record<
+                          string,
+                          { bg: string; border: string; text: string }
+                        > = {
+                          red: {
+                            bg: "bg-red-50",
+                            border: "border-red-200",
+                            text: "text-red-700",
+                          },
+                          orange: {
+                            bg: "bg-orange-50",
+                            border: "border-orange-200",
+                            text: "text-orange-700",
+                          },
+                          yellow: {
+                            bg: "bg-yellow-50",
+                            border: "border-yellow-200",
+                            text: "text-yellow-700",
+                          },
+                          purple: {
+                            bg: "bg-purple-50",
+                            border: "border-purple-200",
+                            text: "text-purple-700",
+                          },
+                          gray: {
+                            bg: "bg-gray-50",
+                            border: "border-gray-200",
+                            text: "text-gray-700",
+                          },
+                        };
+                        const c = colorMap[info.color];
+                        return (
+                          <li
+                            key={reason}
+                            className={`rounded-lg border ${c.bg} ${c.border} px-3 py-2`}
+                          >
+                            <p className={`text-sm font-semibold ${c.text}`}>
+                              {info.label}
+                            </p>
+                            <p className="text-xs text-gray-600 mt-0.5">
+                              {info.detail}
+                            </p>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                  {delivery.proposedCarrier && (
+                    <div className="border border-blue-200 bg-blue-50 rounded-lg px-3 py-3">
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">
+                        Proposed Carrier (pending approval)
+                      </p>
+                      <p className="text-sm font-bold text-blue-800">
+                        {delivery.proposedCarrier.carrierName}
+                      </p>
+                      <p className="text-xs text-blue-600 mt-0.5">
+                        Score:{" "}
+                        <span className="font-semibold">
+                          {delivery.proposedCarrier.recommendationScore}
+                        </span>{" "}
+                        — {delivery.proposedCarrier.recommendationReason}
+                      </p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-gray-500">No carrier assigned yet</p>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -648,8 +818,8 @@ export default function DeliveryDetails() {
                   Weight
                 </label>
                 <p className="mt-1 font-medium">
-                  {delivery.packageWeight
-                    ? `${delivery.packageWeight} kg`
+                  {delivery.packageWeight != null
+                    ? `${parseFloat(Number(delivery.packageWeight).toFixed(2))} kg`
                     : "Not specified"}
                 </p>
               </div>

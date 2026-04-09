@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { GoogleMap, Marker, Polyline } from "@react-google-maps/api";
 import {
   formatRouteNetworkSegmentType,
@@ -300,26 +301,35 @@ export default function MapManagement() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <Toaster position="top-right" />
 
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">Map Management</h1>
-          <p className="mt-2 text-gray-600">
-            Draw shortcuts like a pencil, block roads like an eraser, and make
-            every routing rule visible on the map.
+          <h1 className="text-2xl font-semibold text-gray-900">
+            Map Management
+          </h1>
+          <p className="mt-1 text-sm text-blue-700">
+            Create and maintain route rules with a focused map workflow.
           </p>
         </div>
-        <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700">
-          <FaMapLocationDot /> {segments.length} managed segments
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700">
+            <FaMapLocationDot /> {segments.length} managed segments
+          </div>
+          <Link
+            to="/routes/optimization"
+            className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          >
+            <FaRoute /> Back to Route Optimization
+          </Link>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-7">
         <form
           onSubmit={handleSubmit}
-          className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm xl:col-span-2"
+          className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm xl:col-span-2"
         >
           <div className="mb-4 flex items-center justify-between">
             <div>
@@ -331,10 +341,10 @@ export default function MapManagement() {
                 rule below.
               </p>
             </div>
-            <FaPlus className="text-xl text-blue-500" />
+            <FaPlus className="text-base text-blue-500" />
           </div>
 
-          <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-gray-50 p-2">
+          <div className="mb-4 grid grid-cols-2 gap-2 rounded-lg bg-gray-50 p-1.5">
             <button
               type="button"
               onClick={() => {
@@ -343,7 +353,7 @@ export default function MapManagement() {
                   setForm((prev) => ({ ...prev, type: "shortcut" }));
                 }
               }}
-              className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
+              className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition ${
                 interactionMode === "pencil"
                   ? "bg-emerald-600 text-white"
                   : "bg-white text-gray-700"
@@ -357,7 +367,7 @@ export default function MapManagement() {
                 setInteractionMode("eraser");
                 setForm((prev) => ({ ...prev, type: "blocked_path" }));
               }}
-              className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
+              className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition ${
                 interactionMode === "eraser"
                   ? "bg-red-600 text-white"
                   : "bg-white text-gray-700"
@@ -368,7 +378,7 @@ export default function MapManagement() {
           </div>
 
           <div className="space-y-4">
-            <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+            <div className="rounded-lg border border-dashed border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
               <p className="font-semibold">How it works</p>
               <p className="mt-1">
                 Click one point for the start, a second point for the end, then
@@ -378,7 +388,7 @@ export default function MapManagement() {
                 <button
                   type="button"
                   onClick={clearDraft}
-                  className="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                  className="rounded-md border border-blue-200 bg-white px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
                 >
                   Clear draft
                 </button>
@@ -386,7 +396,7 @@ export default function MapManagement() {
                   <button
                     type="button"
                     onClick={() => focusPoints(draftPoints)}
-                    className="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                    className="rounded-md border border-blue-200 bg-white px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
                   >
                     Focus draft on map
                   </button>
@@ -511,7 +521,7 @@ export default function MapManagement() {
                       key={vehicle}
                       type="button"
                       onClick={() => handleVehicleToggle(vehicle)}
-                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                      className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
                         selected
                           ? "bg-blue-600 text-white"
                           : "bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -562,14 +572,14 @@ export default function MapManagement() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full rounded-lg bg-blue-600 px-4 py-2.5 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+              className="w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
             >
               {submitting ? "Saving route rule…" : "Save route rule"}
             </button>
           </div>
         </form>
 
-        <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm xl:col-span-5">
+        <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm xl:col-span-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-gray-800">
@@ -580,20 +590,20 @@ export default function MapManagement() {
                 or inspect it, and present your routing intelligence visually.
               </p>
             </div>
-            <FaRoad className="text-xl text-blue-500" />
+            <FaRoad className="text-base text-blue-500" />
           </div>
 
           <div className="mb-4 flex flex-wrap items-center gap-2">
-            <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+            <div className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700">
               Green = shortcuts / preferred roads
             </div>
-            <div className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">
+            <div className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-700">
               Red = blocked roads
             </div>
-            <div className="rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">
+            <div className="rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-medium text-violet-700">
               Violet = restrictions
             </div>
-            <div className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700">
+            <div className="rounded-full bg-cyan-50 px-2.5 py-1 text-[11px] font-medium text-cyan-700">
               Cyan = preferred corridors
             </div>
           </div>
@@ -693,7 +703,7 @@ export default function MapManagement() {
           </div>
 
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-            <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+            <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4">
               <p className="text-sm font-semibold text-emerald-800">
                 Pencil workflow
               </p>
@@ -702,7 +712,7 @@ export default function MapManagement() {
                 dispatch can explain route choices live.
               </p>
             </div>
-            <div className="rounded-xl border border-red-100 bg-red-50 p-4">
+            <div className="rounded-lg border border-red-100 bg-red-50 p-4">
               <p className="text-sm font-semibold text-red-800">
                 Eraser workflow
               </p>
@@ -711,20 +721,20 @@ export default function MapManagement() {
                 during demos and live operations.
               </p>
             </div>
-            <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
               <p className="text-sm font-semibold text-blue-800">
-                Presentation-ready view
+                Clear working view
               </p>
               <p className="mt-1 text-xs text-blue-700">
-                Saved segments stay visible and clickable, so tomorrow’s demo is
-                less PowerPoint and more actual software.
+                Saved segments remain visible and selectable for reliable route
+                planning.
               </p>
             </div>
           </div>
         </section>
       </div>
 
-      <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-gray-800">
@@ -735,7 +745,7 @@ export default function MapManagement() {
               focus back onto the map.
             </p>
           </div>
-          <FaRoad className="text-xl text-blue-500" />
+          <FaRoad className="text-base text-blue-500" />
         </div>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -760,10 +770,10 @@ export default function MapManagement() {
           ).map(([title, list, tone]) => (
             <div
               key={title}
-              className="rounded-xl border border-gray-200 bg-gray-50 p-4"
+              className="rounded-lg border border-gray-200 bg-gray-50 p-4"
             >
               <div
-                className={`mb-3 inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${tone}`}
+                className={`mb-3 inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium ${tone}`}
               >
                 {title} • {list.length}
               </div>
@@ -822,7 +832,7 @@ export default function MapManagement() {
                         <button
                           type="button"
                           onClick={() => selectSegment(segment)}
-                          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                          className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
                         >
                           <FaMapLocationDot /> Focus on map
                         </button>
@@ -831,7 +841,7 @@ export default function MapManagement() {
                           onClick={() =>
                             cycleStatus(segment.id, segment.status)
                           }
-                          className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                          className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
                         >
                           <FaCircleCheck /> Cycle status
                         </button>
@@ -845,10 +855,10 @@ export default function MapManagement() {
         </div>
       </section>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <div className="rounded-xl border border-blue-100 bg-blue-50 p-5 shadow-sm">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 shadow-sm">
           <div className="flex items-center gap-3">
-            <FaTruck className="text-2xl text-blue-600" />
+            <FaTruck className="text-xl text-blue-600" />
             <div>
               <p className="text-sm font-semibold text-blue-800">
                 Vehicle-aware routing
@@ -860,9 +870,9 @@ export default function MapManagement() {
             </div>
           </div>
         </div>
-        <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-5 shadow-sm">
+        <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4 shadow-sm">
           <div className="flex items-center gap-3">
-            <FaRoute className="text-2xl text-emerald-600" />
+            <FaRoute className="text-xl text-emerald-600" />
             <div>
               <p className="text-sm font-semibold text-emerald-800">
                 Shortcut governance
@@ -874,9 +884,9 @@ export default function MapManagement() {
             </div>
           </div>
         </div>
-        <div className="rounded-xl border border-amber-100 bg-amber-50 p-5 shadow-sm">
+        <div className="rounded-lg border border-amber-100 bg-amber-50 p-4 shadow-sm">
           <div className="flex items-center gap-3">
-            <FaBan className="text-2xl text-amber-600" />
+            <FaBan className="text-xl text-amber-600" />
             <div>
               <p className="text-sm font-semibold text-amber-800">
                 Blocked-path control

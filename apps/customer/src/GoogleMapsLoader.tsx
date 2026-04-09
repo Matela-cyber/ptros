@@ -3,7 +3,7 @@ import { Libraries, useJsApiLoader } from "@react-google-maps/api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
 
-const GOOGLE_MAPS_LIBRARIES: Libraries = ["places", "geometry"];
+const GOOGLE_MAPS_LIBRARIES: Libraries = ["places", "geometry", "marker"];
 
 declare global {
   interface Window {

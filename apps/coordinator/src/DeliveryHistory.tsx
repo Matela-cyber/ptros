@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { db } from "@config";
 import { collection, getDocs, orderBy, query } from "firebase/firestore";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { FaClockRotateLeft, FaMagnifyingGlass } from "react-icons/fa6";
 
@@ -19,6 +19,7 @@ interface DeliveryHistoryRow {
 }
 
 export default function DeliveryHistory() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [rows, setRows] = useState<DeliveryHistoryRow[]>([]);
@@ -134,13 +135,25 @@ export default function DeliveryHistory() {
                     Completed
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Actions
+                    Track
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filtered.map((row) => (
-                  <tr key={row.id} className="hover:bg-gray-50">
+                  <tr
+                    key={row.id}
+                    className="hover:bg-gray-50 cursor-pointer"
+                    onClick={() => navigate(`/deliveries/${row.id}`)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        navigate(`/deliveries/${row.id}`);
+                      }
+                    }}
+                  >
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">
                       {row.trackingCode}
                     </td>
@@ -172,20 +185,13 @@ export default function DeliveryHistory() {
                           : "-"}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex flex-col space-y-2">
-                        <Link
-                          to={`/deliveries/${row.id}`}
-                          className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200 text-center"
-                        >
-                          View
-                        </Link>
-                        <Link
-                          to={`/deliveries/${row.id}/track`}
-                          className="px-3 py-1 bg-cyan-100 text-cyan-700 rounded text-sm hover:bg-cyan-200 text-center"
-                        >
-                          Track
-                        </Link>
-                      </div>
+                      <Link
+                        to={`/deliveries/${row.id}/track`}
+                        className="px-3 py-1 bg-cyan-100 text-cyan-700 rounded text-sm hover:bg-cyan-200 text-center inline-block"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Track
+                      </Link>
                     </td>
                   </tr>
                 ))}

@@ -1,5 +1,5 @@
 // apps/coordinator/src/Sidebar.tsx
-import { Link, NavLink } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { db } from "@config";
 import {
@@ -17,9 +17,7 @@ import {
   FaChartColumn,
   FaChartLine,
   FaGear,
-  FaHourglassHalf,
   FaLocationDot,
-  FaMapLocationDot,
   FaMotorcycle,
   FaPlus,
   FaRoute,
@@ -33,6 +31,7 @@ interface QuickStats {
 }
 
 export default function Sidebar() {
+  const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [stats, setStats] = useState<QuickStats>({
     active: 0,
@@ -97,7 +96,7 @@ export default function Sidebar() {
       setStats({
         active: activeSnapshot.size,
         today: completedToday,
-        revenue: Math.round(revenue),
+        revenue,
       });
     } catch (error) {
       console.error("Error fetching quick stats:", error);
@@ -107,37 +106,31 @@ export default function Sidebar() {
   const navItems: { path: string; icon: IconType; label: string }[] = [
     { path: "/dashboard", icon: FaChartColumn, label: "Dashboard" },
     { path: "/deliveries/create", icon: FaPlus, label: "Create Delivery" },
-    { path: "/deliveries/active", icon: FaBox, label: "Active Deliveries" },
-    {
-      path: "/carriers/pending",
-      icon: FaHourglassHalf,
-      label: "Pending Carriers",
-    },
-    { path: "/carriers/active", icon: FaMotorcycle, label: "Active Carriers" },
+    { path: "/deliveries/active", icon: FaBox, label: "Deliveries" },
+    { path: "/carriers/active", icon: FaMotorcycle, label: "Carriers" },
     { path: "/customers", icon: FaUsers, label: "Customers" },
-    { path: "/tracking/live", icon: FaLocationDot, label: "Live Tracking" },
     {
       path: "/routes/optimization",
       icon: FaRoute,
       label: "Route Optimization",
     },
-    {
-      path: "/routes/management",
-      icon: FaMapLocationDot,
-      label: "Map Management",
-    },
+    { path: "/tracking/live", icon: FaLocationDot, label: "Live Tracking" },
     { path: "/analytics", icon: FaChartLine, label: "Analytics" },
     { path: "/settings", icon: FaGear, label: "Settings" },
   ];
 
+  const isRouteOptimizationActive =
+    location.pathname.startsWith("/routes/optimization") ||
+    location.pathname.startsWith("/routes/management");
+
   return (
     <aside
       className={`bg-primary text-white ${
-        collapsed ? "w-20" : "w-64"
-      } transition-all duration-300 flex flex-col h-screen sticky top-0 shadow-xl flex-shrink-0 overflow-hidden`}
+        collapsed ? "w-[72px]" : "w-60"
+      } transition-all duration-300 flex flex-col h-screen sticky top-0 shadow-lg flex-shrink-0 overflow-hidden`}
     >
       {/* Logo */}
-      <div className="p-6 border-b border-primary-dark">
+      <div className="p-4 border-b border-primary-dark">
         <div className="flex items-center justify-between">
           <Link
             to="/dashboard"
@@ -150,8 +143,10 @@ export default function Sidebar() {
                   <span className="text-primary font-bold text-xl">P</span>
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold">PTROS</h2>
-                  <p className="text-xs text-blue-200">Coordinator</p>
+                  <h2 className="text-lg font-semibold tracking-tight">
+                    PTROS
+                  </h2>
+                  <p className="text-[11px] text-blue-200">Coordinator</p>
                 </div>
               </>
             )}
@@ -171,21 +166,23 @@ export default function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-4 overflow-y-auto min-h-0">
-        <ul className="space-y-2">
+      <nav className="flex-1 p-3 overflow-y-auto min-h-0">
+        <ul className="space-y-1.5">
           {navItems.map((item) => (
             <li key={item.path}>
               <NavLink
                 to={item.path}
                 className={({ isActive }) =>
-                  `flex items-center px-4 py-3 rounded-lg transition-all duration-200 ${
-                    isActive
-                      ? "bg-white text-primary shadow-md font-semibold"
-                      : "text-blue-100 hover:bg-primary-dark hover:text-white hover:translate-x-1"
+                  `flex items-center px-3 py-1.5 rounded-md transition-all duration-200 text-sm ${
+                    isActive ||
+                    (item.path === "/routes/optimization" &&
+                      isRouteOptimizationActive)
+                      ? "bg-white text-primary shadow-sm font-semibold"
+                      : "text-blue-100 hover:bg-primary-dark hover:text-white"
                   }`
                 }
               >
-                <item.icon className="text-xl mr-3" />
+                <item.icon className="text-base mr-3" />
                 {!collapsed && <span>{item.label}</span>}
               </NavLink>
             </li>
@@ -195,28 +192,28 @@ export default function Sidebar() {
 
       {/* Quick Stats (only when expanded) */}
       {!collapsed && (
-        <div className="p-4 border-t border-primary-dark bg-primary">
-          <div className="bg-primary-dark rounded-lg p-4 shadow-inner">
-            <h3 className="font-semibold text-sm mb-3 text-blue-100">
+        <div className="p-3 border-t border-primary-dark bg-primary">
+          <div className="bg-primary-dark rounded-md p-3">
+            <h3 className="font-semibold text-xs mb-2 uppercase tracking-wide text-blue-100">
               Quick Stats
             </h3>
-            <div className="text-xs space-y-2">
+            <div className="text-xs space-y-1.5">
               <div className="flex justify-between items-center">
-                <span className="text-blue-200">Active Deliveries:</span>
-                <span className="font-bold text-lg text-accent">
+                <span className="text-blue-200">Deliveries:</span>
+                <span className="font-semibold text-sm text-accent">
                   {stats.active}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-blue-200">Delivered Today:</span>
-                <span className="font-bold text-lg text-white">
+                <span className="font-semibold text-sm text-white">
                   {stats.today}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-blue-200">Revenue Today:</span>
-                <span className="font-bold text-lg text-success">
-                  M{stats.revenue.toLocaleString()}
+                <span className="font-semibold text-sm text-success">
+                  M{stats.revenue.toFixed(2)}
                 </span>
               </div>
             </div>

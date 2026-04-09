@@ -185,7 +185,7 @@ export default function Dashboard({ user, userProfile }: Props) {
         activeDeliveries: activeDeliveriesSnapshot.size,
         activeCarriers: activeCarriersSnapshot.size,
         completedToday,
-        revenueToday: Math.round(revenueToday),
+        revenueToday,
         pendingCarriers: pendingCarriersSnapshot.size,
       });
     } catch (error) {
@@ -204,55 +204,55 @@ export default function Dashboard({ user, userProfile }: Props) {
       label: "Create Delivery",
       icon: FaPlus,
       path: "/deliveries/create",
-      color: "bg-accent hover:bg-accent-dark shadow-lg",
+      color: "bg-accent hover:bg-accent-dark",
     },
     {
-      label: "Approve Carriers",
+      label: "Manage Carriers",
       icon: FaCircleCheck,
-      path: "/carriers/pending",
-      color: "bg-success hover:bg-success-dark shadow-lg",
+      path: "/carriers/active",
+      color: "bg-success hover:bg-success-dark",
     },
     {
       label: "Live Tracking",
       icon: FaLocationDot,
       path: "/tracking/live",
-      color: "bg-primary hover:bg-primary-dark shadow-lg",
+      color: "bg-primary hover:bg-primary-dark",
     },
     {
       label: "View Reports",
       icon: FaChartColumn,
       path: "/analytics",
-      color: "bg-primary-light hover:bg-primary shadow-lg",
+      color: "bg-primary-light hover:bg-primary",
     },
   ];
 
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-gray-800">
           Coordinator Dashboard
         </h1>
-        <p className="text-gray-600 mt-2">
+        <p className="text-sm text-gray-600 mt-1.5">
           Welcome back, {userProfile?.fullName || user.email}. Here's what's
           happening.
         </p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <Link
           to="/deliveries/active"
-          className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-all border-l-4 border-accent hover:-translate-y-0.5 block"
+          className="bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-all border border-gray-200 block"
         >
           <div className="flex items-center">
-            <div className="p-3 bg-accent-bg rounded-lg mr-4">
-              <FaBox className="text-2xl" />
+            <div className="p-2.5 bg-accent-bg rounded-md mr-3">
+              <FaBox className="text-lg" />
             </div>
             <div>
-              <p className="text-sm text-gray-500 font-medium">
-                Active Deliveries
+              <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">
+                Deliveries
               </p>
-              <p className="text-3xl font-bold text-accent">
+              <p className="text-2xl font-semibold text-accent mt-0.5">
                 {loading ? "..." : stats.activeDeliveries}
               </p>
             </div>
@@ -261,17 +261,17 @@ export default function Dashboard({ user, userProfile }: Props) {
 
         <Link
           to="/carriers/active"
-          className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-all border-l-4 border-success hover:-translate-y-0.5 block"
+          className="bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-all border border-gray-200 block"
         >
           <div className="flex items-center">
-            <div className="p-3 bg-success-bg rounded-lg mr-4">
-              <FaMotorcycle className="text-2xl" />
+            <div className="p-2.5 bg-success-bg rounded-md mr-3">
+              <FaMotorcycle className="text-lg" />
             </div>
             <div>
-              <p className="text-sm text-gray-500 font-medium">
-                Active Carriers
+              <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">
+                Carriers
               </p>
-              <p className="text-3xl font-bold text-success">
+              <p className="text-2xl font-semibold text-success mt-0.5">
                 {loading ? "..." : stats.activeCarriers}
               </p>
             </div>
@@ -280,17 +280,17 @@ export default function Dashboard({ user, userProfile }: Props) {
 
         <Link
           to="/deliveries/active"
-          className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-all border-l-4 border-primary hover:-translate-y-0.5 block"
+          className="bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-all border border-gray-200 block"
         >
           <div className="flex items-center">
-            <div className="p-3 bg-primary-bg rounded-lg mr-4">
-              <FaCircleCheck className="text-2xl" />
+            <div className="p-2.5 bg-primary-bg rounded-md mr-3">
+              <FaCircleCheck className="text-lg" />
             </div>
             <div>
-              <p className="text-sm text-gray-500 font-medium">
+              <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">
                 Completed Today
               </p>
-              <p className="text-3xl font-bold text-primary">
+              <p className="text-2xl font-semibold text-primary mt-0.5">
                 {loading ? "..." : stats.completedToday}
               </p>
             </div>
@@ -299,16 +299,18 @@ export default function Dashboard({ user, userProfile }: Props) {
 
         <Link
           to="/analytics"
-          className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-all border-l-4 border-success hover:-translate-y-0.5 block"
+          className="bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-all border border-gray-200 block"
         >
           <div className="flex items-center">
-            <div className="p-3 bg-success-bg rounded-lg mr-4">
-              <FaMoneyBill className="text-2xl" />
+            <div className="p-2.5 bg-success-bg rounded-md mr-3">
+              <FaMoneyBill className="text-lg" />
             </div>
             <div>
-              <p className="text-sm text-gray-500 font-medium">Revenue Today</p>
-              <p className="text-3xl font-bold text-success">
-                {loading ? "..." : `M${stats.revenueToday.toLocaleString()}`}
+              <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">
+                Revenue Today
+              </p>
+              <p className="text-2xl font-semibold text-success mt-0.5">
+                {loading ? "..." : `M${stats.revenueToday.toFixed(2)}`}
               </p>
             </div>
           </div>
@@ -316,27 +318,29 @@ export default function Dashboard({ user, userProfile }: Props) {
       </div>
 
       {/* Quick Actions */}
-      <div className="bg-white rounded-xl shadow-md p-8 mb-8">
-        <h3 className="text-2xl font-bold mb-6 text-gray-800">Quick Actions</h3>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 mb-6">
+        <h3 className="text-lg font-semibold mb-4 text-gray-800">
+          Quick Actions
+        </h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {quickActions.map((action, index) => (
             <Link
               key={index}
               to={action.path}
-              className={`${action.color} text-white p-6 rounded-lg flex flex-col items-center justify-center text-center transition-all transform hover:scale-105 hover:-translate-y-1`}
+              className={`${action.color} text-white p-4 rounded-md flex flex-col items-center justify-center text-center transition-all hover:opacity-95`}
             >
-              <action.icon className="text-4xl mb-3" />
-              <span className="font-semibold">{action.label}</span>
+              <action.icon className="text-2xl mb-2" />
+              <span className="font-medium text-sm">{action.label}</span>
             </Link>
           ))}
         </div>
       </div>
 
       {/* Recent Activity & Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Activity */}
-        <div className="bg-white rounded-xl shadow p-6">
-          <h3 className="text-xl font-bold mb-4">Recent Activity</h3>
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5">
+          <h3 className="text-lg font-semibold mb-3">Recent Activity</h3>
           <div className="space-y-4">
             {recentActivities.length === 0 && (
               <div className="text-sm text-gray-500">
@@ -351,10 +355,10 @@ export default function Dashboard({ user, userProfile }: Props) {
                     ? `/deliveries/${activity.id}`
                     : "/deliveries/active"
                 }
-                className="flex items-center p-3 border rounded-lg hover:bg-gray-50 hover:shadow-sm transition-all"
+                className="flex items-center p-3 border border-gray-200 rounded-md hover:bg-gray-50 transition-all"
               >
                 <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center mr-4 ${
+                  className={`w-9 h-9 rounded-full flex items-center justify-center mr-3 ${
                     activity.type === "delivery"
                       ? "bg-primary-bg"
                       : activity.type === "carrier"
@@ -381,18 +385,18 @@ export default function Dashboard({ user, userProfile }: Props) {
                   </span>
                 </div>
                 <div className="flex-1">
-                  <p className="font-medium">{activity.action}</p>
-                  <p className="text-sm text-gray-500">{activity.details}</p>
+                  <p className="font-medium text-sm">{activity.action}</p>
+                  <p className="text-xs text-gray-500">{activity.details}</p>
                 </div>
-                <span className="text-sm text-gray-400">{activity.time}</span>
+                <span className="text-xs text-gray-400">{activity.time}</span>
               </Link>
             ))}
           </div>
         </div>
 
         {/* System Alerts */}
-        <div className="bg-white rounded-xl shadow p-6">
-          <h3 className="text-xl font-bold mb-4">System Alerts</h3>
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5">
+          <h3 className="text-lg font-semibold mb-3">System Alerts</h3>
           <div className="space-y-4">
             {stats.pendingCarriers > 0 && (
               <div className="p-4 bg-accent-bg border-l-4 border-accent rounded-lg shadow-sm">
@@ -404,11 +408,10 @@ export default function Dashboard({ user, userProfile }: Props) {
                       {stats.pendingCarriers !== 1 ? "s" : ""} pending approval
                     </h4>
                     <p className="text-sm text-gray-600 mt-1">
-                      Review carrier applications in the pending approvals
-                      section.
+                      Review carrier applications in the Carriers section.
                     </p>
                     <Link
-                      to="/carriers/pending"
+                      to="/carriers/active"
                       className="text-sm text-accent hover:text-accent-dark font-semibold mt-2 inline-block transition-colors"
                     >
                       Review now →

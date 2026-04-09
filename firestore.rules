@@ -37,6 +37,114 @@ service cloud.firestore {
       );
     }
 
+    function isNumberInRange(value, min, max) {
+      return value is number && value >= min && value <= max;
+    }
+
+    function isValidVehicleProfile(profile) {
+      return profile is map
+        && profile.keys().hasAll(['capacityKg', 'speedKmh'])
+        && isNumberInRange(profile.capacityKg, 1, 100000)
+        && isNumberInRange(profile.speedKmh, 1, 300);
+    }
+
+    function isValidBusinessRulesPayload(data) {
+      return data.keys().hasAll([
+          'pricing',
+          'recommendation',
+          'locationOfficialThresholds',
+          'vehicleProfiles',
+          'coordinatorReviewTriggers'
+        ])
+
+        && data.pricing is map
+        && data.pricing.keys().hasAll([
+          'baseValueFallback',
+          'distanceRatePerKm',
+          'packageValueRate',
+          'minimumCharge',
+          'activeDeliverySurchargeRate'
+        ])
+        && isNumberInRange(data.pricing.baseValueFallback, 0, 100000)
+        && isNumberInRange(data.pricing.distanceRatePerKm, 0, 10000)
+        && isNumberInRange(data.pricing.packageValueRate, 0, 5)
+        && isNumberInRange(data.pricing.minimumCharge, 0, 100000)
+        && isNumberInRange(data.pricing.activeDeliverySurchargeRate, 0, 5)
+
+        && data.recommendation is map
+        && data.recommendation.keys().hasAll([
+          'busyStatusPenalty',
+          'unknownStatusPenalty',
+          'workloadPenaltyPerActive',
+          'distancePenaltyPerKm',
+          'routePenaltyPerKm',
+          'capacityBasePenalty',
+          'capacityPenaltyPerKg',
+          'ratingBoostPerPoint',
+          'maxRatingForBoost',
+          'bundleBoost',
+          'bundleRouteMaxKm',
+          'bundlePickupMaxKm',
+          'activeDeliveryCapacityKgImpact',
+          'activeDeliveryEtaHoursImpact',
+          'minimumEtaHours'
+        ])
+        && isNumberInRange(data.recommendation.busyStatusPenalty, 0, 10000)
+        && isNumberInRange(data.recommendation.unknownStatusPenalty, 0, 10000)
+        && isNumberInRange(data.recommendation.workloadPenaltyPerActive, 0, 1000)
+        && isNumberInRange(data.recommendation.distancePenaltyPerKm, 0, 1000)
+        && isNumberInRange(data.recommendation.routePenaltyPerKm, 0, 1000)
+        && isNumberInRange(data.recommendation.capacityBasePenalty, 0, 10000)
+        && isNumberInRange(data.recommendation.capacityPenaltyPerKg, 0, 1000)
+        && isNumberInRange(data.recommendation.ratingBoostPerPoint, 0, 1000)
+        && isNumberInRange(data.recommendation.maxRatingForBoost, 1, 10)
+        && isNumberInRange(data.recommendation.bundleBoost, 0, 1000)
+        && isNumberInRange(data.recommendation.bundleRouteMaxKm, 0, 1000)
+        && isNumberInRange(data.recommendation.bundlePickupMaxKm, 0, 1000)
+        && isNumberInRange(data.recommendation.activeDeliveryCapacityKgImpact, 0, 1000)
+        && isNumberInRange(data.recommendation.activeDeliveryEtaHoursImpact, 0, 24)
+        && isNumberInRange(data.recommendation.minimumEtaHours, 0, 24)
+
+        && data.locationOfficialThresholds is map
+        && data.locationOfficialThresholds.keys().hasAll([
+          'officialUsageCount',
+          'coreOfficialUsageCount'
+        ])
+        && isNumberInRange(data.locationOfficialThresholds.officialUsageCount, 1, 1000)
+        && isNumberInRange(data.locationOfficialThresholds.coreOfficialUsageCount, 1, 1000)
+        && data.locationOfficialThresholds.coreOfficialUsageCount >= data.locationOfficialThresholds.officialUsageCount
+
+        && data.vehicleProfiles is map
+        && data.vehicleProfiles.keys().hasAll([
+          'bicycle',
+          'motorcycle',
+          'car',
+          'pickup',
+          'van',
+          'truck',
+          'unknown'
+        ])
+        && isValidVehicleProfile(data.vehicleProfiles.bicycle)
+        && isValidVehicleProfile(data.vehicleProfiles.motorcycle)
+        && isValidVehicleProfile(data.vehicleProfiles.car)
+        && isValidVehicleProfile(data.vehicleProfiles.pickup)
+        && isValidVehicleProfile(data.vehicleProfiles.van)
+        && isValidVehicleProfile(data.vehicleProfiles.truck)
+        && isValidVehicleProfile(data.vehicleProfiles.unknown)
+
+        && data.coordinatorReviewTriggers is map
+        && data.coordinatorReviewTriggers.keys().hasAll([
+          'missingVerifiedCoordinates',
+          'noRecommendedCarrierAvailable',
+          'carrierCapacityOrAvailabilityRisk',
+          'urgentPriorityRequiresConfirmation'
+        ])
+        && data.coordinatorReviewTriggers.missingVerifiedCoordinates is bool
+        && data.coordinatorReviewTriggers.noRecommendedCarrierAvailable is bool
+        && data.coordinatorReviewTriggers.carrierCapacityOrAvailabilityRisk is bool
+        && data.coordinatorReviewTriggers.urgentPriorityRequiresConfirmation is bool;
+    }
+
     
 
     // ==================== USERS COLLECTION ====================
@@ -53,6 +161,11 @@ service cloud.firestore {
       
       // COORDINATOR: Update any user (approve carriers, reject carriers, update status, etc.)
       allow update: if isCoordinator();
+
+      // CUSTOMER: Read approved carrier profiles (for carrier recommendations during order creation)
+      allow read: if isCustomer()
+        && resource.data.role in ['carrier', 'Carrier']
+        && resource.data.isApproved == true;
     }
 
     // ==================== DELIVERIES COLLECTION ====================
@@ -137,6 +250,10 @@ service cloud.firestore {
       // CUSTOMER: Read own deliveries (order history, tracking)
       allow read: if isCustomer() && resource.data.customerId == request.auth.uid;
 
+      // CUSTOMER: Read active deliveries (scoped by status — for carrier workload calculation in recommendations)
+      allow read: if isCustomer()
+        && resource.data.status in ['assigned', 'accepted', 'picked_up', 'in_transit', 'out_for_delivery', 'stuck'];
+
       // CUSTOMER: Create their own delivery/order
       allow create: if isCustomer() && request.resource.data.customerId == request.auth.uid;
 
@@ -218,11 +335,38 @@ service cloud.firestore {
     }
 
     // ==================== KNOWN LOCATIONS COLLECTION ====================
-    // Canonical pickup/drop-off locations curated by coordinators
+    // Canonical pickup/drop-off locations curated by coordinators and customers
     match /knownLocations/{locationId} {
       // COORDINATOR: full access for reading/saving curated locations
       allow read, write: if isCoordinator();
       allow create, update, delete: if isCoordinator();
+
+      // CUSTOMER: read all known locations (for autocomplete suggestions)
+      allow read: if isCustomer();
+
+      // CUSTOMER: create new locations (saves custom pickup/dropoff names)
+      allow create: if isCustomer() && request.resource.data.createdBy == request.auth.uid;
+
+      // CUSTOMER: increment usageCount on known locations
+      allow update: if isCustomer()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usageCount', 'updatedAt']);
+
+      // CARRIER: read known locations (for route awareness)
+      allow read: if isCarrier();
+    }
+
+    // ==================== BUSINESS CONFIGURATION ====================
+    // Tunable pricing/recommendation constants used by order/recommendation engines
+    match /businessConfig/{configId} {
+      // All authenticated app users can read current business rules
+      allow read: if isAuth();
+
+      // Coordinators own business strategy tuning controls
+      allow create, update: if isCoordinator()
+        && configId == 'orderEngine'
+        && isValidBusinessRulesPayload(request.resource.data);
+
+      allow delete: if isCoordinator() && configId == 'orderEngine';
     }
 
     // ==================== NOTIFICATIONS COLLECTION ====================

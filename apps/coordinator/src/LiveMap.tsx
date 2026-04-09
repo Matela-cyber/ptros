@@ -111,6 +111,25 @@ interface MapStyle {
   icon: IconType;
 }
 
+const toFiniteNumber = (value: unknown): number | null => {
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const normalizeLatLng = (location: {
+  lat?: unknown;
+  lng?: unknown;
+}): { lat: number; lng: number } | null => {
+  const lat = toFiniteNumber(location?.lat);
+  const lng = toFiniteNumber(location?.lng);
+
+  if (lat === null || lng === null) {
+    return null;
+  }
+
+  return { lat, lng };
+};
+
 export default function LiveMap() {
   const [carrierProfiles, setCarrierProfiles] = useState<CarrierProfile[]>([]);
   const [activeDeliveries, setActiveDeliveries] = useState<ActiveDelivery[]>(
@@ -132,6 +151,9 @@ export default function LiveMap() {
   const [showStraightLinks, setShowStraightLinks] = useState<boolean>(false);
   const [is3DEnabled, setIs3DEnabled] = useState<boolean>(false);
   const [satelliteLoaded, setSatelliteLoaded] = useState<boolean>(false);
+  const [featurePreset, setFeaturePreset] = useState<
+    "balanced" | "trafficOps" | "routing" | "minimal" | "presentation"
+  >("balanced");
 
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
@@ -165,13 +187,29 @@ export default function LiveMap() {
     return carrierProfiles
       .map((carrier) => {
         const rtdbLoc = tracksMap[carrier.id];
-        const location = rtdbLoc
+        const normalizedFromTrack = rtdbLoc
+          ? normalizeLatLng({ lat: rtdbLoc.lat, lng: rtdbLoc.lng })
+          : null;
+        const normalizedFromProfile = carrier.currentLocation
+          ? normalizeLatLng({
+              lat: carrier.currentLocation.lat,
+              lng: carrier.currentLocation.lng,
+            })
+          : null;
+
+        const location = normalizedFromTrack
           ? {
-              lat: rtdbLoc.lat,
-              lng: rtdbLoc.lng,
+              lat: normalizedFromTrack.lat,
+              lng: normalizedFromTrack.lng,
               timestamp: new Date(getTrackEpochMs(rtdbLoc)),
             }
-          : carrier.currentLocation;
+          : normalizedFromProfile && carrier.currentLocation
+            ? {
+                lat: normalizedFromProfile.lat,
+                lng: normalizedFromProfile.lng,
+                timestamp: carrier.currentLocation.timestamp,
+              }
+            : null;
 
         if (!location) {
           return null;
@@ -192,11 +230,36 @@ export default function LiveMap() {
   const deliveries = useMemo<Delivery[]>(() => {
     return activeDeliveries.map((delivery) => {
       const rtdbLoc = deliveryTracksMap[delivery.id];
+      const normalizedCurrentFromTrack = rtdbLoc
+        ? normalizeLatLng({ lat: rtdbLoc.lat, lng: rtdbLoc.lng })
+        : null;
+      const normalizedCurrentFromDelivery = delivery.currentLocation
+        ? normalizeLatLng({
+            lat: delivery.currentLocation.lat,
+            lng: delivery.currentLocation.lng,
+          })
+        : null;
+      const normalizedPickup = delivery.pickupLocation
+        ? normalizeLatLng({
+            lat: delivery.pickupLocation.lat,
+            lng: delivery.pickupLocation.lng,
+          })
+        : null;
+      const normalizedDropoff = delivery.deliveryLocation
+        ? normalizeLatLng({
+            lat: delivery.deliveryLocation.lat,
+            lng: delivery.deliveryLocation.lng,
+          })
+        : null;
+
       return {
         ...delivery,
-        currentLocation: rtdbLoc
-          ? { lat: rtdbLoc.lat, lng: rtdbLoc.lng }
-          : delivery.currentLocation,
+        currentLocation:
+          normalizedCurrentFromTrack ||
+          normalizedCurrentFromDelivery ||
+          undefined,
+        pickupLocation: normalizedPickup || undefined,
+        deliveryLocation: normalizedDropoff || undefined,
       };
     });
   }, [activeDeliveries, deliveryTracksMap]);
@@ -985,6 +1048,52 @@ export default function LiveMap() {
     setShowTraffic(false);
     setShowStraightLinks(false);
     setIs3DEnabled(false);
+    setFeaturePreset("balanced");
+  };
+
+  const applyFeaturePreset = (
+    preset: "balanced" | "trafficOps" | "routing" | "minimal" | "presentation",
+  ) => {
+    setFeaturePreset(preset);
+
+    switch (preset) {
+      case "trafficOps":
+        setShowRoadNames(true);
+        setShowPlaces(true);
+        setShowTraffic(true);
+        setShowStraightLinks(false);
+        setIs3DEnabled(false);
+        break;
+      case "routing":
+        setShowRoadNames(true);
+        setShowPlaces(false);
+        setShowTraffic(false);
+        setShowStraightLinks(true);
+        setIs3DEnabled(false);
+        break;
+      case "minimal":
+        setShowRoadNames(false);
+        setShowPlaces(false);
+        setShowTraffic(false);
+        setShowStraightLinks(false);
+        setIs3DEnabled(false);
+        break;
+      case "presentation":
+        setShowRoadNames(true);
+        setShowPlaces(true);
+        setShowTraffic(false);
+        setShowStraightLinks(true);
+        setIs3DEnabled(true);
+        break;
+      case "balanced":
+      default:
+        setShowRoadNames(true);
+        setShowPlaces(true);
+        setShowTraffic(false);
+        setShowStraightLinks(false);
+        setIs3DEnabled(false);
+        break;
+    }
   };
 
   // Troubleshooting guide for satellite view
@@ -1068,179 +1177,162 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
         </p>
       </div>
 
-      {/* Stats & Controls */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white p-4 rounded-xl shadow">
-          <div className="text-sm text-gray-500">Active Carriers</div>
-          <div className="text-2xl font-bold text-blue-600">
-            {carriers.length}
-          </div>
-        </div>
-        <div className="bg-white p-4 rounded-xl shadow">
-          <div className="text-sm text-gray-500">Active Deliveries</div>
-          <div className="text-2xl font-bold text-purple-600">
-            {deliveries.length}
-          </div>
-        </div>
-        <div className="bg-white p-4 rounded-xl shadow">
-          <div className="text-sm text-gray-500">In Transit</div>
-          <div className="text-2xl font-bold text-orange-600">
-            {deliveries.filter((d) => d.status === "in_transit").length}
-          </div>
-        </div>
-        <div className="bg-white p-4 rounded-xl shadow">
-          <div className="text-sm text-gray-500">Map Status</div>
-          <div className="text-2xl font-bold text-green-600">
-            {satelliteLoaded || mapStyle !== "satellite"
-              ? "Live"
-              : "Loading..."}
-          </div>
-        </div>
-      </div>
+      {/* Compact Controls */}
+      <div className="mb-6">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-4 py-3 space-y-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <label className="text-sm text-gray-600">
+              <span className="block text-xs uppercase tracking-wide text-gray-500 mb-0.5">
+                View
+              </span>
+              <select
+                value={selectedType}
+                onChange={(e) =>
+                  setSelectedType(
+                    e.target.value as "all" | "carriers" | "deliveries",
+                  )
+                }
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm"
+              >
+                <option value="all">All</option>
+                <option value="carriers">
+                  Carriers Only ({carriers.length})
+                </option>
+                <option value="deliveries">
+                  Deliveries Only ({deliveries.length})
+                </option>
+              </select>
+            </label>
 
-      {/* Map Controls */}
-      <div className="bg-white rounded-xl shadow p-4 mb-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setSelectedType("all")}
-              className={`px-4 py-2 rounded-lg ${
-                selectedType === "all"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700"
-              }`}
-            >
-              Show All
-            </button>
-            <button
-              onClick={() => setSelectedType("carriers")}
-              className={`px-4 py-2 rounded-lg ${
-                selectedType === "carriers"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700"
-              }`}
-            >
-              Carriers Only ({carriers.length})
-            </button>
-            <button
-              onClick={() => setSelectedType("deliveries")}
-              className={`px-4 py-2 rounded-lg ${
-                selectedType === "deliveries"
-                  ? "bg-purple-600 text-white"
-                  : "bg-gray-100 text-gray-700"
-              }`}
-            >
-              Deliveries Only ({deliveries.length})
-            </button>
+            <label className="text-sm text-gray-600">
+              <span className="block text-xs uppercase tracking-wide text-gray-500 mb-0.5">
+                Map style
+              </span>
+              <select
+                value={mapStyle}
+                onChange={(e) => setMapStyle(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm"
+              >
+                {mapStyles.map((style) => (
+                  <option key={style.id} value={style.id}>
+                    {style.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="text-sm text-gray-600">
+              <span className="block text-xs uppercase tracking-wide text-gray-500 mb-0.5">
+                Features
+              </span>
+              <select
+                value={featurePreset}
+                onChange={(e) =>
+                  applyFeaturePreset(
+                    e.target.value as
+                      | "balanced"
+                      | "trafficOps"
+                      | "routing"
+                      | "minimal"
+                      | "presentation",
+                  )
+                }
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm"
+              >
+                <option value="balanced">Balanced</option>
+                <option value="trafficOps">Traffic Focus</option>
+                <option value="routing">Routing Focus</option>
+                <option value="minimal">Minimal</option>
+                <option value="presentation">Presentation</option>
+              </select>
+            </label>
           </div>
 
           <div className="flex flex-wrap gap-2">
+            {selectedType !== "all" && (
+              <button
+                type="button"
+                onClick={() => setSelectedType("all")}
+                className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm"
+              >
+                Reset view to All
+              </button>
+            )}
             <button
               onClick={centerOnMaseru}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+              className="px-2.5 py-1 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-xs"
             >
-              Center on Maseru
+              Center
             </button>
             <button
               onClick={reloadGoogleMaps}
-              className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
+              className="px-2.5 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-xs"
             >
-              Reload Map
+              Reload
             </button>
             <button
               onClick={resetMapSettings}
-              className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200"
+              className="px-2.5 py-1 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 text-xs"
             >
-              Reset Settings
+              Reset
             </button>
+            {mapStyle === "satellite" && (
+              <button
+                onClick={refreshSatelliteView}
+                className="px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 text-sm"
+              >
+                Refresh Satellite
+              </button>
+            )}
           </div>
-        </div>
 
-        {/* Map Feature Toggles */}
-        <div className="mt-4 pt-4 border-t">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h4 className="text-sm font-medium text-gray-700 mb-2">
-                Map Features
-              </h4>
+          <details className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+            <summary className="cursor-pointer text-sm font-medium text-gray-700">
+              Advanced map features
+            </summary>
+            <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showRoadNames}
+                  onChange={(e) => setShowRoadNames(e.target.checked)}
+                />
+                Road names
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showPlaces}
+                  onChange={(e) => setShowPlaces(e.target.checked)}
+                />
+                Place names
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showTraffic}
+                  onChange={(e) => setShowTraffic(e.target.checked)}
+                />
+                Traffic
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showStraightLinks}
+                  onChange={(e) => setShowStraightLinks(e.target.checked)}
+                />
+                Straight links
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={is3DEnabled}
+                  onChange={(e) => setIs3DEnabled(e.target.checked)}
+                />
+                3D view
+              </label>
             </div>
-            <div className="flex flex-wrap gap-4">
-              <div className="flex items-center gap-2">
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showRoadNames}
-                    onChange={(e) => setShowRoadNames(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                </label>
-                <span className="text-sm font-medium text-gray-700">
-                  Road Names
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showPlaces}
-                    onChange={(e) => setShowPlaces(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                </label>
-                <span className="text-sm font-medium text-gray-700">
-                  Place Names
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showTraffic}
-                    onChange={(e) => setShowTraffic(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                </label>
-                <span className="text-sm font-medium text-gray-700">
-                  Traffic
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showStraightLinks}
-                    onChange={(e) => setShowStraightLinks(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                </label>
-                <span className="text-sm font-medium text-gray-700">
-                  Straight Links
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={is3DEnabled}
-                    onChange={(e) => setIs3DEnabled(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                </label>
-                <span className="text-sm font-medium text-gray-700">
-                  3D View
-                </span>
-              </div>
-            </div>
-          </div>
+          </details>
         </div>
       </div>
 
@@ -1277,80 +1369,24 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
               )}
             </div>
           </div>
-        </div>
-
-        <div className="border-b px-4 md:px-6 py-3 bg-gray-50">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-gray-700">
-                Map Style
-              </span>
-              {mapStyles.map((style) => (
-                <button
-                  key={style.id}
-                  onClick={() => setMapStyle(style.id)}
-                  className={`px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm ${
-                    mapStyle === style.id
-                      ? style.id === "satellite"
-                        ? "bg-green-600 text-white"
-                        : style.id === "hybrid"
-                          ? "bg-purple-600 text-white"
-                          : "bg-blue-600 text-white"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-                >
-                  <style.icon />
-                  <span>{style.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {mapStyle === "satellite" && (
-            <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-yellow-700">
-                    <span className="inline-flex items-center gap-2">
-                      <FaSatellite /> Satellite View Active
-                    </span>
-                  </span>
-                  {!satelliteLoaded && (
-                    <span className="text-sm text-yellow-600">
-                      (Loading satellite imagery...)
-                    </span>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={refreshSatelliteView}
-                    className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded text-sm hover:bg-yellow-200"
-                  >
-                    Refresh Satellite
-                  </button>
-                  <button
-                    onClick={testSatelliteView}
-                    className="px-3 py-1 bg-green-100 text-green-700 rounded text-sm hover:bg-green-200"
-                  >
-                    Test Satellite
-                  </button>
-                  <button
-                    onClick={showSatelliteTroubleshooting}
-                    className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200"
-                  >
-                    Need Help?
-                  </button>
-                </div>
-              </div>
-              <p className="text-sm text-yellow-600 mt-2">
-                Tip: Zoom in closer to see buildings clearly. Some areas may
-                have limited satellite resolution.
-              </p>
+          {selectedType === "deliveries" && (
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Carrier markers are hidden by current view filter (Deliveries
+              Only). Switch View to <strong>All</strong> or{" "}
+              <strong>Carriers Only</strong> to show them.
             </div>
           )}
         </div>
 
         <div className="relative">
+          <div className="pointer-events-none absolute left-3 top-3 z-10">
+            <div className="inline-flex items-center gap-1.5 px-1 py-0.5 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-rose-400 animate-pulse"></span>
+              <span className="text-[10px] font-bold tracking-[0.14em]">
+                LIVE
+              </span>
+            </div>
+          </div>
           <div
             ref={mapRef}
             className="w-full h-[420px] md:h-[520px] lg:h-[620px] bg-gray-100"
@@ -1380,35 +1416,46 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
 
       {/* Additional Help for Satellite View */}
       {mapStyle === "satellite" && (
-        <div className="mb-8 p-4 bg-blue-50 rounded-xl border border-blue-200">
-          <h4 className="font-medium text-blue-800 mb-2">
-            Satellite View Tips:
-          </h4>
-          <ul className="text-sm text-blue-700 list-disc pl-5 space-y-1">
-            <li>
-              Zoom in (use mouse wheel or +/- buttons) to see buildings clearly
-            </li>
-            <li>Satellite imagery may take a few seconds to load fully</li>
-            <li>Try "Test Satellite" button to zoom into Maseru city center</li>
-            <li>
-              Switch to "Hybrid" view to see labels on top of satellite imagery
-            </li>
-            <li>
-              Ensure your Google Maps API key has proper permissions and billing
-              is enabled
-            </li>
-          </ul>
+        <div className="mb-8">
+          <details className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+            <summary className="font-medium text-blue-800 cursor-pointer">
+              Satellite help & troubleshooting
+            </summary>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                onClick={testSatelliteView}
+                className="px-3 py-1.5 bg-green-100 text-green-700 rounded text-sm hover:bg-green-200"
+              >
+                Test Satellite
+              </button>
+              <button
+                onClick={showSatelliteTroubleshooting}
+                className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200"
+              >
+                Need Help?
+              </button>
+            </div>
+            <ul className="mt-3 text-sm text-blue-700 list-disc pl-5 space-y-1">
+              <li>
+                Zoom in (use mouse wheel or +/- buttons) to see buildings
+                clearly
+              </li>
+              <li>Satellite imagery may take a few seconds to load fully</li>
+              <li>Try "Test Satellite" to zoom into Maseru city center</li>
+              <li>Use "Hybrid" for labels over satellite imagery</li>
+            </ul>
+          </details>
         </div>
       )}
 
       {/* Carrier List */}
       <div className="mt-8">
-        <h3 className="text-xl font-bold mb-4">Active Carriers</h3>
+        <h3 className="text-xl font-bold mb-4">Carriers</h3>
         {carriers.length === 0 ? (
           <div className="bg-white rounded-xl shadow p-8 text-center">
             <FaMotorcycle className="text-6xl mb-4 mx-auto text-gray-400" />
             <h4 className="text-lg font-semibold text-gray-700 mb-2">
-              No active carriers with location data
+              No carriers with location data
             </h4>
             <p className="text-gray-500">
               Carriers will appear here when they start sharing their location
@@ -1469,10 +1516,10 @@ Current Status: ${satelliteLoaded ? "Satellite tiles loaded" : "Waiting for sate
       </div>
 
       <div className="mt-8">
-        <h3 className="text-xl font-bold mb-4">Active Deliveries</h3>
+        <h3 className="text-xl font-bold mb-4">Deliveries</h3>
         {deliveries.length === 0 ? (
           <div className="bg-white rounded-xl shadow p-8 text-center text-gray-500">
-            No active deliveries to visualize right now.
+            No deliveries to visualize right now.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

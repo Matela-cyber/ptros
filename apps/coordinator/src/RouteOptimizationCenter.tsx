@@ -211,17 +211,17 @@ export default function RouteOptimizationCenter() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <Toaster position="top-right" />
 
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">
+          <h1 className="text-2xl font-semibold text-gray-900">
             Route Optimization Center
           </h1>
-          <p className="mt-2 text-gray-600">
-            Govern local shortcuts, blocked roads, batching opportunities, and
-            smart assignment quality from one place.
+          <p className="mt-1 text-sm text-blue-700">
+            Manage route rules, assignment quality, and route reports from one
+            consistent workspace.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -229,7 +229,7 @@ export default function RouteOptimizationCenter() {
             type="button"
             onClick={handleSyncGraphStructure}
             disabled={syncingGraph}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {syncingGraph
               ? "Syncing graph structure..."
@@ -237,28 +237,22 @@ export default function RouteOptimizationCenter() {
           </button>
           <Link
             to="/routes/management"
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
           >
             Open Map Management
-          </Link>
-          <Link
-            to="/deliveries/active"
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-          >
-            Review Deliveries
           </Link>
         </div>
       </div>
 
       {lastGraphSyncSummary && (
         <div
-          className={`rounded-xl border p-4 text-sm ${
+          className={`rounded-lg border p-3 text-xs ${
             lastGraphSyncSummary.failed > 0
-              ? "border-red-200 bg-red-50 text-red-800"
-              : "border-emerald-200 bg-emerald-50 text-emerald-800"
+              ? "border-red-200 bg-red-50 text-red-700"
+              : "border-emerald-200 bg-emerald-50 text-emerald-700"
           }`}
         >
-          <p className="font-semibold">
+          <p className="font-medium">
             Graph sync summary: {lastGraphSyncSummary.succeeded}/
             {lastGraphSyncSummary.attempted} succeeded
             {lastGraphSyncSummary.failed > 0 &&
@@ -276,61 +270,63 @@ export default function RouteOptimizationCenter() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-xl border border-green-100 bg-green-50 p-5 shadow-sm">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-green-700">
+              <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">
                 Active shortcuts
               </p>
-              <p className="mt-2 text-3xl font-bold text-green-900">
+              <p className="mt-1 text-2xl font-semibold text-emerald-900">
                 {stats.activeShortcuts}
               </p>
             </div>
-            <FaRoute className="text-3xl text-green-600" />
+            <FaRoute className="text-xl text-emerald-600" />
           </div>
         </div>
-        <div className="rounded-xl border border-red-100 bg-red-50 p-5 shadow-sm">
+        <div className="rounded-lg border border-red-100 bg-red-50 p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-red-700">Blocked paths</p>
-              <p className="mt-2 text-3xl font-bold text-red-900">
+              <p className="text-xs font-medium uppercase tracking-wide text-red-700">
+                Blocked paths
+              </p>
+              <p className="mt-1 text-2xl font-semibold text-red-900">
                 {stats.blockedPaths}
               </p>
             </div>
-            <FaTriangleExclamation className="text-3xl text-red-600" />
+            <FaTriangleExclamation className="text-xl text-red-600" />
           </div>
         </div>
-        <div className="rounded-xl border border-amber-100 bg-amber-50 p-5 shadow-sm">
+        <div className="rounded-lg border border-amber-100 bg-amber-50 p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-amber-700">
+              <p className="text-xs font-medium uppercase tracking-wide text-amber-700">
                 Open route reports
               </p>
-              <p className="mt-2 text-3xl font-bold text-amber-900">
+              <p className="mt-1 text-2xl font-semibold text-amber-900">
                 {stats.openReports}
               </p>
             </div>
-            <FaRoad className="text-3xl text-amber-600" />
+            <FaRoad className="text-xl text-amber-600" />
           </div>
         </div>
-        <div className="rounded-xl border border-blue-100 bg-blue-50 p-5 shadow-sm">
+        <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-blue-700">
+              <p className="text-xs font-medium uppercase tracking-wide text-blue-700">
                 Motorcycle routes
               </p>
-              <p className="mt-2 text-3xl font-bold text-blue-900">
+              <p className="mt-1 text-2xl font-semibold text-blue-900">
                 {stats.bikeSpecific}
               </p>
             </div>
-            <FaMotorcycle className="text-3xl text-blue-600" />
+            <FaMotorcycle className="text-xl text-blue-600" />
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
-        <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm xl:col-span-3">
+        <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm xl:col-span-3">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-gray-800">
@@ -341,7 +337,7 @@ export default function RouteOptimizationCenter() {
                 in the queue.
               </p>
             </div>
-            <FaBoxesPacking className="text-2xl text-blue-500" />
+            <FaBoxesPacking className="text-xl text-blue-500" />
           </div>
 
           {loadingInsights ? (
@@ -357,11 +353,11 @@ export default function RouteOptimizationCenter() {
               {pendingInsights.map((delivery) => (
                 <div
                   key={delivery.id}
-                  className="rounded-xl border border-gray-200 bg-gray-50 p-4"
+                  className="rounded-lg border border-gray-200 bg-white p-4"
                 >
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
-                      <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700 shadow-sm">
+                      <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-700">
                         <FaTruckFast /> {delivery.trackingCode}
                       </div>
                       <p className="mt-3 text-sm font-semibold text-gray-700">
@@ -381,39 +377,51 @@ export default function RouteOptimizationCenter() {
                       <p>
                         Weight:{" "}
                         <span className="font-semibold">
-                          {delivery.packageWeightKg || 0}kg
+                          {parseFloat(
+                            Number(delivery.packageWeightKg || 0).toFixed(2),
+                          )}
+                          kg
                         </span>
                       </p>
                     </div>
                   </div>
 
                   {delivery.topRecommendation ? (
-                    <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                    <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3">
                       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                         <div>
-                          <p className="text-sm font-semibold text-emerald-900">
+                          <p className="text-sm font-semibold text-blue-900">
                             Recommended carrier:{" "}
                             {delivery.topRecommendation.fullName}
                           </p>
-                          <p className="text-xs text-emerald-700">
+                          <p className="text-xs text-blue-700">
                             {delivery.topRecommendation.recommendationReason}
                           </p>
                         </div>
-                        <div className="text-xs text-emerald-800">
+                        <div className="text-xs text-blue-800">
                           <p>
                             Score:{" "}
-                            {delivery.topRecommendation.recommendationScore}
+                            {parseFloat(
+                              Number(
+                                delivery.topRecommendation.recommendationScore,
+                              ).toFixed(2),
+                            )}
                           </p>
                           <p>
                             Bundle fit:{" "}
-                            {delivery.topRecommendation.bundleSuitabilityScore}
+                            {parseFloat(
+                              Number(
+                                delivery.topRecommendation
+                                  .bundleSuitabilityScore,
+                              ).toFixed(2),
+                            )}
                             /100
                           </p>
                         </div>
                       </div>
                     </div>
                   ) : (
-                    <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
                       No eligible carrier recommendation yet — likely due to
                       stale locations, blocked segments, or load limits.
                     </div>
@@ -424,7 +432,7 @@ export default function RouteOptimizationCenter() {
           )}
         </section>
 
-        <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm xl:col-span-2">
+        <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm xl:col-span-2">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-gray-800">
@@ -434,7 +442,7 @@ export default function RouteOptimizationCenter() {
                 Promote trusted reports into managed route intelligence.
               </p>
             </div>
-            <FaDiagramProject className="text-2xl text-amber-500" />
+            <FaDiagramProject className="text-xl text-amber-500" />
           </div>
 
           <div className="space-y-3">
@@ -459,7 +467,7 @@ export default function RouteOptimizationCenter() {
                         {report.trackingCode || report.deliveryId || "general"}
                       </p>
                     </div>
-                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-medium text-amber-700">
                       Open
                     </span>
                   </div>
@@ -474,7 +482,7 @@ export default function RouteOptimizationCenter() {
                         type="button"
                         onClick={() => handlePromoteReport(report)}
                         disabled={promotingReportId === report.id}
-                        className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                        className="rounded-md bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60"
                       >
                         {promotingReportId === report.id
                           ? "Promoting…"
@@ -483,7 +491,7 @@ export default function RouteOptimizationCenter() {
                     )}
                     <Link
                       to={`/deliveries/${report.deliveryId}/track`}
-                      className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                      className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
                     >
                       Open delivery
                     </Link>
@@ -495,7 +503,7 @@ export default function RouteOptimizationCenter() {
         </section>
       </div>
 
-      <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-gray-800">
@@ -505,7 +513,7 @@ export default function RouteOptimizationCenter() {
               Your active local network intelligence for vehicle-aware routing.
             </p>
           </div>
-          <FaLocationDot className="text-2xl text-blue-500" />
+          <FaLocationDot className="text-xl text-blue-500" />
         </div>
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -530,7 +538,7 @@ export default function RouteOptimizationCenter() {
                     </p>
                   </div>
                   <span
-                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${segment.blocked ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${segment.blocked ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"}`}
                   >
                     {segment.blocked ? "Blocked" : "Usable"}
                   </span>
