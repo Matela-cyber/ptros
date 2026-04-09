@@ -9,7 +9,6 @@ import Dashboard from "./Dashboard.tsx";
 import OrderHistory from "./OrderHistory.tsx";
 import OrderDetails from "./OrderDetails.tsx";
 import CreateOrder from "./CreateOrder";
-import TrackOrder from "./TrackOrder.tsx";
 import TrackingMap from "./TrackingMap";
 import PackageTracking from "./components/PackageTracking.tsx";
 import Profile from "./Profile.tsx";
@@ -84,7 +83,10 @@ export default function AppRouter({ user }: Props) {
               path="/track/:id"
               element={<PackageTracking isGuest={false} />}
             />
-            <Route path="/track" element={<TrackOrder />} />
+            <Route
+              path="/track"
+              element={<Navigate to="/track-map" replace />}
+            />
             <Route path="/track-map" element={<TrackingMap user={user} />} />
             <Route
               path="/profile"
