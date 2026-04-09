@@ -1,5 +1,5 @@
 // apps/coordinator/src/ActiveCarriers.tsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { db } from "@config";
 import {
   collection,
@@ -10,7 +10,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { writeTimestamp, getTimeServiceStatus } from "./services/timeService";
 import {
   FaCircleCheck,
@@ -49,6 +49,8 @@ interface Carrier {
 }
 
 export default function ActiveCarriers() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [carriers, setCarriers] = useState<Carrier[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all"); // all, active, inactive, pending
@@ -56,11 +58,14 @@ export default function ActiveCarriers() {
   const [stats, setStats] = useState({
     total: 0,
     active: 0,
+    busy: 0,
     inactive: 0,
     pending: 0,
     totalEarnings: 0,
     totalDeliveries: 0,
   });
+
+  const preferredStatusOrder = ["active", "busy", "inactive", "suspended"];
 
   // Load carriers with real-time updates
   useEffect(() => {
@@ -74,6 +79,7 @@ export default function ActiveCarriers() {
         let statsTemp = {
           total: 0,
           active: 0,
+          busy: 0,
           inactive: 0,
           pending: 0,
           totalEarnings: 0,
@@ -114,6 +120,7 @@ export default function ActiveCarriers() {
           statsTemp.total++;
           if (carrier.status === "active" && carrier.isApproved)
             statsTemp.active++;
+          if (carrier.status === "busy" && carrier.isApproved) statsTemp.busy++;
           if (carrier.status === "inactive") statsTemp.inactive++;
           if (!carrier.isApproved) statsTemp.pending++;
           statsTemp.totalEarnings += carrier.earnings;
@@ -139,15 +146,71 @@ export default function ActiveCarriers() {
     return () => unsubscribe();
   }, []);
 
+  const availableStatusFilters = useMemo(() => {
+    const statuses = Array.from(
+      new Set(
+        carriers
+          .filter((carrier) => carrier.isApproved)
+          .map((carrier) => carrier.status)
+          .filter(Boolean),
+      ),
+    );
+
+    const orderedStatuses = [
+      ...preferredStatusOrder.filter((status) => statuses.includes(status)),
+      ...statuses
+        .filter((status) => !preferredStatusOrder.includes(status))
+        .sort((a, b) => a.localeCompare(b)),
+    ];
+
+    return ["all", "pending", ...orderedStatuses];
+  }, [carriers]);
+
+  useEffect(() => {
+    const requestedFilter = searchParams.get("filter");
+    const allowedFilters = new Set(availableStatusFilters);
+
+    if (requestedFilter && allowedFilters.has(requestedFilter)) {
+      setFilter(requestedFilter);
+      return;
+    }
+
+    if (!requestedFilter) {
+      setFilter("all");
+    }
+  }, [availableStatusFilters, searchParams]);
+
   // Filter carriers
   const filteredCarriers = carriers.filter((carrier) => {
     if (filter === "all") return true;
-    if (filter === "active")
-      return carrier.status === "active" && carrier.isApproved;
-    if (filter === "inactive") return carrier.status === "inactive";
     if (filter === "pending") return !carrier.isApproved;
-    return true;
+    return carrier.isApproved && carrier.status === filter;
   });
+
+  const getFilterButtonClass = (buttonFilter: string) => {
+    const activeClasses =
+      buttonFilter === "pending"
+        ? "bg-yellow-600 text-white"
+        : buttonFilter === "active"
+          ? "bg-green-600 text-white"
+          : buttonFilter === "inactive"
+            ? "bg-gray-600 text-white"
+            : buttonFilter === "busy"
+              ? "bg-orange-600 text-white"
+              : buttonFilter === "suspended"
+                ? "bg-red-600 text-white"
+                : "bg-blue-600 text-white";
+
+    return `px-4 py-2 rounded-lg ${
+      filter === buttonFilter ? activeClasses : "bg-gray-100 text-gray-700"
+    }`;
+  };
+
+  const formatFilterLabel = (buttonFilter: string) => {
+    if (buttonFilter === "all") return "All";
+    if (buttonFilter === "pending") return "Pending Approval";
+    return buttonFilter.charAt(0).toUpperCase() + buttonFilter.slice(1);
+  };
 
   // Update carrier status
   const updateCarrierStatus = async (carrierId: string, newStatus: string) => {
@@ -182,7 +245,9 @@ export default function ActiveCarriers() {
             <FaStar />
           </span>
         ))}
-        <span className="ml-2 text-sm text-gray-600">{rating.toFixed(1)}</span>
+        <span className="ml-2 text-sm text-gray-600">
+          {parseFloat(rating.toFixed(2))}
+        </span>
       </div>
     );
   };
@@ -251,7 +316,7 @@ export default function ActiveCarriers() {
   }
 
   const getStatCardClass = (active: boolean) =>
-    `bg-white p-4 rounded-xl shadow border transition-all text-left ${
+    `bg-white p-3 rounded-lg shadow-sm border transition-all text-left min-w-0 ${
       active ? "ring-2 ring-blue-500 border-blue-200" : "border-transparent"
     } hover:shadow-md hover:-translate-y-0.5`;
 
@@ -268,118 +333,81 @@ export default function ActiveCarriers() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
         <button
           type="button"
           onClick={() => setFilter("all")}
           className={getStatCardClass(filter === "all")}
         >
-          <div className="text-sm text-gray-500">Total Carriers</div>
-          <div className="text-2xl font-bold">{stats.total}</div>
+          <div className="text-xs text-gray-500">Total Carriers</div>
+          <div className="text-xl font-bold">{stats.total}</div>
         </button>
         <button
           type="button"
           onClick={() => setFilter("active")}
           className={getStatCardClass(filter === "active")}
         >
-          <div className="text-sm text-gray-500">Active</div>
-          <div className="text-2xl font-bold text-green-600">
-            {stats.active}
-          </div>
+          <div className="text-xs text-gray-500">Active</div>
+          <div className="text-xl font-bold text-green-600">{stats.active}</div>
         </button>
         <button
           type="button"
           onClick={() => setFilter("pending")}
           className={getStatCardClass(filter === "pending")}
         >
-          <div className="text-sm text-gray-500">Pending</div>
-          <div className="text-2xl font-bold text-yellow-600">
+          <div className="text-xs text-gray-500">Pending</div>
+          <div className="text-xl font-bold text-yellow-600">
             {stats.pending}
           </div>
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilter("busy")}
+          className={getStatCardClass(filter === "busy")}
+        >
+          <div className="text-xs text-gray-500">Busy</div>
+          <div className="text-xl font-bold text-orange-600">{stats.busy}</div>
         </button>
         <button
           type="button"
           onClick={() => setFilter("inactive")}
           className={getStatCardClass(filter === "inactive")}
         >
-          <div className="text-sm text-gray-500">Inactive</div>
-          <div className="text-2xl font-bold text-gray-600">
+          <div className="text-xs text-gray-500">Inactive</div>
+          <div className="text-xl font-bold text-gray-600">
             {stats.inactive}
           </div>
         </button>
-        <button
-          type="button"
-          onClick={() => setFilter("all")}
-          className={getStatCardClass(filter === "all")}
-        >
-          <div className="text-sm text-gray-500">Total Earnings</div>
-          <div className="text-2xl font-bold text-purple-600">
-            M{stats.totalEarnings}
+        <div className="bg-blue-50/60 p-3 rounded-lg shadow-sm border border-blue-100 ring-1 ring-blue-100 text-left min-w-0">
+          <div className="text-xs text-blue-700 font-medium">
+            Total Earnings
           </div>
-        </button>
-        <button
-          type="button"
-          onClick={() => setFilter("all")}
-          className={getStatCardClass(filter === "all")}
-        >
-          <div className="text-sm text-gray-500">Total Deliveries</div>
-          <div className="text-2xl font-bold text-blue-600">
+          <div className="text-xl font-bold text-blue-700 truncate">
+            M{stats.totalEarnings.toFixed(2)}
+          </div>
+        </div>
+        <div className="bg-blue-50/60 p-3 rounded-lg shadow-sm border border-blue-100 ring-1 ring-blue-100 text-left min-w-0">
+          <div className="text-xs text-blue-700 font-medium">
+            Total Deliveries
+          </div>
+          <div className="text-xl font-bold text-blue-700">
             {stats.totalDeliveries}
           </div>
-        </button>
+        </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-xl shadow p-6 mb-6">
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setFilter("all")}
-            className={`px-4 py-2 rounded-lg ${
-              filter === "all"
-                ? "bg-blue-600 text-white"
-                : "bg-gray-100 text-gray-700"
-            }`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setFilter("active")}
-            className={`px-4 py-2 rounded-lg ${
-              filter === "active"
-                ? "bg-green-600 text-white"
-                : "bg-gray-100 text-gray-700"
-            }`}
-          >
-            Active
-          </button>
-          <button
-            onClick={() => setFilter("pending")}
-            className={`px-4 py-2 rounded-lg ${
-              filter === "pending"
-                ? "bg-yellow-600 text-white"
-                : "bg-gray-100 text-gray-700"
-            }`}
-          >
-            Pending Approval
-          </button>
-          <button
-            onClick={() => setFilter("inactive")}
-            className={`px-4 py-2 rounded-lg ${
-              filter === "inactive"
-                ? "bg-gray-600 text-white"
-                : "bg-gray-100 text-gray-700"
-            }`}
-          >
-            Inactive
-          </button>
-          <div className="ml-auto">
-            <Link
-              to="/carriers/pending"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+      <div className="bg-white rounded-xl shadow p-4 mb-6">
+        <div className="flex flex-wrap gap-1.5">
+          {availableStatusFilters.map((statusFilter) => (
+            <button
+              key={statusFilter}
+              onClick={() => setFilter(statusFilter)}
+              className={`${getFilterButtonClass(statusFilter)} text-sm px-3 py-1.5`}
             >
-              Review Pending Approvals
-            </Link>
-          </div>
+              {formatFilterLabel(statusFilter)}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -395,12 +423,13 @@ export default function ActiveCarriers() {
               ? `No carriers match the "${filter}" filter`
               : "No carriers have registered yet"}
           </p>
-          <Link
-            to="/carriers/pending"
+          <button
+            type="button"
+            onClick={() => setFilter("pending")}
             className="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             Check Pending Registrations
-          </Link>
+          </button>
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow overflow-hidden">
@@ -420,9 +449,6 @@ export default function ActiveCarriers() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -430,7 +456,15 @@ export default function ActiveCarriers() {
                   <tr
                     key={carrier.id}
                     className="hover:bg-gray-50 cursor-pointer"
-                    onClick={() => setSelectedCarrier(carrier)}
+                    onClick={() => navigate(`/carriers/${carrier.id}`)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        navigate(`/carriers/${carrier.id}`);
+                      }
+                    }}
                   >
                     <td className="px-6 py-4">
                       <div className="flex items-center">
@@ -479,7 +513,7 @@ export default function ActiveCarriers() {
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-gray-600">Earnings:</span>
                           <span className="font-medium text-green-600">
-                            M{carrier.earnings}
+                            M{carrier.earnings.toFixed(2)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
@@ -497,52 +531,6 @@ export default function ActiveCarriers() {
                               <FaLocationDot /> Live location
                             </span>
                           </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col space-y-2">
-                        <Link
-                          to={`/carriers/${carrier.id}`}
-                          className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200 text-center"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          View
-                        </Link>
-
-                        {carrier.isApproved ? (
-                          <div className="flex space-x-1">
-                            {carrier.status === "active" && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  updateCarrierStatus(carrier.id, "inactive");
-                                }}
-                                className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs hover:bg-gray-200"
-                              >
-                                Deactivate
-                              </button>
-                            )}
-                            {carrier.status === "inactive" && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  updateCarrierStatus(carrier.id, "active");
-                                }}
-                                className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200"
-                              >
-                                Activate
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <Link
-                            to="/carriers/pending"
-                            className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded text-sm hover:bg-yellow-200 text-center"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            Review
-                          </Link>
                         )}
                       </div>
                     </td>
@@ -663,7 +651,7 @@ export default function ActiveCarriers() {
                       <div className="flex justify-between">
                         <span className="text-gray-500">Total Earnings:</span>
                         <span className="font-medium text-green-600">
-                          M{selectedCarrier.earnings}
+                          M{selectedCarrier.earnings.toFixed(2)}
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
@@ -724,13 +712,16 @@ export default function ActiveCarriers() {
                             )}
                           </>
                         ) : (
-                          <Link
-                            to="/carriers/pending"
+                          <button
+                            type="button"
                             className="flex-1 px-4 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 text-center"
-                            onClick={() => setSelectedCarrier(null)}
+                            onClick={() => {
+                              setFilter("pending");
+                              setSelectedCarrier(null);
+                            }}
                           >
                             Review Approval
-                          </Link>
+                          </button>
                         )}
 
                         <Link

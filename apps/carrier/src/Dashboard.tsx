@@ -456,7 +456,7 @@ export default function Dashboard({ user }: DashboardProps) {
                 </p>
                 <div className="flex items-center gap-2 mt-2">
                   <span className="text-3xl font-bold">
-                    {stats.rating.toFixed(1)}
+                    {parseFloat(stats.rating.toFixed(2))}
                   </span>
                   <i className="fa-solid fa-star text-amber-200 text-xl"></i>
                 </div>
@@ -661,7 +661,14 @@ export default function Dashboard({ user }: DashboardProps) {
                         </span>
                         <span className="px-3 py-1.5 bg-white/20 rounded-lg text-sm flex items-center gap-2">
                           <i className="fa-solid fa-route"></i>
-                          {activeDelivery.route?.distance || "--"} km
+                          {activeDelivery.route?.distance != null
+                            ? parseFloat(
+                                Number(activeDelivery.route.distance).toFixed(
+                                  2,
+                                ),
+                              )
+                            : "--"}{" "}
+                          km
                         </span>
                       </div>
                     </div>
@@ -1161,7 +1168,7 @@ export default function Dashboard({ user }: DashboardProps) {
                         </p>
                         <div className="mt-1 flex items-center gap-2">
                           <p className="text-3xl font-bold text-amber-800">
-                            {stats.rating.toFixed(1)}
+                            {parseFloat(stats.rating.toFixed(2))}
                           </p>
                           <i className="fa-solid fa-star text-amber-500 text-xl"></i>
                         </div>
@@ -1294,7 +1301,7 @@ export default function Dashboard({ user }: DashboardProps) {
                       {lastLocation.lng.toFixed(6)}
                     </p>
                     <p className="text-xs text-blue-500">
-                      Accuracy: ±{accuracy.toFixed(0)}m
+                      Accuracy: ±{parseFloat(accuracy.toFixed(2))}m
                     </p>
                     <p className="text-xs text-blue-500 mt-1">
                       Updated: {formatTime(lastLocation.timestamp)}

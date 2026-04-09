@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { db } from "@config";
 import {
   collection,
@@ -206,14 +206,23 @@ export default function CustomerDetails() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                     Created
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Actions
-                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {deliveries.slice(0, 10).map((delivery) => (
-                  <tr key={delivery.id} className="hover:bg-gray-50">
+                  <tr
+                    key={delivery.id}
+                    className="hover:bg-gray-50 cursor-pointer"
+                    onClick={() => navigate(`/deliveries/${delivery.id}`)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        navigate(`/deliveries/${delivery.id}`);
+                      }
+                    }}
+                  >
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">
                       {delivery.trackingCode}
                     </td>
@@ -230,16 +239,6 @@ export default function CustomerDetails() {
                       {delivery.createdAt
                         ? format(delivery.createdAt, "MMM d, h:mm a")
                         : "-"}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col space-y-2">
-                        <Link
-                          to={`/deliveries/${delivery.id}`}
-                          className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200 text-center"
-                        >
-                          View
-                        </Link>
-                      </div>
                     </td>
                   </tr>
                 ))}

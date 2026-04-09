@@ -157,16 +157,20 @@ export default function Analytics() {
         {[
           {
             label: "Delivery Success Rate",
-            value: loading ? "..." : `${summary.successRate.toFixed(1)}%`,
+            value: loading
+              ? "..."
+              : `${parseFloat(summary.successRate.toFixed(2))}%`,
             to: "/deliveries/active",
           },
           {
             label: "Avg Delivery Time",
-            value: loading ? "..." : `${summary.avgDeliveryMinutes} min`,
+            value: loading
+              ? "..."
+              : `${parseFloat((summary.avgDeliveryMinutes / 60).toFixed(2))} hr`,
             to: "/deliveries/history",
           },
           {
-            label: "Active Carriers",
+            label: "Carriers",
             value: loading ? "..." : `${summary.activeCarriers}`,
             to: "/carriers/active",
           },
@@ -174,7 +178,7 @@ export default function Analytics() {
             label: "Customer Satisfaction",
             value: loading
               ? "..."
-              : `${summary.customerSatisfaction.toFixed(1)} / 5`,
+              : `${parseFloat(summary.customerSatisfaction.toFixed(2))} / 5`,
             to: "/customers",
           },
         ].map((item) => (
@@ -250,7 +254,7 @@ export default function Analytics() {
             </li>
             <li className="rounded-lg bg-gray-50 p-3">
               • Delivery completion success rate:{" "}
-              {summary.successRate.toFixed(1)}%
+              {parseFloat(summary.successRate.toFixed(2))}%
             </li>
           </ul>
         </div>

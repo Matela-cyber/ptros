@@ -303,7 +303,7 @@ export default function PackageTrackingPage({
           0,
         );
         setRouteMeta({
-          distanceText: `${(totalMeters / 1000).toFixed(1)} km`,
+          distanceText: `${parseFloat((totalMeters / 1000).toFixed(2))} km`,
           durationText: `${Math.max(1, Math.round(totalSeconds / 60))} min`,
         });
       } else {

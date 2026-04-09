@@ -20,6 +20,7 @@ import LiveMap from "./LiveMap";
 import Analytics from "./Analytics";
 import MapManagement from "./MapManagement";
 import RouteOptimizationCenter from "./RouteOptimizationCenter";
+import MyProfile from "./MyProfile";
 import Settings from "./Settings";
 
 type Props = {
@@ -59,7 +60,7 @@ export default function AppRouter({ user }: Props) {
       <Sidebar />
       <div className="flex-1 min-w-0 flex flex-col">
         <Header user={user} userProfile={userProfile} />
-        <main className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
+        <main className="flex-1 min-h-0 overflow-y-auto p-3 md:p-4 lg:p-5">
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route
@@ -86,6 +87,7 @@ export default function AppRouter({ user }: Props) {
             />
             <Route path="/routes/management" element={<MapManagement />} />
             <Route path="/analytics" element={<Analytics />} />
+            <Route path="/profile" element={<MyProfile />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

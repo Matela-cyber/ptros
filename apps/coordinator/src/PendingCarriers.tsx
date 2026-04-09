@@ -1,17 +1,9 @@
 // apps/coordinator/src/PendingCarriers.tsx
 import { useState, useEffect } from "react";
-import { auth, db } from "@config";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  updateDoc,
-  doc,
-} from "firebase/firestore";
+import { db } from "@config";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
-import { writeTimestamp, getTimeServiceStatus } from "./services/timeService";
-import { FaCircleCheck } from "react-icons/fa6";
+import { FaCircleCheck, FaLocationDot, FaMobileScreen } from "react-icons/fa6";
 import { useNavigate } from "react-router-dom";
 
 interface PendingCarrier {
@@ -24,6 +16,13 @@ interface PendingCarrier {
   licensePlate?: string;
   createdAt: Date;
 }
+
+const formatDate = (date: Date) =>
+  date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 
 export default function PendingCarriers() {
   const navigate = useNavigate();
@@ -59,61 +58,13 @@ export default function PendingCarriers() {
         });
       });
 
+      carrierList.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       setCarriers(carrierList);
     } catch (error) {
       console.error("Error fetching carriers:", error);
       toast.error("Failed to load pending carriers");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const approveCarrier = async (carrierId: string) => {
-    try {
-      const timestamp = await writeTimestamp(`carriers/${carrierId}/approved`);
-      const timeServiceStatus = getTimeServiceStatus();
-
-      await updateDoc(doc(db, "users", carrierId), {
-        isApproved: true,
-        status: "active",
-        approvedAt: timestamp,
-        approvedBy: auth.currentUser?.uid || "system",
-        timeSource: timeServiceStatus.primarySource,
-      });
-
-      toast.success("Carrier approved successfully!");
-      fetchPendingCarriers(); // Refresh list
-    } catch (error) {
-      console.error("Error approving carrier:", error);
-      toast.error("Failed to approve carrier");
-    }
-  };
-
-  const rejectCarrier = async (carrierId: string) => {
-    try {
-      const reason = window.prompt("Reason for rejection (required):")?.trim();
-
-      if (!reason) {
-        toast.error("Rejection reason is required");
-        return;
-      }
-
-      const timestamp = await writeTimestamp(`carriers/${carrierId}/rejected`);
-      const timeServiceStatus = getTimeServiceStatus();
-
-      await updateDoc(doc(db, "users", carrierId), {
-        status: "rejected",
-        rejectedAt: timestamp,
-        rejectedReason: reason,
-        rejectedBy: auth.currentUser?.uid || "system",
-        timeSource: timeServiceStatus.primarySource,
-      });
-
-      toast.success("Carrier rejected");
-      fetchPendingCarriers();
-    } catch (error) {
-      console.error("Error rejecting carrier:", error);
-      toast.error("Failed to reject carrier");
     }
   };
 
@@ -150,45 +101,68 @@ export default function PendingCarriers() {
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-md overflow-hidden">
+        <div className="bg-white rounded-xl shadow overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gradient-to-r from-primary to-primary-light">
+              <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Carrier Details
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Contact
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Vehicle
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Applied
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">
-                    Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {carriers.map((carrier) => (
-                  <tr key={carrier.id} className="hover:bg-gray-50">
+                  <tr
+                    key={carrier.id}
+                    className="hover:bg-gray-50 cursor-pointer"
+                    onClick={() => navigate(`/carriers/${carrier.id}`)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        navigate(`/carriers/${carrier.id}`);
+                      }
+                    }}
+                  >
                     <td className="px-6 py-4">
-                      <div>
-                        <div className="font-medium text-gray-900">
-                          {carrier.fullName}
+                      <div className="flex items-center">
+                        <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center mr-4">
+                          <span className="text-yellow-700 font-bold">
+                            {carrier.fullName?.[0] || "C"}
+                          </span>
                         </div>
-                        <div className="text-sm text-gray-500">
-                          {carrier.email}
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {carrier.fullName}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {carrier.email}
+                          </div>
+                          <div className="text-xs text-yellow-700 font-medium">
+                            Pending approval
+                          </div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm">
-                        <div className="text-gray-900">{carrier.phone}</div>
-                        <div className="text-gray-500">{carrier.address}</div>
+                        <div className="text-gray-900 inline-flex items-center gap-2">
+                          <FaMobileScreen /> {carrier.phone || "-"}
+                        </div>
+                        <div className="text-gray-500 inline-flex items-center gap-2">
+                          <FaLocationDot /> {carrier.address || "-"}
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -202,37 +176,24 @@ export default function PendingCarriers() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500">
-                      {carrier.createdAt.toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col space-y-2">
-                        <button
-                          onClick={() => navigate(`/carriers/${carrier.id}`)}
-                          className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200 text-center"
-                        >
-                          View
-                        </button>
-
-                        <div className="flex space-x-1">
-                          <button
-                            onClick={() => approveCarrier(carrier.id)}
-                            className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200"
-                          >
-                            Approve
-                          </button>
-                          <button
-                            onClick={() => rejectCarrier(carrier.id)}
-                            className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200"
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      </div>
+                      {formatDate(carrier.createdAt)}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div className="px-6 py-4 border-t border-gray-200">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-500">
+                Showing <span className="font-medium">{carriers.length}</span>{" "}
+                pending carriers
+              </div>
+              <div className="text-sm text-gray-500">
+                Last updated: {new Date().toLocaleTimeString()}
+              </div>
+            </div>
           </div>
         </div>
       )}

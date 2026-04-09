@@ -648,7 +648,10 @@ export default function MyDeliveries() {
                         </span>
                         {delivery.packageWeight > 0 && (
                           <span className="font-medium whitespace-nowrap">
-                            {delivery.packageWeight} kg
+                            {parseFloat(
+                              Number(delivery.packageWeight).toFixed(2),
+                            )}{" "}
+                            kg
                           </span>
                         )}
                       </div>
@@ -695,7 +698,7 @@ export default function MyDeliveries() {
                           <div className="flex items-center justify-between text-sm">
                             <span className="text-gray-600">Distance:</span>
                             <span className="font-medium">
-                              {delivery.distance.toFixed(1)} km
+                              {parseFloat(delivery.distance.toFixed(2))} km
                             </span>
                           </div>
                         )}

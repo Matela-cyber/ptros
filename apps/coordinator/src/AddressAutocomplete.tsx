@@ -59,6 +59,7 @@ export default function AddressAutocomplete({
   const placesService = useRef<any>(null);
   const placesServiceDiv = useRef<HTMLDivElement | null>(null);
   const supportsNewAutocomplete = useRef(false);
+  const requestIdRef = useRef(0);
 
   // Update input value when prop changes
   useEffect(() => {
@@ -153,8 +154,54 @@ export default function AddressAutocomplete({
     }
   };
 
+  useEffect(() => {
+    ensurePlacesServices();
+  }, []);
+
+  const requestLegacyPredictions = (
+    value: string,
+    knownSuggestions: AddressSuggestion[],
+    requestId: number,
+  ) => {
+    if (!autocompleteService.current) {
+      setSuggestions(knownSuggestions);
+      setShowSuggestions(knownSuggestions.length > 0);
+      setIsLoading(false);
+      return;
+    }
+
+    autocompleteService.current.getPlacePredictions(
+      {
+        input: value,
+        componentRestrictions: { country: "ls" },
+        locationBias: {
+          center: { lat: -29.3142, lng: 27.4833 },
+          radius: 25000,
+        },
+      },
+      (predictions: any[], status: any) => {
+        if (requestId !== requestIdRef.current) return;
+
+        if (
+          status === window.google.maps.places.PlacesServiceStatus.OK &&
+          predictions
+        ) {
+          const mapped = mapLegacyPredictions(predictions);
+          const merged = [...knownSuggestions, ...mapped];
+          setSuggestions(merged);
+          setShowSuggestions(merged.length > 0);
+        } else {
+          setSuggestions(knownSuggestions);
+          setShowSuggestions(knownSuggestions.length > 0);
+        }
+        setIsLoading(false);
+      },
+    );
+  };
+
   const handleInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
+    const currentRequestId = ++requestIdRef.current;
     setInputValue(newValue);
     onChange(newValue);
 
@@ -171,9 +218,11 @@ export default function AddressAutocomplete({
             await window.google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions(
               {
                 input: newValue,
-                componentRestrictions: { country: "ls" },
+                includedRegionCodes: ["ls"],
               },
             );
+
+          if (currentRequestId !== requestIdRef.current) return;
 
           const mapped = mapNewSuggestions(response);
           const merged = [...knownSuggestions, ...mapped];
@@ -183,39 +232,12 @@ export default function AddressAutocomplete({
           return;
         }
 
-        if (autocompleteService.current) {
-          autocompleteService.current.getPlacePredictions(
-            {
-              input: newValue,
-              componentRestrictions: { country: "ls" }, // Lesotho only
-            },
-            (predictions: any[], status: any) => {
-              if (
-                status === window.google.maps.places.PlacesServiceStatus.OK &&
-                predictions
-              ) {
-                const mapped = mapLegacyPredictions(predictions);
-                const merged = [...knownSuggestions, ...mapped];
-                setSuggestions(merged);
-                setShowSuggestions(merged.length > 0);
-              } else {
-                setSuggestions(knownSuggestions);
-                setShowSuggestions(knownSuggestions.length > 0);
-              }
-              setIsLoading(false);
-            },
-          );
-          return;
-        }
-
-        setSuggestions(knownSuggestions);
-        setShowSuggestions(knownSuggestions.length > 0);
-        setIsLoading(false);
+        requestLegacyPredictions(newValue, knownSuggestions, currentRequestId);
+        return;
       } catch (err) {
         console.error("Error getting suggestions:", err);
-        setSuggestions(knownSuggestions);
-        setShowSuggestions(knownSuggestions.length > 0);
-        setIsLoading(false);
+        requestLegacyPredictions(newValue, knownSuggestions, currentRequestId);
+        return;
       }
     } else {
       const knownSuggestions = getFilteredKnownSuggestions(newValue);
@@ -332,7 +354,7 @@ export default function AddressAutocomplete({
       </div>
 
       {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-[28rem] overflow-y-auto">
           {suggestions.map((suggestion) => (
             <button
               key={suggestion.id}
@@ -348,13 +370,13 @@ export default function AddressAutocomplete({
                 {suggestion.isKnown && (
                   <FaLocationDot className="text-emerald-600 shrink-0 text-xs mt-0.5" />
                 )}
-                <div className="font-medium text-gray-900 text-sm">
+                <div className="font-medium text-gray-900 text-sm text-left break-words leading-snug">
                   {suggestion.mainText}
                 </div>
               </div>
               {suggestion.secondaryText && (
                 <div
-                  className={`text-xs text-gray-500 mt-0.5 ${suggestion.isKnown ? "pl-4" : ""}`}
+                  className={`text-xs text-gray-500 mt-0.5 text-left break-words leading-snug ${suggestion.isKnown ? "pl-4" : ""}`}
                 >
                   {suggestion.secondaryText}
                 </div>

@@ -281,7 +281,7 @@ export default function CurrentJobDetails({
               {distanceKm ? (
                 <span className="inline-flex items-center gap-2 px-3 py-1 bg-white/70 rounded-full border border-white/60">
                   <i className="fa-solid fa-route" />
-                  {Number(distanceKm).toFixed(1)} km
+                  {parseFloat(Number(distanceKm).toFixed(2))} km
                 </span>
               ) : null}
             </div>
@@ -347,7 +347,7 @@ export default function CurrentJobDetails({
             <div>
               <p className="text-xs text-gray-500">Package</p>
               <p className="text-xl font-bold text-blue-700">
-                {delivery.packageWeight} kg
+                {parseFloat(Number(delivery.packageWeight).toFixed(2))} kg
               </p>
             </div>
             <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 inline-flex items-center justify-center">
@@ -358,7 +358,9 @@ export default function CurrentJobDetails({
             <div>
               <p className="text-xs text-gray-500">Route</p>
               <p className="text-xl font-bold text-purple-700">
-                {distanceKm ? `${Number(distanceKm).toFixed(1)} km` : "--"}
+                {distanceKm
+                  ? `${parseFloat(Number(distanceKm).toFixed(2))} km`
+                  : "--"}
               </p>
             </div>
             <div className="w-10 h-10 rounded-full bg-purple-50 text-purple-600 inline-flex items-center justify-center">
@@ -431,7 +433,7 @@ export default function CurrentJobDetails({
             <div className="bg-slate-50 rounded-lg p-3 border border-gray-100 shadow-inner">
               <p className="text-xs text-gray-500 mb-1">Weight</p>
               <p className="text-sm font-medium text-gray-800">
-                {delivery.packageWeight} kg
+                {parseFloat(Number(delivery.packageWeight).toFixed(2))} kg
               </p>
             </div>
             <div className="bg-slate-50 rounded-lg p-3 border border-gray-100 shadow-inner">

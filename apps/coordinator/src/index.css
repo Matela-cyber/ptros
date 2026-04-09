@@ -89,10 +89,19 @@ body,
 body {
   margin: 0;
   font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--bg);
   color: var(--text);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
 }
 
 /* Utility Classes */
@@ -225,4 +234,9 @@ html.dark .shadow-md,
 html.dark .shadow-lg,
 html.dark .shadow-xl {
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.35) !important;
+}
+
+html.dark img,
+html.dark svg {
+  filter: brightness(0.8);
 }

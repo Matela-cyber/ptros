@@ -352,7 +352,8 @@ export default function AvailableTasks() {
                       {job.packageWeight && (
                         <p className="text-sm text-gray-600">
                           <i className="fa-solid fa-scale-balanced mr-1" />
-                          <strong>Weight:</strong> {job.packageWeight}kg
+                          <strong>Weight:</strong>{" "}
+                          {parseFloat(Number(job.packageWeight).toFixed(2))}kg
                         </p>
                       )}
                     </div>
@@ -547,7 +548,8 @@ export default function AvailableTasks() {
                       {task.packageWeight && (
                         <p className="text-sm text-gray-600">
                           <i className="fa-solid fa-scale-balanced mr-1" />
-                          <strong>Weight:</strong> {task.packageWeight}kg
+                          <strong>Weight:</strong>{" "}
+                          {parseFloat(Number(task.packageWeight).toFixed(2))}kg
                         </p>
                       )}
                       {task.packageValue && (
@@ -787,7 +789,10 @@ export default function AvailableTasks() {
                   </p>
                   <div className="mt-2 text-sm text-gray-600 flex flex-wrap gap-4">
                     <span>
-                      Weight: {selectedTask.packageWeight || 0}
+                      Weight:{" "}
+                      {parseFloat(
+                        Number(selectedTask.packageWeight || 0).toFixed(2),
+                      )}
                       kg
                     </span>
                     {selectedTask.packageValue ? (

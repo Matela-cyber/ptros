@@ -1,23 +1,14 @@
 // apps/coordinator/src/ActiveDeliveries.tsx
-import { useState, useEffect } from "react";
-import { db, syncDeliveryLocationGraphStructure } from "@config";
-import {
-  collection,
-  query,
-  orderBy,
-  onSnapshot,
-  updateDoc,
-  doc,
-} from "firebase/firestore";
+import { useState, useEffect, useMemo } from "react";
+import { db } from "@config";
+import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { format } from "date-fns";
-import { writeTimestamp, getTimeServiceStatus } from "./services/timeService";
 import { assignDeliveryIntelligently } from "./services/routeIntelligenceService";
 import {
   FaBox,
   FaChartLine,
-  FaMagnifyingGlass,
   FaTriangleExclamation,
   FaChartColumn,
 } from "react-icons/fa6";
@@ -43,10 +34,15 @@ interface Delivery {
 }
 
 export default function ActiveDeliveries() {
+  const navigate = useNavigate();
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all"); // all, pending, assigned, in_transit, delivered
   const [searchTerm, setSearchTerm] = useState("");
+  const [sortBy, setSortBy] = useState<
+    "optimal" | "createdAt" | "status" | "urgency"
+  >("optimal");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [searchParams] = useSearchParams();
   const [stats, setStats] = useState({
     total: 0,
@@ -135,91 +131,97 @@ export default function ActiveDeliveries() {
     }
   }, [searchParams, searchTerm]);
 
-  // Filter deliveries
-  const filteredDeliveries = deliveries.filter((delivery) => {
-    // Status filter
-    if (filter !== "all") {
-      if (filter === "assigned") {
-        if (!["assigned", "accepted"].includes(delivery.status)) {
+  const statusRank: Record<string, number> = {
+    pending: 0,
+    created: 0,
+    assigned: 1,
+    accepted: 1,
+    picked_up: 2,
+    in_transit: 3,
+    out_for_delivery: 4,
+    delivered: 5,
+    cancelled: 6,
+  };
+
+  const urgencyRank: Record<string, number> = {
+    urgent: 0,
+    express: 1,
+    standard: 2,
+  };
+
+  const normalize = (value: string) => value.toLowerCase().replace(/\s+/g, "");
+
+  // Filter + sort deliveries
+  const filteredAndSortedDeliveries = useMemo(() => {
+    const filtered = deliveries.filter((delivery) => {
+      // Status filter
+      if (filter !== "all") {
+        if (filter === "assigned") {
+          if (!["assigned", "accepted"].includes(delivery.status)) {
+            return false;
+          }
+        } else if (delivery.status !== filter) {
           return false;
         }
-      } else if (delivery.status !== filter) {
-        return false;
       }
-    }
 
-    // Search filter
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      return (
-        delivery.trackingCode.toLowerCase().includes(term) ||
-        delivery.customerName.toLowerCase().includes(term) ||
-        delivery.customerPhone.includes(term) ||
-        delivery.pickupAddress.toLowerCase().includes(term) ||
-        delivery.deliveryAddress.toLowerCase().includes(term) ||
-        (delivery.carrierName &&
-          delivery.carrierName.toLowerCase().includes(term))
-      );
-    }
-
-    return true;
-  });
-
-  // Update delivery status
-  const updateStatus = async (deliveryId: string, newStatus: string) => {
-    try {
-      // Get server timestamp (from Realtime DB with Firestore fallback)
-      const timestamp = await writeTimestamp(`deliveries/${deliveryId}/status`);
-      const timeServiceStatus = getTimeServiceStatus();
-
-      await updateDoc(doc(db, "deliveries", deliveryId), {
-        status: newStatus,
-        updatedAt: timestamp,
-        timeSource: timeServiceStatus.primarySource,
-        ...(newStatus === "assigned" && { assignedAt: timestamp }),
-        ...(newStatus === "picked_up" && { pickedUpAt: timestamp }),
-        ...(newStatus === "in_transit" && { inTransitAt: timestamp }),
-        ...(newStatus === "delivered" && { deliveredAt: timestamp }),
-      });
-
-      const syncTrigger =
-        newStatus === "accepted"
-          ? "accepted"
-          : newStatus === "picked_up"
-            ? "picked_up"
-            : newStatus === "in_transit"
-              ? "in_transit"
-              : newStatus === "out_for_delivery"
-                ? "out_for_delivery"
-                : newStatus === "delivered"
-                  ? "delivered"
-                  : "status_change";
-
-      const syncResult = await syncDeliveryLocationGraphStructure({
-        deliveryId,
-        trigger: syncTrigger,
-      });
-
-      if (syncResult.success) {
-        const warningSuffix =
-          syncResult.warnings.length > 0
-            ? ` • with ${syncResult.warnings.length} warning(s)`
-            : "";
-        toast.success(
-          `Status updated to ${newStatus.replace("_", " ")} • Graph sync OK${warningSuffix}`,
-          { duration: 5000 },
-        );
-      } else {
-        toast.error(
-          `Status updated, but graph sync failed: ${syncResult.message}`,
-          { duration: 7000 },
+      // Search filter
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        const compactTerm = normalize(searchTerm);
+        return (
+          delivery.trackingCode.toLowerCase().includes(term) ||
+          delivery.customerName.toLowerCase().includes(term) ||
+          normalize(delivery.customerPhone || "").includes(compactTerm) ||
+          delivery.pickupAddress.toLowerCase().includes(term) ||
+          delivery.deliveryAddress.toLowerCase().includes(term) ||
+          delivery.status.toLowerCase().includes(term) ||
+          (delivery.priority || "").toLowerCase().includes(term) ||
+          (delivery.carrierName &&
+            delivery.carrierName.toLowerCase().includes(term))
         );
       }
-    } catch (error) {
-      console.error("Error updating status:", error);
-      toast.error("Failed to update status");
-    }
-  };
+
+      return true;
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+      if (sortBy === "createdAt") {
+        return a.createdAt.getTime() - b.createdAt.getTime();
+      }
+
+      if (sortBy === "status") {
+        const byStatus =
+          (statusRank[a.status] ?? 99) - (statusRank[b.status] ?? 99);
+        if (byStatus !== 0) return byStatus;
+        return a.createdAt.getTime() - b.createdAt.getTime();
+      }
+
+      if (sortBy === "urgency") {
+        const byUrgency =
+          (urgencyRank[a.priority] ?? 99) - (urgencyRank[b.priority] ?? 99);
+        if (byUrgency !== 0) return byUrgency;
+        return a.createdAt.getTime() - b.createdAt.getTime();
+      }
+
+      // optimal default: incomplete first, urgent first, pending/created first, then queue by creation time
+      const aTerminal = ["delivered", "cancelled"].includes(a.status);
+      const bTerminal = ["delivered", "cancelled"].includes(b.status);
+      if (aTerminal !== bTerminal) return aTerminal ? 1 : -1;
+
+      const byUrgency =
+        (urgencyRank[a.priority] ?? 99) - (urgencyRank[b.priority] ?? 99);
+      if (byUrgency !== 0) return byUrgency;
+
+      const byStatus =
+        (statusRank[a.status] ?? 99) - (statusRank[b.status] ?? 99);
+      if (byStatus !== 0) return byStatus;
+
+      return a.createdAt.getTime() - b.createdAt.getTime();
+    });
+
+    return sortDirection === "asc" ? sorted : sorted.reverse();
+  }, [deliveries, filter, searchTerm, sortBy, sortDirection]);
 
   // Assign carrier to delivery
   const assignCarrier = async (deliveryId: string) => {
@@ -235,7 +237,7 @@ export default function ActiveDeliveries() {
           : `Graph sync failed: ${graphSync.message}`
         : "Graph sync not executed";
       toast.success(
-        `Smart assigned to ${recommendation.fullName} • ${recommendation.remainingCapacityKg.toFixed(0)}kg left • ${recommendation.distanceToPickupKm.toFixed(1)}km away • ${syncText}`,
+        `Smart assigned to ${recommendation.fullName} • ${parseFloat(recommendation.remainingCapacityKg.toFixed(2))}kg left • ${parseFloat(recommendation.distanceToPickupKm.toFixed(2))}km away • ${syncText}`,
         { duration: 4500 },
       );
     } catch (error) {
@@ -292,16 +294,6 @@ export default function ActiveDeliveries() {
     }
   };
 
-  const canLiveTrack = (status: string) =>
-    [
-      "assigned",
-      "accepted",
-      "picked_up",
-      "in_transit",
-      "out_for_delivery",
-      "delivered",
-    ].includes(status);
-
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -332,9 +324,7 @@ export default function ActiveDeliveries() {
       <div className="mb-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">
-              Active Deliveries
-            </h1>
+            <h1 className="text-3xl font-bold text-gray-800">Deliveries</h1>
             <p className="text-gray-600 mt-2">
               Monitor and manage all deliveries in real-time
             </p>
@@ -466,23 +456,45 @@ export default function ActiveDeliveries() {
               </button>
             </div>
 
-            {/* Search */}
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search deliveries..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-4 py-2 border rounded-lg w-full md:w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <FaMagnifyingGlass className="absolute left-3 top-2.5 text-gray-400" />
+            {/* Sorting */}
+            <div className="flex items-center gap-2 w-full md:w-auto md:justify-end">
+              <select
+                value={sortBy}
+                onChange={(e) =>
+                  setSortBy(
+                    e.target.value as
+                      | "optimal"
+                      | "createdAt"
+                      | "status"
+                      | "urgency",
+                  )
+                }
+                className="px-3 py-2 border rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                title="Sort deliveries by"
+              >
+                <option value="optimal">Optimal (default)</option>
+                <option value="createdAt">Time created</option>
+                <option value="status">Status</option>
+                <option value="urgency">Urgency</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))
+                }
+                className="px-3 py-2 border rounded-lg bg-white text-sm text-gray-700 hover:bg-gray-50"
+                title={`Sort ${sortDirection === "asc" ? "ascending" : "descending"}`}
+              >
+                {sortDirection === "asc" ? "Asc" : "Desc"}
+              </button>
             </div>
           </div>
         </div>
       </div>
 
       {/* Deliveries Table */}
-      {filteredDeliveries.length === 0 ? (
+      {filteredAndSortedDeliveries.length === 0 ? (
         <div className="bg-white rounded-xl shadow p-8 text-center">
           <FaBox className="text-6xl mb-4 mx-auto text-gray-400" />
           <h3 className="text-xl font-semibold text-gray-700 mb-2">
@@ -521,14 +533,23 @@ export default function ActiveDeliveries() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Payment
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredDeliveries.map((delivery) => (
-                  <tr key={delivery.id} className="hover:bg-gray-50">
+                {filteredAndSortedDeliveries.map((delivery) => (
+                  <tr
+                    key={delivery.id}
+                    className="hover:bg-gray-50 cursor-pointer"
+                    onClick={() => navigate(`/deliveries/${delivery.id}`)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        navigate(`/deliveries/${delivery.id}`);
+                      }
+                    }}
+                  >
                     <td className="px-6 py-4">
                       <div>
                         <div className="flex items-center">
@@ -593,69 +614,6 @@ export default function ActiveDeliveries() {
                         <div className="text-gray-500">COD</div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col space-y-2">
-                        <Link
-                          to={`/deliveries/${delivery.id}`}
-                          className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200 text-center"
-                        >
-                          View
-                        </Link>
-
-                        {canLiveTrack(delivery.status) && (
-                          <Link
-                            to={`/deliveries/${delivery.id}/track`}
-                            className="px-3 py-1 bg-cyan-100 text-cyan-700 rounded text-sm hover:bg-cyan-200 text-center"
-                          >
-                            Live Track
-                          </Link>
-                        )}
-
-                        {(delivery.status === "pending" ||
-                          delivery.status === "created") && (
-                          <button
-                            onClick={() => assignCarrier(delivery.id)}
-                            className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200 text-center"
-                          >
-                            Smart Assign
-                          </button>
-                        )}
-
-                        {(delivery.status === "assigned" ||
-                          delivery.status === "accepted") && (
-                          <button
-                            onClick={() =>
-                              updateStatus(delivery.id, "picked_up")
-                            }
-                            className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs hover:bg-purple-200 text-center"
-                          >
-                            Mark Picked
-                          </button>
-                        )}
-
-                        {delivery.status === "picked_up" && (
-                          <button
-                            onClick={() =>
-                              updateStatus(delivery.id, "in_transit")
-                            }
-                            className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs hover:bg-indigo-200 text-center"
-                          >
-                            Start Transit
-                          </button>
-                        )}
-
-                        {delivery.status === "in_transit" && (
-                          <button
-                            onClick={() =>
-                              updateStatus(delivery.id, "delivered")
-                            }
-                            className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200 text-center"
-                          >
-                            Mark Delivered
-                          </button>
-                        )}
-                      </div>
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -667,7 +625,9 @@ export default function ActiveDeliveries() {
             <div className="flex items-center justify-between">
               <div className="text-sm text-gray-500">
                 Showing{" "}
-                <span className="font-medium">{filteredDeliveries.length}</span>{" "}
+                <span className="font-medium">
+                  {filteredAndSortedDeliveries.length}
+                </span>{" "}
                 of <span className="font-medium">{deliveries.length}</span>{" "}
                 deliveries
               </div>

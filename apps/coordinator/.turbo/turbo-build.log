@@ -12,7 +12,7 @@ computing gzip size...
 [2mdist/[22m[36massets/index-SmcutmX7.js   [39m[1m[33m1,349.28 kB[39m[22m[2m │ gzip: 329.11 kB[22m
 [33m
 (!) Some chunks are larger than 500 kB after minification. Consider:
+[32m✓ built in 20.43s[39m
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
-[32m✓ built in 15.93s[39m

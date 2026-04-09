@@ -1,7 +1,12 @@
 // apps/customer/src/CreateOrder.tsx
 import AddressAutocomplete from "./AddressAutocomplete";
 import { useState, useEffect, useRef } from "react";
-import { db } from "@config";
+import {
+  db,
+  defaultBusinessRules,
+  loadBusinessRulesConfig,
+  type BusinessRulesConfig,
+} from "@config";
 import {
   collection,
   addDoc,
@@ -9,10 +14,20 @@ import {
   serverTimestamp,
   doc,
   getDoc,
+  getDocs,
+  query,
+  where,
 } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import { useGeocoder } from "./hooks/useGeocoder";
+import {
+  findNearbyLocationByCoordinates,
+  findNearbyDuplicate,
+  loadKnownLocations,
+  saveCustomLocation,
+  type KnownLocation,
+} from "./services/locationsService";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBox,
@@ -26,7 +41,9 @@ import {
 const LESOTHO_DEFAULT_CENTER = { lat: -29.3142, lng: 27.4833 };
 
 declare global {
-  interface Window { google: any; }
+  interface Window {
+    google: any;
+  }
 }
 
 function AddressMapPreview({
@@ -44,10 +61,12 @@ function AddressMapPreview({
   onPick?: (lat: number, lng: number) => void;
   fullHeight?: boolean;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
   const clickListenerRef = useRef<any>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   useEffect(() => {
     if (!mapRef.current || !window.google?.maps) return;
@@ -55,21 +74,42 @@ function AddressMapPreview({
       mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
         center: { lat, lng },
         zoom: 15,
-        disableDefaultUI: true,
+        mapId: import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || "DEMO_MAP_ID",
+        disableDefaultUI: false,
         zoomControl: true,
+        mapTypeControl: true,
+        streetViewControl: true,
+        fullscreenControl: true,
       });
     }
 
     if (!markerRef.current) {
-      markerRef.current = new window.google.maps.Marker({
-        position: { lat, lng },
-        map: mapInstanceRef.current,
-        title: label,
-      });
+      if (window.google?.maps?.marker?.AdvancedMarkerElement) {
+        markerRef.current = new window.google.maps.marker.AdvancedMarkerElement(
+          {
+            position: { lat, lng },
+            map: mapInstanceRef.current,
+            title: label,
+          },
+        );
+        markerRef.current._isAdvanced = true;
+      } else {
+        markerRef.current = new window.google.maps.Marker({
+          position: { lat, lng },
+          map: mapInstanceRef.current,
+          title: label,
+        });
+        markerRef.current._isAdvanced = false;
+      }
     }
 
-    markerRef.current.setPosition({ lat, lng });
-    markerRef.current.setTitle(label);
+    if (markerRef.current._isAdvanced) {
+      markerRef.current.position = { lat, lng };
+      markerRef.current.title = label;
+    } else {
+      markerRef.current.setPosition({ lat, lng });
+      markerRef.current.setTitle(label);
+    }
     mapInstanceRef.current.setCenter({ lat, lng });
 
     if (clickListenerRef.current) {
@@ -84,10 +124,14 @@ function AddressMapPreview({
           const nextLat = e?.latLng?.lat?.();
           const nextLng = e?.latLng?.lng?.();
           if (typeof nextLat === "number" && typeof nextLng === "number") {
-            markerRef.current?.setPosition({ lat: nextLat, lng: nextLng });
+            if (markerRef.current?._isAdvanced) {
+              markerRef.current.position = { lat: nextLat, lng: nextLng };
+            } else {
+              markerRef.current?.setPosition({ lat: nextLat, lng: nextLng });
+            }
             onPick(nextLat, nextLng);
           }
-        }
+        },
       );
     }
 
@@ -100,23 +144,77 @@ function AddressMapPreview({
   }, [lat, lng, label, clickable, onPick]);
 
   useEffect(() => {
+    const handleFullscreenChange = () => {
+      const expanded = document.fullscreenElement === containerRef.current;
+      setIsExpanded(expanded);
+      if (mapInstanceRef.current && window.google?.maps?.event) {
+        window.google.maps.event.trigger(mapInstanceRef.current, "resize");
+        mapInstanceRef.current.setCenter({ lat, lng });
+      }
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () =>
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, [lat, lng]);
+
+  useEffect(() => {
     if (!mapRef.current) return;
     mapRef.current.style.cursor = clickable ? "crosshair" : "default";
   }, [clickable]);
 
+  const toggleExpanded = async () => {
+    if (fullHeight || !containerRef.current) return;
+
+    try {
+      if (document.fullscreenElement === containerRef.current) {
+        await document.exitFullscreen();
+      } else {
+        await containerRef.current.requestFullscreen();
+      }
+    } catch (error) {
+      console.error("Failed to toggle map fullscreen:", error);
+    }
+  };
+
   return (
     <div
+      ref={containerRef}
       className={`${fullHeight ? "h-full" : "mt-3"} border border-green-200 rounded-lg overflow-hidden shadow-sm bg-white`}
     >
-      <div className="bg-green-50 px-3 py-1.5 text-xs text-green-700 font-medium flex items-center gap-1.5">
-        <span>
-          <FontAwesomeIcon icon={faLocationDot} />
-        </span>
-        <span className="truncate">
-          {clickable ? "Click map to pin exact location:" : "Confirm location:"} {label}
-        </span>
+      <div className="bg-green-50 px-3 py-1.5 text-xs text-green-700 font-medium flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span>
+            <FontAwesomeIcon icon={faLocationDot} />
+          </span>
+          <span className="truncate">
+            {clickable
+              ? "Click map to pin exact location:"
+              : "Confirm location:"}{" "}
+            {label}
+          </span>
+        </div>
+        {!fullHeight && (
+          <button
+            type="button"
+            onClick={toggleExpanded}
+            className="shrink-0 px-2 py-1 rounded border border-green-300 text-green-700 hover:bg-green-100"
+            title={isExpanded ? "Minimize map" : "Maximize map"}
+          >
+            {isExpanded ? "Minimize" : "Maximize"}
+          </button>
+        )}
       </div>
-      <div ref={mapRef} style={{ height: fullHeight ? "calc(100% - 34px)" : "200px" }} />
+      <div
+        ref={mapRef}
+        style={{
+          height: fullHeight
+            ? "calc(100% - 34px)"
+            : isExpanded
+              ? "calc(100vh - 34px)"
+              : "200px",
+        }}
+      />
     </div>
   );
 }
@@ -128,7 +226,7 @@ function FullscreenMapPicker({
   label,
   loading = false,
   onClose,
-  onPick,
+  onDone,
 }: {
   title: string;
   lat: number;
@@ -136,8 +234,14 @@ function FullscreenMapPicker({
   label: string;
   loading?: boolean;
   onClose: () => void;
-  onPick: (lat: number, lng: number) => void;
+  onDone: (lat: number, lng: number) => void;
 }) {
+  const [draftPin, setDraftPin] = useState({ lat, lng });
+
+  useEffect(() => {
+    setDraftPin({ lat, lng });
+  }, [lat, lng]);
+
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -162,29 +266,46 @@ function FullscreenMapPicker({
         <div>
           <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
           <p className="text-sm text-gray-600">
-            Click anywhere on the map to drop a pin and confirm the exact location.
+            Click anywhere on the map to adjust your pin. Use map type controls
+            (Map/Satellite) and press Done when you are happy.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={loading}
-          className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-        >
-          Close
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => onDone(draftPin.lat, draftPin.lng)}
+            disabled={loading}
+            className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            Done
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 p-4">
         <div className="relative h-full rounded-2xl overflow-hidden bg-white shadow-2xl">
           <AddressMapPreview
-            lat={lat}
-            lng={lng}
+            lat={draftPin.lat}
+            lng={draftPin.lng}
             label={label}
             clickable
-            onPick={onPick}
+            onPick={(nextLat, nextLng) =>
+              setDraftPin({ lat: nextLat, lng: nextLng })
+            }
             fullHeight
           />
+
+          <div className="absolute left-4 bottom-4 rounded-lg bg-white/95 border border-gray-200 px-3 py-2 text-xs text-gray-700 shadow">
+            Pin: {draftPin.lat.toFixed(6)}, {draftPin.lng.toFixed(6)}
+          </div>
 
           {loading && (
             <div className="absolute inset-0 bg-white/75 flex items-center justify-center">
@@ -202,6 +323,86 @@ function FullscreenMapPicker({
   );
 }
 
+function LocationNamingModal({
+  isOpen,
+  type,
+  lat,
+  lng,
+  value,
+  onChange,
+  onCancel,
+  onSave,
+  saving,
+}: {
+  isOpen: boolean;
+  type: "pickup" | "delivery";
+  lat: number;
+  lng: number;
+  value: string;
+  onChange: (value: string) => void;
+  onCancel: () => void;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-gray-200">
+        <div className="px-5 py-4 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900">
+            Name this {type} location
+          </h3>
+          <p className="text-sm text-gray-600 mt-1">
+            This point has no clear name. Add a meaningful place name so
+            tracking and routing stay accurate.
+          </p>
+        </div>
+
+        <div className="px-5 py-4 space-y-3">
+          <label className="block text-sm font-medium text-gray-700">
+            Location name
+          </label>
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={
+              type === "pickup"
+                ? "e.g., Maseru Mall Main Gate"
+                : "e.g., NUL Roma Campus Reception"
+            }
+            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
+
+          <p className="text-xs text-gray-500">
+            Coordinates: {lat.toFixed(6)}, {lng.toFixed(6)}
+          </p>
+        </div>
+
+        <div className="px-5 py-4 border-t border-gray-200 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {saving ? "Saving..." : "Save & Confirm"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type Props = { user: any };
 
 interface Coordinates {
@@ -209,6 +410,61 @@ interface Coordinates {
   lng: number;
   address: string;
 }
+
+interface SelectedLocation {
+  name: string;
+  lat: number;
+  lng: number;
+}
+
+interface CarrierCandidate {
+  id: string;
+  fullName: string;
+  vehicleType: string;
+  status: string;
+  rating: number;
+  currentLocation?: {
+    lat: number;
+    lng: number;
+  };
+  activeDeliveries: number;
+  capacityKg: number;
+  recommendationScore: number;
+  distanceToPickupKm: number;
+  routeDistanceKm: number;
+  estimatedDeliveryHours: number;
+  estimatedPrice: number;
+  recommendationReason: string;
+  canAutoAssign: boolean;
+}
+
+type CarrierSelectionMode = "auto" | "manual";
+
+const ACTIVE_DELIVERY_STATUSES = [
+  "assigned",
+  "accepted",
+  "picked_up",
+  "in_transit",
+  "out_for_delivery",
+  "stuck",
+];
+
+const normalizeVehicleType = (vehicleType?: string) => {
+  const value = (vehicleType || "").toLowerCase();
+  if (value.includes("bicycle")) return "bicycle";
+  if (
+    value.includes("motor") ||
+    value.includes("scooter") ||
+    value.includes("bike")
+  ) {
+    return "motorcycle";
+  }
+  if (value.includes("pickup")) return "pickup";
+  if (value.includes("van")) return "van";
+  if (value.includes("truck")) return "truck";
+  if (value.includes("car") || value.includes("sedan")) return "car";
+  return "unknown";
+};
 
 export default function CreateOrder({ user }: Props) {
   const navigate = useNavigate();
@@ -220,6 +476,12 @@ export default function CreateOrder({ user }: Props) {
     const loc = place.geometry.location;
     const lat = typeof loc.lat === "function" ? loc.lat() : loc.lat;
     const lng = typeof loc.lng === "function" ? loc.lng() : loc.lng;
+    setPickupConfirmed(false);
+    setPickupLocation({
+      name: place.formatted_address || "Pickup location",
+      lat,
+      lng,
+    });
     setFormData((prev) => ({
       ...prev,
       pickupCoordinates: {
@@ -236,6 +498,12 @@ export default function CreateOrder({ user }: Props) {
     const loc = place.geometry.location;
     const lat = typeof loc.lat === "function" ? loc.lat() : loc.lat;
     const lng = typeof loc.lng === "function" ? loc.lng() : loc.lng;
+    setDeliveryConfirmed(false);
+    setDeliveryLocation({
+      name: place.formatted_address || "Delivery destination",
+      lat,
+      lng,
+    });
     setFormData((prev) => ({
       ...prev,
       deliveryCoordinates: {
@@ -275,7 +543,6 @@ export default function CreateOrder({ user }: Props) {
     // Priority & Payment
     priority: "standard",
     paymentMethod: "card_prepaid",
-    paymentAmount: "",
 
     // Special Instructions
     isFragile: false,
@@ -291,15 +558,289 @@ export default function CreateOrder({ user }: Props) {
   const [showDeliveryManualMap, setShowDeliveryManualMap] = useState(false);
   const [resolvingPickupPin, setResolvingPickupPin] = useState(false);
   const [resolvingDeliveryPin, setResolvingDeliveryPin] = useState(false);
+  const [pickupLocation, setPickupLocation] = useState<SelectedLocation | null>(
+    null,
+  );
+  const [deliveryLocation, setDeliveryLocation] =
+    useState<SelectedLocation | null>(null);
+  const [pickupConfirmed, setPickupConfirmed] = useState(false);
+  const [deliveryConfirmed, setDeliveryConfirmed] = useState(false);
+  const [knownLocations, setKnownLocations] = useState<KnownLocation[]>([]);
+  const [pendingNamingLocation, setPendingNamingLocation] = useState<{
+    type: "pickup" | "delivery";
+    lat: number;
+    lng: number;
+    suggestedName: string;
+  } | null>(null);
+  const [manualLocationName, setManualLocationName] = useState("");
+  const [savingManualLocationName, setSavingManualLocationName] =
+    useState(false);
+  const [recommendedCarriers, setRecommendedCarriers] = useState<
+    CarrierCandidate[]
+  >([]);
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
+  const [recommendationError, setRecommendationError] = useState<string | null>(
+    null,
+  );
+  const [selectedCarrierId, setSelectedCarrierId] = useState("");
+  const [carrierSelectionMode, setCarrierSelectionMode] =
+    useState<CarrierSelectionMode>("auto");
+  const [businessRules, setBusinessRules] =
+    useState<BusinessRulesConfig>(defaultBusinessRules);
+
+  const isLocationReady = pickupConfirmed && deliveryConfirmed;
 
   const formatPinnedAddress = (lat: number, lng: number) =>
     `Pinned location (${lat.toFixed(6)}, ${lng.toFixed(6)})`;
+
+  const isUnclearLocationName = (name: string) => {
+    const value = name.trim();
+    if (!value) return true;
+
+    const plusCodePattern =
+      /\b[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3}\b/i;
+    const coordLikePattern = /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/;
+    const unclearKeywords = /unnamed|unknown|plus code|pinned location/i;
+
+    return (
+      plusCodePattern.test(value) ||
+      coordLikePattern.test(value) ||
+      unclearKeywords.test(value)
+    );
+  };
+
+  const getLocationOfficialLevel = (usageCount: number) => {
+    if (
+      usageCount >=
+      businessRules.locationOfficialThresholds.coreOfficialUsageCount
+    ) {
+      return "core_official";
+    }
+    if (
+      usageCount >= businessRules.locationOfficialThresholds.officialUsageCount
+    ) {
+      return "official";
+    }
+    return "candidate";
+  };
+
+  const getKnownLocationMeta = (address: string) => {
+    const normalized = address.trim().toLowerCase().replace(/\s+/g, " ");
+    const known = knownLocations.find(
+      (item) => item.normalizedName === normalized,
+    );
+    const usageCount = (known?.usageCount || 0) + 1;
+    return {
+      usageCount,
+      officialLevel: getLocationOfficialLevel(usageCount),
+      knownBefore: Boolean(known),
+    };
+  };
+
+  const getKnownLocationMatch = (selected: SelectedLocation) => {
+    const normalized = selected.name.trim().toLowerCase().replace(/\s+/g, " ");
+
+    const exactMatch = knownLocations.find(
+      (item) =>
+        item.normalizedName === normalized &&
+        Math.abs(item.lat - selected.lat) < 0.00001 &&
+        Math.abs(item.lng - selected.lng) < 0.00001,
+    );
+
+    if (exactMatch) return exactMatch;
+
+    const namedNearbyMatch = findNearbyDuplicate(
+      selected.lat,
+      selected.lng,
+      selected.name,
+      knownLocations,
+    );
+
+    if (namedNearbyMatch) return namedNearbyMatch;
+
+    return findNearbyLocationByCoordinates(
+      selected.lat,
+      selected.lng,
+      knownLocations,
+    );
+  };
+
+  const resolveAndPersistLocationName = async (
+    selected: SelectedLocation,
+    type: "pickup" | "delivery",
+    explicitName?: string,
+  ): Promise<SelectedLocation | null> => {
+    const finalName = (explicitName ?? selected.name).trim();
+
+    if (!finalName) {
+      toast.error(`Please enter a clear ${type} location name.`);
+      return null;
+    }
+
+    try {
+      await saveCustomLocation(
+        selected.lat,
+        selected.lng,
+        finalName,
+        user?.uid || "customer",
+        knownLocations,
+      );
+
+      const updated = await loadKnownLocations();
+      setKnownLocations(updated);
+    } catch (error) {
+      console.error("Error saving confirmed location:", error);
+      toast.error("Failed to save location name. Please try again.");
+      return null;
+    }
+
+    return {
+      ...selected,
+      name: finalName,
+    };
+  };
+
+  const applyConfirmedLocation = (
+    type: "pickup" | "delivery",
+    resolved: SelectedLocation,
+  ) => {
+    const isPickup = type === "pickup";
+    const meta = getKnownLocationMeta(resolved.name);
+
+    if (isPickup) {
+      setPickupLocation(resolved);
+      setFormData((prev) => ({
+        ...prev,
+        pickupAddress: resolved.name,
+        pickupCoordinates: {
+          lat: resolved.lat,
+          lng: resolved.lng,
+          address: resolved.name,
+        },
+      }));
+      setPickupConfirmed(true);
+      toast.success(
+        `Pickup confirmed (${meta.officialLevel.replace("_", " ")})`,
+      );
+      return;
+    }
+
+    setDeliveryLocation(resolved);
+    setFormData((prev) => ({
+      ...prev,
+      deliveryAddress: resolved.name,
+      deliveryCoordinates: {
+        lat: resolved.lat,
+        lng: resolved.lng,
+        address: resolved.name,
+      },
+    }));
+    setDeliveryConfirmed(true);
+    toast.success(
+      `Delivery confirmed (${meta.officialLevel.replace("_", " ")})`,
+    );
+  };
+
+  const confirmLocation = async (type: "pickup" | "delivery") => {
+    const isPickup = type === "pickup";
+    const selected = isPickup ? pickupLocation : deliveryLocation;
+
+    if (!selected) {
+      toast.error(`Please select ${type} location first.`);
+      return;
+    }
+
+    const knownMatch = getKnownLocationMatch(selected);
+    if (knownMatch) {
+      const resolved = await resolveAndPersistLocationName(
+        {
+          ...selected,
+          name: knownMatch.name,
+        },
+        type,
+        knownMatch.name,
+      );
+      if (!resolved) return;
+      applyConfirmedLocation(type, resolved);
+      return;
+    }
+
+    // New or unclear locations still require naming before they are reused later.
+    setManualLocationName(
+      isUnclearLocationName(selected.name) ? "" : selected.name,
+    );
+    setPendingNamingLocation({
+      type,
+      lat: selected.lat,
+      lng: selected.lng,
+      suggestedName: selected.name,
+    });
+  };
+
+  const handleSaveManualLocationName = async () => {
+    if (!pendingNamingLocation) return;
+
+    const typed = manualLocationName.trim();
+    if (!typed) {
+      toast.error("Please type a meaningful location name.");
+      return;
+    }
+
+    setSavingManualLocationName(true);
+    try {
+      const resolved = await resolveAndPersistLocationName(
+        {
+          name: pendingNamingLocation.suggestedName,
+          lat: pendingNamingLocation.lat,
+          lng: pendingNamingLocation.lng,
+        },
+        pendingNamingLocation.type,
+        typed,
+      );
+
+      if (!resolved) return;
+
+      applyConfirmedLocation(pendingNamingLocation.type, resolved);
+
+      setPendingNamingLocation(null);
+      setManualLocationName("");
+    } finally {
+      setSavingManualLocationName(false);
+    }
+  };
+
+  const handleLocationSelectWithCoords = async (
+    type: "pickup" | "delivery",
+    address: string,
+    lat: number,
+    lng: number,
+  ) => {
+    if (type === "pickup") {
+      setPickupConfirmed(false);
+      setPickupLocation({ name: address, lat, lng });
+      setFormData((prev) => ({
+        ...prev,
+        pickupAddress: address,
+        pickupCoordinates: { lat, lng, address },
+      }));
+      return;
+    }
+
+    setDeliveryConfirmed(false);
+    setDeliveryLocation({ name: address, lat, lng });
+    setFormData((prev) => ({
+      ...prev,
+      deliveryAddress: address,
+      deliveryCoordinates: { lat, lng, address },
+    }));
+  };
 
   const handlePickupMapPick = async (lat: number, lng: number) => {
     setResolvingPickupPin(true);
     const resolvedAddress = await reverseGeocode(lat, lng);
     const nextAddress = resolvedAddress || formatPinnedAddress(lat, lng);
-
+    setPickupLocation({ name: nextAddress, lat, lng });
+    setPickupConfirmed(false);
     setFormData((prev) => ({
       ...prev,
       pickupAddress: nextAddress,
@@ -310,7 +851,6 @@ export default function CreateOrder({ user }: Props) {
       },
     }));
     setResolvingPickupPin(false);
-    setShowPickupManualMap(false);
   };
 
   const handleDeliveryMapPick = async (lat: number, lng: number) => {
@@ -318,6 +858,8 @@ export default function CreateOrder({ user }: Props) {
     const resolvedAddress = await reverseGeocode(lat, lng);
     const nextAddress = resolvedAddress || formatPinnedAddress(lat, lng);
 
+    setDeliveryLocation({ name: nextAddress, lat, lng });
+    setDeliveryConfirmed(false);
     setFormData((prev) => ({
       ...prev,
       deliveryAddress: nextAddress,
@@ -328,7 +870,6 @@ export default function CreateOrder({ user }: Props) {
       },
     }));
     setResolvingDeliveryPin(false);
-    setShowDeliveryManualMap(false);
   };
 
   // Load user profile
@@ -336,14 +877,19 @@ export default function CreateOrder({ user }: Props) {
     const fetchProfile = async () => {
       try {
         if (!user) return;
-        const userDoc = await getDoc(doc(db, "users", user.uid));
+        const [userDoc, known, rules] = await Promise.all([
+          getDoc(doc(db, "users", user.uid)),
+          loadKnownLocations(),
+          loadBusinessRulesConfig(),
+        ]);
+        setKnownLocations(known);
+        setBusinessRules(rules);
         if (userDoc.exists()) {
           const data = userDoc.data();
           setFormData((prev) => ({
             ...prev,
             pickupContactName: data.fullName || prev.pickupContactName,
             pickupContactPhone: data.phone || prev.pickupContactPhone,
-            pickupAddress: data.address || prev.pickupAddress,
           }));
         }
       } catch (err) {
@@ -356,7 +902,9 @@ export default function CreateOrder({ user }: Props) {
   }, [user]);
 
   // Geocode an address to get coordinates
-  const handleGeocodeAddress = async (address: string): Promise<Coordinates | null> => {
+  const handleGeocodeAddress = async (
+    address: string,
+  ): Promise<Coordinates | null> => {
     const result = await geocodeAddress(address, "ls");
     if (result) {
       return {
@@ -371,7 +919,7 @@ export default function CreateOrder({ user }: Props) {
   const handleChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    >
+    >,
   ) => {
     const { name, value, type } = e.target;
 
@@ -390,6 +938,8 @@ export default function CreateOrder({ user }: Props) {
 
   // Handle pickup address change with geocoding
   const handlePickupAddressChange = async (address: string) => {
+    setPickupConfirmed(false);
+    setPickupLocation(null);
     setFormData((prev) => ({
       ...prev,
       pickupAddress: address,
@@ -403,12 +953,19 @@ export default function CreateOrder({ user }: Props) {
           ...prev,
           pickupCoordinates: coords,
         }));
+        setPickupLocation({
+          name: coords.address || address,
+          lat: coords.lat,
+          lng: coords.lng,
+        });
       }
     }
   };
 
   // Handle delivery address change with geocoding
   const handleDeliveryAddressChange = async (address: string) => {
+    setDeliveryConfirmed(false);
+    setDeliveryLocation(null);
     setFormData((prev) => ({
       ...prev,
       deliveryAddress: address,
@@ -422,6 +979,11 @@ export default function CreateOrder({ user }: Props) {
           ...prev,
           deliveryCoordinates: coords,
         }));
+        setDeliveryLocation({
+          name: coords.address || address,
+          lat: coords.lat,
+          lng: coords.lng,
+        });
       }
     }
   };
@@ -445,6 +1007,12 @@ export default function CreateOrder({ user }: Props) {
       toast.error("Delivery contact information is required");
       return false;
     }
+    if (!pickupConfirmed || !deliveryConfirmed) {
+      toast.error(
+        "Please confirm pickup and delivery locations before submitting.",
+      );
+      return false;
+    }
     return true;
   };
 
@@ -452,7 +1020,7 @@ export default function CreateOrder({ user }: Props) {
     lat1: number,
     lon1: number,
     lat2: number,
-    lon2: number
+    lon2: number,
   ): number => {
     const R = 6371; // Earth's radius in km
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -473,12 +1041,245 @@ export default function CreateOrder({ user }: Props) {
     return "1-2 days";
   };
 
-  const calculateEarnings = (packageValue: number, distance: number): number => {
-    const baseValue = packageValue || 100;
-    const distanceFee = distance * 10; // M10 per km
-    const valueFee = Math.round(baseValue * 0.15);
-    return Math.max(50, valueFee + distanceFee);
+  const calculateEarnings = (
+    packageValue: number,
+    distance: number,
+  ): number => {
+    const baseValue = packageValue || businessRules.pricing.baseValueFallback;
+    const distanceFee = distance * businessRules.pricing.distanceRatePerKm;
+    const valueFee = Math.round(
+      baseValue * businessRules.pricing.packageValueRate,
+    );
+    return Math.max(
+      businessRules.pricing.minimumCharge,
+      valueFee + distanceFee,
+    );
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadRecommendations = async () => {
+      const pickup = formData.pickupCoordinates;
+      const dropoff = formData.deliveryCoordinates;
+      if (!pickup || !dropoff) {
+        setRecommendedCarriers([]);
+        setSelectedCarrierId("");
+        setCarrierSelectionMode("auto");
+        setRecommendationError(null);
+        return;
+      }
+
+      setRecommendationLoading(true);
+      setRecommendationError(null);
+
+      try {
+        const [carriersSnap, activeDeliveriesSnap] = await Promise.all([
+          getDocs(
+            query(
+              collection(db, "users"),
+              where("role", "==", "carrier"),
+              where("isApproved", "==", true),
+            ),
+          ),
+          getDocs(
+            query(
+              collection(db, "deliveries"),
+              where("status", "in", ACTIVE_DELIVERY_STATUSES),
+            ),
+          ),
+        ]);
+
+        const activeByCarrier = activeDeliveriesSnap.docs.reduce<
+          Record<string, number>
+        >((acc, deliveryDoc) => {
+          const data = deliveryDoc.data() as any;
+          if (!data?.carrierId) return acc;
+          acc[data.carrierId] = (acc[data.carrierId] || 0) + 1;
+          return acc;
+        }, {});
+
+        const packageWeightKg = Number(formData.packageWeight || 0);
+        const packageValue = Number(formData.packageValue || 0);
+        const rules = businessRules;
+        const routeDistanceKm = calculateDistance(
+          pickup.lat,
+          pickup.lng,
+          dropoff.lat,
+          dropoff.lng,
+        );
+
+        const recommendations = carriersSnap.docs
+          .reduce<CarrierCandidate[]>((acc, carrierDoc) => {
+            const data = carrierDoc.data() as any;
+            const currentLocation =
+              data.currentLocation &&
+              Number.isFinite(data.currentLocation.lat) &&
+              Number.isFinite(data.currentLocation.lng)
+                ? {
+                    lat: data.currentLocation.lat,
+                    lng: data.currentLocation.lng,
+                  }
+                : undefined;
+
+            if (!currentLocation) return acc;
+
+            const status = data.status || "inactive";
+            if (status === "inactive") return acc;
+
+            const normalizedVehicle = normalizeVehicleType(data.vehicleType);
+            const vehicleProfile =
+              rules.vehicleProfiles[
+                normalizedVehicle as keyof BusinessRulesConfig["vehicleProfiles"]
+              ] || rules.vehicleProfiles.unknown;
+
+            const activeDeliveries = activeByCarrier[carrierDoc.id] || 0;
+            const distanceToPickupKm = calculateDistance(
+              currentLocation.lat,
+              currentLocation.lng,
+              pickup.lat,
+              pickup.lng,
+            );
+            const rating = Number(data.rating || 0);
+            const capacityKg = vehicleProfile.capacityKg;
+            const remainingCapacityKg = Math.max(
+              0,
+              capacityKg -
+                activeDeliveries *
+                  rules.recommendation.activeDeliveryCapacityKgImpact,
+            );
+            const overloadKg = Math.max(
+              0,
+              packageWeightKg - remainingCapacityKg,
+            );
+            const statusPenalty =
+              status === "active"
+                ? 0
+                : status === "busy"
+                  ? rules.recommendation.busyStatusPenalty
+                  : rules.recommendation.unknownStatusPenalty;
+            const workloadPenalty =
+              activeDeliveries * rules.recommendation.workloadPenaltyPerActive;
+            const distancePenalty =
+              distanceToPickupKm * rules.recommendation.distancePenaltyPerKm;
+            const routePenalty =
+              routeDistanceKm * rules.recommendation.routePenaltyPerKm;
+            const capacityPenalty =
+              overloadKg > 0
+                ? rules.recommendation.capacityBasePenalty +
+                  overloadKg * rules.recommendation.capacityPenaltyPerKg
+                : 0;
+            const ratingBoost =
+              Math.min(rules.recommendation.maxRatingForBoost, rating) *
+              rules.recommendation.ratingBoostPerPoint;
+            const bundleBoost =
+              activeDeliveries > 0 &&
+              routeDistanceKm < rules.recommendation.bundleRouteMaxKm &&
+              distanceToPickupKm < rules.recommendation.bundlePickupMaxKm
+                ? rules.recommendation.bundleBoost
+                : 0;
+
+            const recommendationScore =
+              distancePenalty +
+              routePenalty +
+              workloadPenalty +
+              statusPenalty +
+              capacityPenalty -
+              ratingBoost -
+              bundleBoost;
+
+            const avgSpeed = vehicleProfile.speedKmh;
+            const estimatedDeliveryHours = Math.max(
+              rules.recommendation.minimumEtaHours,
+              routeDistanceKm / avgSpeed +
+                distanceToPickupKm / avgSpeed +
+                activeDeliveries *
+                  rules.recommendation.activeDeliveryEtaHoursImpact,
+            );
+            const estimatedPrice = Math.round(
+              calculateEarnings(packageValue, routeDistanceKm) *
+                (1 +
+                  activeDeliveries * rules.pricing.activeDeliverySurchargeRate),
+            );
+
+            const reasonBits = [
+              `${parseFloat(distanceToPickupKm.toFixed(2))}km to pickup`,
+              `${activeDeliveries} active deliveries`,
+              `rating ${parseFloat(Math.max(0, rating).toFixed(2))}`,
+              `${parseFloat(remainingCapacityKg.toFixed(2))}kg capacity left`,
+            ];
+
+            if (bundleBoost > 0) {
+              reasonBits.push("good bundle fit");
+            }
+
+            acc.push({
+              id: carrierDoc.id,
+              fullName: data.fullName || "Carrier",
+              vehicleType: data.vehicleType || "Unknown",
+              status,
+              rating,
+              currentLocation,
+              activeDeliveries,
+              capacityKg,
+              recommendationScore: Number(recommendationScore.toFixed(2)),
+              distanceToPickupKm: Number(distanceToPickupKm.toFixed(2)),
+              routeDistanceKm: Number(routeDistanceKm.toFixed(2)),
+              estimatedDeliveryHours: Number(estimatedDeliveryHours.toFixed(1)),
+              estimatedPrice,
+              recommendationReason: reasonBits.join(" • "),
+              canAutoAssign: overloadKg === 0 && status !== "inactive",
+            } satisfies CarrierCandidate);
+
+            return acc;
+          }, [])
+          .sort((a, b) => a.recommendationScore - b.recommendationScore)
+          .slice(0, 5);
+
+        if (!cancelled) {
+          setRecommendedCarriers(recommendations);
+          setSelectedCarrierId((prev) =>
+            recommendations.some((carrier) => carrier.id === prev)
+              ? prev
+              : recommendations[0]?.id || "",
+          );
+          if (!recommendations.length) {
+            setCarrierSelectionMode("auto");
+          }
+          if (!recommendations.length) {
+            setRecommendationError(
+              "No active carriers are currently available for this route.",
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load carrier recommendations:", error);
+        if (!cancelled) {
+          setRecommendedCarriers([]);
+          setSelectedCarrierId("");
+          setCarrierSelectionMode("auto");
+          setRecommendationError("Could not load recommendations right now.");
+        }
+      } finally {
+        if (!cancelled) {
+          setRecommendationLoading(false);
+        }
+      }
+    };
+
+    loadRecommendations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    businessRules,
+    formData.pickupCoordinates,
+    formData.deliveryCoordinates,
+    formData.packageWeight,
+    formData.packageValue,
+    formData.priority,
+  ]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -508,11 +1309,67 @@ export default function CreateOrder({ user }: Props) {
           "Unable to get coordinates for addresses. Order will be created without location data.",
           {
             duration: 5000,
-          }
+          },
         );
       }
 
       const trackingCode = generateTrackingCode();
+      const topRecommendedCarrier = recommendedCarriers[0];
+      const manuallySelectedCarrier = recommendedCarriers.find(
+        (carrier) => carrier.id === selectedCarrierId,
+      );
+      const preferredCarrier =
+        carrierSelectionMode === "auto"
+          ? topRecommendedCarrier
+          : manuallySelectedCarrier;
+
+      if (
+        carrierSelectionMode === "manual" &&
+        pickupCoords &&
+        deliveryCoords &&
+        recommendedCarriers.length > 0 &&
+        !preferredCarrier
+      ) {
+        toast.error("Please choose a recommended carrier to continue.");
+        setSubmitting(false);
+        return;
+      }
+
+      const coordinatorReviewReasons: string[] = [];
+      if (
+        businessRules.coordinatorReviewTriggers.missingVerifiedCoordinates &&
+        (!pickupCoords || !deliveryCoords)
+      ) {
+        coordinatorReviewReasons.push("missing_verified_coordinates");
+      }
+      if (
+        businessRules.coordinatorReviewTriggers.noRecommendedCarrierAvailable &&
+        !preferredCarrier
+      ) {
+        coordinatorReviewReasons.push("no_recommended_carrier_available");
+      }
+      if (
+        businessRules.coordinatorReviewTriggers
+          .carrierCapacityOrAvailabilityRisk &&
+        preferredCarrier &&
+        !preferredCarrier.canAutoAssign
+      ) {
+        coordinatorReviewReasons.push("carrier_capacity_or_availability_risk");
+      }
+      if (
+        businessRules.coordinatorReviewTriggers
+          .urgentPriorityRequiresConfirmation &&
+        formData.priority === "urgent"
+      ) {
+        coordinatorReviewReasons.push(
+          "urgent_priority_requires_coordinator_confirmation",
+        );
+      }
+
+      const requiresCoordinatorReview = coordinatorReviewReasons.length > 0;
+      const assignedCarrier = requiresCoordinatorReview
+        ? null
+        : preferredCarrier;
 
       // Calculate distance and estimates
       let distance = 0;
@@ -524,20 +1381,23 @@ export default function CreateOrder({ user }: Props) {
           pickupCoords.lat,
           pickupCoords.lng,
           deliveryCoords.lat,
-          deliveryCoords.lng
+          deliveryCoords.lng,
         );
         estimatedDeliveryTime = getEstimatedDeliveryTime(distance);
         estimatedEarnings = calculateEarnings(
           formData.packageValue ? Number(formData.packageValue) : 0,
-          distance
+          distance,
         );
       }
+
+      const autoPaymentAmount =
+        preferredCarrier?.estimatedPrice ?? estimatedEarnings;
 
       // Prepare delivery data
       const deliveryData = {
         // Basic Info
         trackingCode,
-        status: "pending",
+        status: assignedCarrier ? "assigned" : "pending",
         priority: formData.priority,
 
         // Customer Info (from logged-in user)
@@ -570,7 +1430,7 @@ export default function CreateOrder({ user }: Props) {
         pickupContactPhone: formData.pickupContactPhone,
         pickupInstructions: formData.pickupInstructions,
         pickupDateTime: Timestamp.fromDate(
-          new Date(`${formData.pickupDate}T${formData.pickupTime}`)
+          new Date(`${formData.pickupDate}T${formData.pickupTime}`),
         ),
 
         // Delivery Details
@@ -586,27 +1446,62 @@ export default function CreateOrder({ user }: Props) {
         deliveryContactName: formData.deliveryContactName,
         deliveryContactPhone: formData.deliveryContactPhone,
         deliveryInstructions: formData.deliveryInstructions,
-        deliveryDate: Timestamp.fromDate(
-          new Date(formData.deliveryDate)
-        ),
+        deliveryDate: Timestamp.fromDate(new Date(formData.deliveryDate)),
         deliveryTimeWindow: formData.deliveryTimeWindow,
 
         // Route Information
         distance: distance > 0 ? Math.round(distance * 100) / 100 : null,
         estimatedDeliveryTime,
         estimatedEarnings,
+        locationConfirmation: {
+          pickupConfirmed,
+          deliveryConfirmed,
+          confirmedAt: Timestamp.now(),
+          pickupLabel: pickupLocation?.name || formData.pickupAddress,
+          deliveryLabel: deliveryLocation?.name || formData.deliveryAddress,
+        },
 
-        // Carrier Assignment (not assigned by customer)
-        carrierId: null,
+        // Carrier Assignment (customer selects from recommendations)
+        carrierId: assignedCarrier?.id || null,
         carrierEmail: null,
-        carrierName: null,
-        assignedAt: null,
+        carrierName: assignedCarrier?.fullName || null,
+        assignedAt: assignedCarrier ? serverTimestamp() : null,
+        carrierSelectionSource: assignedCarrier
+          ? carrierSelectionMode === "auto"
+            ? "customer_auto_top_recommendation"
+            : "customer_manual_recommendation_choice"
+          : null,
+        carrierSelectionMode,
+        coordinatorReviewRequired: requiresCoordinatorReview,
+        coordinatorReviewReasons,
+        proposedCarrier:
+          requiresCoordinatorReview && preferredCarrier
+            ? {
+                carrierId: preferredCarrier.id,
+                carrierName: preferredCarrier.fullName,
+                recommendationScore: preferredCarrier.recommendationScore,
+                recommendationReason: preferredCarrier.recommendationReason,
+                selectedByCustomer: true,
+                selectionMode: carrierSelectionMode,
+              }
+            : null,
+        carrierRecommendations: recommendedCarriers.map((carrier, index) => ({
+          rank: index + 1,
+          carrierId: carrier.id,
+          carrierName: carrier.fullName,
+          score: carrier.recommendationScore,
+          reason: carrier.recommendationReason,
+          estimatedDeliveryHours: carrier.estimatedDeliveryHours,
+          estimatedPrice: carrier.estimatedPrice,
+          distanceToPickupKm: carrier.distanceToPickupKm,
+          activeDeliveries: carrier.activeDeliveries,
+          vehicleType: carrier.vehicleType,
+          rating: carrier.rating,
+        })),
 
         // Payment Info
         paymentMethod: formData.paymentMethod,
-        paymentAmount: formData.paymentAmount
-          ? Number(formData.paymentAmount)
-          : estimatedEarnings,
+        paymentAmount: autoPaymentAmount,
         paymentStatus: "pending",
 
         // Special Requirements
@@ -657,35 +1552,75 @@ export default function CreateOrder({ user }: Props) {
         // Milestones
         milestones: {
           created: serverTimestamp(),
-          assigned: null,
+          assigned: assignedCarrier ? serverTimestamp() : null,
           pickedUp: null,
           inTransit: null,
           outForDelivery: null,
           delivered: null,
         },
+        optimizationReasons: preferredCarrier
+          ? [
+              {
+                type: "customer_carrier_selection_or_auto",
+                reason: assignedCarrier
+                  ? carrierSelectionMode === "auto"
+                    ? `System auto-picked top carrier ${assignedCarrier.fullName} for customer order`
+                    : `Customer selected ${assignedCarrier.fullName} from smart recommendations`
+                  : `Coordinator review required before assignment${preferredCarrier ? `; proposed ${preferredCarrier.fullName}` : ""}`,
+                timestamp: Timestamp.now(),
+                carrierId: preferredCarrier.id,
+                score: preferredCarrier.recommendationScore,
+                requiresCoordinatorReview,
+                coordinatorReviewReasons,
+                details: {
+                  selectionMode: carrierSelectionMode,
+                  recommendationReason: preferredCarrier.recommendationReason,
+                  estimatedDeliveryHours:
+                    preferredCarrier.estimatedDeliveryHours,
+                  estimatedPrice: preferredCarrier.estimatedPrice,
+                  distanceToPickupKm: preferredCarrier.distanceToPickupKm,
+                  activeDeliveries: preferredCarrier.activeDeliveries,
+                },
+              },
+            ]
+          : [],
       };
 
       // Save to Firestore
-      const docRef = await addDoc(
-        collection(db, "deliveries"),
-        deliveryData
-      );
+      const docRef = await addDoc(collection(db, "deliveries"), deliveryData);
 
       // Show success message with details
       const successMessage = (
         <div>
           <p className="font-bold">
-            <FontAwesomeIcon icon={faCircleCheck} className="mr-2 text-green-600" />
+            <FontAwesomeIcon
+              icon={faCircleCheck}
+              className="mr-2 text-green-600"
+            />
             Order Created Successfully!
           </p>
           <div className="mt-2 space-y-1">
             <p className="text-sm">
-              <span className="font-semibold">Tracking Code:</span> {trackingCode}
+              <span className="font-semibold">Tracking Code:</span>{" "}
+              {trackingCode}
             </p>
             {distance > 0 && (
               <p className="text-sm">
                 <span className="font-semibold">Distance:</span>{" "}
                 {distance.toFixed(1)} km
+              </p>
+            )}
+            {assignedCarrier && (
+              <p className="text-sm text-blue-700">
+                <span className="font-semibold">Assigned Carrier:</span>{" "}
+                {assignedCarrier.fullName}
+              </p>
+            )}
+            {!assignedCarrier && requiresCoordinatorReview && (
+              <p className="text-sm text-amber-700">
+                <span className="font-semibold">Coordinator review:</span>{" "}
+                Required before assignment (
+                {coordinatorReviewReasons.join(", ")})
               </p>
             )}
             {pickupCoords && deliveryCoords && (
@@ -726,12 +1661,19 @@ export default function CreateOrder({ user }: Props) {
         deliveryTimeWindow: "09:00-17:00",
         priority: "standard",
         paymentMethod: "card_prepaid",
-        paymentAmount: "",
         isFragile: false,
         requiresSignature: true,
         insuranceRequired: false,
         notes: "",
       });
+      setRecommendedCarriers([]);
+      setRecommendationError(null);
+      setSelectedCarrierId("");
+      setCarrierSelectionMode("auto");
+      setPickupLocation(null);
+      setDeliveryLocation(null);
+      setPickupConfirmed(false);
+      setDeliveryConfirmed(false);
 
       // Navigate to order details
       setTimeout(() => {
@@ -767,7 +1709,8 @@ export default function CreateOrder({ user }: Props) {
               Create New Order
             </h1>
             <p className="text-gray-600 mt-2">
-              Fill in delivery details. Package location will start at pickup address.
+              Fill in delivery details. Package location will start at pickup
+              address.
             </p>
           </div>
           <button
@@ -788,11 +1731,42 @@ export default function CreateOrder({ user }: Props) {
             </span>
           </div>
           <div>
-            <h3 className="font-semibold text-blue-800">Location Tracking</h3>
+            <h3 className="font-semibold text-blue-800">
+              Smart Location Capture
+            </h3>
             <p className="text-sm text-blue-700">
-              Package location will be initialized at the pickup address and updated as the carrier moves.
+              1) Select address or pin map → 2) Confirm location → 3) Continue.
+              This helps prevent routing errors and failed pickups.
             </p>
           </div>
+        </div>
+      </div>
+
+      <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <span
+            className={`px-3 py-1 rounded-full font-medium ${
+              pickupConfirmed
+                ? "bg-green-100 text-green-700"
+                : "bg-amber-100 text-amber-700"
+            }`}
+          >
+            Pickup: {pickupConfirmed ? "Confirmed" : "Needs confirmation"}
+          </span>
+          <span
+            className={`px-3 py-1 rounded-full font-medium ${
+              deliveryConfirmed
+                ? "bg-green-100 text-green-700"
+                : "bg-amber-100 text-amber-700"
+            }`}
+          >
+            Drop-off: {deliveryConfirmed ? "Confirmed" : "Needs confirmation"}
+          </span>
+          <span className="text-gray-600">
+            {isLocationReady
+              ? "✅ Route is locked and ready"
+              : "Confirm both locations to unlock reliable routing"}
+          </span>
         </div>
       </div>
 
@@ -915,6 +1889,10 @@ export default function CreateOrder({ user }: Props) {
                 value={formData.pickupAddress}
                 onChange={handlePickupAddressChange}
                 onSelect={handlePickupPlaceSelect}
+                onSelectWithCoords={(address, lat, lng) =>
+                  handleLocationSelectWithCoords("pickup", address, lat, lng)
+                }
+                knownLocations={knownLocations}
                 placeholder="Start typing address..."
               />
               <div className="mt-3 flex items-center gap-3">
@@ -939,6 +1917,44 @@ export default function CreateOrder({ user }: Props) {
                   lng={formData.pickupCoordinates.lng}
                   label={formData.pickupAddress || "Pickup location"}
                 />
+              )}
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => confirmLocation("pickup")}
+                  disabled={!pickupLocation}
+                  className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Confirm Pickup Location
+                </button>
+
+                {pickupLocation && (
+                  <span
+                    className={`text-xs px-2 py-1 rounded ${
+                      pickupConfirmed
+                        ? "bg-green-100 text-green-700"
+                        : "bg-amber-100 text-amber-700"
+                    }`}
+                  >
+                    {pickupConfirmed
+                      ? "Confirmed ✓"
+                      : "Selected (not confirmed)"}
+                  </span>
+                )}
+
+                {pickupLocation && (
+                  <span className="text-xs text-gray-600">
+                    {pickupLocation.lat.toFixed(6)},{" "}
+                    {pickupLocation.lng.toFixed(6)}
+                  </span>
+                )}
+              </div>
+
+              {pickupLocation && !pickupConfirmed && (
+                <p className="mt-2 text-sm text-amber-700">
+                  Final step: click “Confirm Pickup Location” to lock this
+                  point.
+                </p>
               )}
             </div>
 
@@ -1032,6 +2048,10 @@ export default function CreateOrder({ user }: Props) {
                 value={formData.deliveryAddress}
                 onChange={handleDeliveryAddressChange}
                 onSelect={handleDeliveryPlaceSelect}
+                onSelectWithCoords={(address, lat, lng) =>
+                  handleLocationSelectWithCoords("delivery", address, lat, lng)
+                }
+                knownLocations={knownLocations}
                 placeholder="Start typing address..."
               />
               <div className="mt-3 flex items-center gap-3">
@@ -1056,6 +2076,44 @@ export default function CreateOrder({ user }: Props) {
                   lng={formData.deliveryCoordinates.lng}
                   label={formData.deliveryAddress || "Delivery destination"}
                 />
+              )}
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => confirmLocation("delivery")}
+                  disabled={!deliveryLocation}
+                  className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Confirm Delivery Location
+                </button>
+
+                {deliveryLocation && (
+                  <span
+                    className={`text-xs px-2 py-1 rounded ${
+                      deliveryConfirmed
+                        ? "bg-green-100 text-green-700"
+                        : "bg-amber-100 text-amber-700"
+                    }`}
+                  >
+                    {deliveryConfirmed
+                      ? "Confirmed ✓"
+                      : "Selected (not confirmed)"}
+                  </span>
+                )}
+
+                {deliveryLocation && (
+                  <span className="text-xs text-gray-600">
+                    {deliveryLocation.lat.toFixed(6)},{" "}
+                    {deliveryLocation.lng.toFixed(6)}
+                  </span>
+                )}
+              </div>
+
+              {deliveryLocation && !deliveryConfirmed && (
+                <p className="mt-2 text-sm text-amber-700">
+                  Final step: click “Confirm Delivery Location” to lock this
+                  point.
+                </p>
               )}
             </div>
 
@@ -1168,24 +2226,14 @@ export default function CreateOrder({ user }: Props) {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Payment Amount (M)
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    name="paymentAmount"
-                    value={formData.paymentAmount}
-                    onChange={handleChange}
-                    min="0"
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-                    placeholder="Leave blank for auto-calculation"
-                  />
-                  <span className="absolute right-3 top-3 text-gray-500">M</span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Leave blank to auto-calculate based on distance and package value
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
+                <p className="text-sm font-medium text-blue-800">
+                  Payment amount is auto-determined from selected carrier
+                  pricing
+                </p>
+                <p className="text-xs text-blue-700 mt-1">
+                  Final amount is calculated automatically during submission
+                  based on recommendation and route factors.
                 </p>
               </div>
             </div>
@@ -1314,8 +2362,155 @@ export default function CreateOrder({ user }: Props) {
               )}
             </div>
             <p className="text-sm text-green-700 mt-4">
-              Package location will start at pickup coordinates and update as the carrier moves.
+              {isLocationReady
+                ? "Package location will start at pickup coordinates and update as the carrier moves."
+                : "Please confirm both locations so we can lock accurate routing and tracking."}
             </p>
+          </div>
+        )}
+
+        {/* Section 5: Recommended Carrier */}
+        {formData.pickupCoordinates && formData.deliveryCoordinates && (
+          <div className="bg-white rounded-xl shadow-lg p-8">
+            <div className="flex items-center mb-6 pb-4 border-b">
+              <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center mr-3">
+                5
+              </div>
+              <h2 className="text-2xl font-bold text-gray-800">
+                Choose Recommended Carrier
+              </h2>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-4">
+              Based on route, carrier distance, workload, rating and capacity,
+              we ranked the best carriers for this delivery.
+            </p>
+
+            <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <div className="text-sm font-medium text-gray-800 mb-2">
+                Assignment mode
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCarrierSelectionMode("auto")}
+                  className={`px-3 py-1.5 rounded-md text-sm border ${
+                    carrierSelectionMode === "auto"
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-gray-700 border-gray-300 hover:border-blue-300"
+                  }`}
+                >
+                  Auto-pick top recommendation
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCarrierSelectionMode("manual")}
+                  className={`px-3 py-1.5 rounded-md text-sm border ${
+                    carrierSelectionMode === "manual"
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-gray-700 border-gray-300 hover:border-blue-300"
+                  }`}
+                >
+                  I will choose manually
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-gray-600">
+                Standard orders work best with auto mode. Urgent or risky
+                matches are automatically sent to coordinator review.
+              </p>
+            </div>
+
+            {recommendationLoading && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-700 text-sm">
+                Loading smart carrier recommendations...
+              </div>
+            )}
+
+            {!recommendationLoading && recommendationError && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-700 text-sm">
+                {recommendationError}
+              </div>
+            )}
+
+            {!recommendationLoading &&
+              !recommendationError &&
+              recommendedCarriers.length > 0 && (
+                <div className="space-y-3">
+                  {recommendedCarriers.map((carrier, index) => {
+                    const isSelected = carrier.id === selectedCarrierId;
+                    return (
+                      <label
+                        key={carrier.id}
+                        className={`block rounded-xl border p-4 cursor-pointer transition ${
+                          isSelected
+                            ? "border-blue-500 bg-blue-50"
+                            : "border-gray-200 hover:border-blue-300"
+                        }`}
+                      >
+                        <div className="flex items-start gap-4">
+                          <input
+                            type="radio"
+                            name="selectedCarrier"
+                            value={carrier.id}
+                            checked={
+                              carrierSelectionMode === "auto"
+                                ? carrier.id === recommendedCarriers[0]?.id
+                                : isSelected
+                            }
+                            onChange={() => {
+                              setCarrierSelectionMode("manual");
+                              setSelectedCarrierId(carrier.id);
+                            }}
+                            className="mt-1"
+                          />
+                          <div className="flex-1">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="font-semibold text-gray-900">
+                                #{index + 1} {carrier.fullName}
+                              </div>
+                              <div className="text-sm text-blue-700 font-medium">
+                                Score: {carrier.recommendationScore.toFixed(1)}
+                              </div>
+                            </div>
+
+                            <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-sm text-gray-700">
+                              <div>
+                                <span className="text-gray-500">Vehicle:</span>{" "}
+                                {carrier.vehicleType}
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Rating:</span>{" "}
+                                {carrier.rating.toFixed(1)}
+                              </div>
+                              <div>
+                                <span className="text-gray-500">ETA:</span> ~
+                                {carrier.estimatedDeliveryHours.toFixed(1)}h
+                              </div>
+                              <div>
+                                <span className="text-gray-500">
+                                  Est. Cost:
+                                </span>{" "}
+                                M{carrier.estimatedPrice}
+                              </div>
+                            </div>
+
+                            <p className="mt-2 text-xs text-gray-600">
+                              {carrier.recommendationReason}
+                            </p>
+                            {carrierSelectionMode === "auto" &&
+                              carrier.id === recommendedCarriers[0]?.id && (
+                                <p className="mt-2 text-xs text-blue-700 font-medium">
+                                  Auto mode: this carrier will be selected by
+                                  the system.
+                                </p>
+                              )}
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
           </div>
         )}
 
@@ -1326,7 +2521,9 @@ export default function CreateOrder({ user }: Props) {
               {formData.pickupCoordinates && formData.deliveryCoordinates && (
                 <p className="text-sm text-green-600">
                   <FontAwesomeIcon icon={faCircleCheck} className="mr-2" />
-                  Ready for location-based tracking
+                  {isLocationReady
+                    ? "Locations confirmed and ready for tracking"
+                    : "Select and confirm both locations to proceed"}
                 </p>
               )}
             </div>
@@ -1372,7 +2569,8 @@ export default function CreateOrder({ user }: Props) {
             Location Tracking
           </div>
           <p className="text-sm text-blue-700">
-            Package location starts at pickup address and updates automatically as the carrier moves.
+            Package location starts at pickup address and updates automatically
+            as the carrier moves.
           </p>
         </div>
 
@@ -1382,7 +2580,8 @@ export default function CreateOrder({ user }: Props) {
             Pricing
           </div>
           <p className="text-sm text-green-700">
-            Distance-based calculation: M10 per km + 15% of package value (minimum M50).
+            Distance-based calculation: M10 per km + 15% of package value
+            (minimum M50).
           </p>
         </div>
 
@@ -1392,7 +2591,8 @@ export default function CreateOrder({ user }: Props) {
             Carrier Assignment
           </div>
           <p className="text-sm text-purple-700">
-            Auto-assigns nearest available carrier. OTP verification included.
+            Choose from top recommended carriers instantly (ranked by route fit,
+            workload, capacity and rating).
           </p>
         </div>
       </div>
@@ -1405,7 +2605,10 @@ export default function CreateOrder({ user }: Props) {
           label={formData.pickupAddress || "Pickup location"}
           loading={resolvingPickupPin}
           onClose={() => setShowPickupManualMap(false)}
-          onPick={handlePickupMapPick}
+          onDone={async (lat, lng) => {
+            await handlePickupMapPick(lat, lng);
+            setShowPickupManualMap(false);
+          }}
         />
       )}
 
@@ -1417,9 +2620,28 @@ export default function CreateOrder({ user }: Props) {
           label={formData.deliveryAddress || "Delivery destination"}
           loading={resolvingDeliveryPin}
           onClose={() => setShowDeliveryManualMap(false)}
-          onPick={handleDeliveryMapPick}
+          onDone={async (lat, lng) => {
+            await handleDeliveryMapPick(lat, lng);
+            setShowDeliveryManualMap(false);
+          }}
         />
       )}
+
+      <LocationNamingModal
+        isOpen={Boolean(pendingNamingLocation)}
+        type={pendingNamingLocation?.type || "pickup"}
+        lat={pendingNamingLocation?.lat || 0}
+        lng={pendingNamingLocation?.lng || 0}
+        value={manualLocationName}
+        onChange={setManualLocationName}
+        onCancel={() => {
+          if (savingManualLocationName) return;
+          setPendingNamingLocation(null);
+          setManualLocationName("");
+        }}
+        onSave={handleSaveManualLocationName}
+        saving={savingManualLocationName}
+      />
     </div>
   );
 }

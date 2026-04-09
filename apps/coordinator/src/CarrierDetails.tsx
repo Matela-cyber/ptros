@@ -1,7 +1,7 @@
 // apps/coordinator/src/CarrierDetails.tsx
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { db } from "@config";
+import { auth, db } from "@config";
 import {
   doc,
   getDoc,
@@ -9,9 +9,11 @@ import {
   query,
   where,
   getDocs,
+  updateDoc,
 } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
 import { format } from "date-fns";
+import { writeTimestamp, getTimeServiceStatus } from "./services/timeService";
 import {
   FaArrowLeft,
   FaBox,
@@ -154,6 +156,90 @@ export default function CarrierDetails() {
     }
   };
 
+  const refreshCarrier = async () => {
+    if (!id) return;
+    await loadCarrier(id);
+  };
+
+  const updateCarrierStatus = async (newStatus: "active" | "inactive") => {
+    if (!carrier) return;
+
+    try {
+      const timestamp = await writeTimestamp(`carriers/${carrier.id}/status`);
+      const timeServiceStatus = getTimeServiceStatus();
+
+      await updateDoc(doc(db, "users", carrier.id), {
+        status: newStatus,
+        updatedAt: timestamp,
+        ...(newStatus === "active" && { lastActive: timestamp }),
+        timeSource: timeServiceStatus.primarySource,
+      });
+
+      toast.success(
+        `Carrier ${newStatus === "active" ? "activated" : "deactivated"}`,
+      );
+      await refreshCarrier();
+    } catch (error) {
+      console.error("Error updating carrier status:", error);
+      toast.error("Failed to update carrier status");
+    }
+  };
+
+  const approveCarrier = async () => {
+    if (!carrier) return;
+
+    try {
+      const timestamp = await writeTimestamp(`carriers/${carrier.id}/approved`);
+      const timeServiceStatus = getTimeServiceStatus();
+
+      await updateDoc(doc(db, "users", carrier.id), {
+        isApproved: true,
+        status: "active",
+        approvedAt: timestamp,
+        approvedBy: auth.currentUser?.uid || "system",
+        updatedAt: timestamp,
+        timeSource: timeServiceStatus.primarySource,
+      });
+
+      toast.success("Carrier approved successfully");
+      await refreshCarrier();
+    } catch (error) {
+      console.error("Error approving carrier:", error);
+      toast.error("Failed to approve carrier");
+    }
+  };
+
+  const rejectCarrier = async () => {
+    if (!carrier) return;
+
+    const reason = window.prompt("Reason for rejection (required):")?.trim();
+    if (!reason) {
+      toast.error("Rejection reason is required");
+      return;
+    }
+
+    try {
+      const timestamp = await writeTimestamp(`carriers/${carrier.id}/rejected`);
+      const timeServiceStatus = getTimeServiceStatus();
+
+      await updateDoc(doc(db, "users", carrier.id), {
+        isApproved: false,
+        status: "rejected",
+        rejectedAt: timestamp,
+        rejectedReason: reason,
+        rejectedBy: auth.currentUser?.uid || "system",
+        updatedAt: timestamp,
+        timeSource: timeServiceStatus.primarySource,
+      });
+
+      toast.success("Carrier rejected");
+      await refreshCarrier();
+    } catch (error) {
+      console.error("Error rejecting carrier:", error);
+      toast.error("Failed to reject carrier");
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-8 text-center">
@@ -227,6 +313,39 @@ export default function CarrierDetails() {
               </p>
             )}
           </div>
+        </div>
+
+        <div className="mt-6 pt-5 border-t border-gray-200 flex flex-wrap gap-2">
+          {!carrier.isApproved ? (
+            <>
+              <button
+                onClick={approveCarrier}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                Approve Carrier
+              </button>
+              <button
+                onClick={rejectCarrier}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+              >
+                Reject Carrier
+              </button>
+            </>
+          ) : carrier.status === "active" ? (
+            <button
+              onClick={() => updateCarrierStatus("inactive")}
+              className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800"
+            >
+              Deactivate Carrier
+            </button>
+          ) : (
+            <button
+              onClick={() => updateCarrierStatus("active")}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Activate Carrier
+            </button>
+          )}
         </div>
       </div>
 
@@ -430,7 +549,9 @@ export default function CarrierDetails() {
                   Rating
                 </label>
                 <p className="mt-2 text-2xl font-bold text-yellow-500">
-                  {carrier.rating > 0 ? carrier.rating.toFixed(1) : "N/A"}
+                  {carrier.rating > 0
+                    ? parseFloat(carrier.rating.toFixed(2))
+                    : "N/A"}
                 </p>
               </div>
               <div>
