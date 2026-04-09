@@ -1,8 +1,6 @@
 // apps/customer/src/Sidebar.tsx
 import { NavLink } from "react-router-dom";
-import { useEffect, useState } from "react";
-import { auth, db } from "@config";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { useState } from "react";
 
 type SidebarProps = {
   mobileOpen?: boolean;
@@ -11,52 +9,10 @@ type SidebarProps = {
 
 export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const [activeOrdersCount, setActiveOrdersCount] = useState(0);
-
-  useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) {
-      setActiveOrdersCount(0);
-      return;
-    }
-
-    const q = query(
-      collection(db, "deliveries"),
-      where("customerId", "==", user.uid),
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const activeStatuses = new Set([
-          "assigned",
-          "picked_up",
-          "in_transit",
-          "out_for_delivery",
-        ]);
-
-        let count = 0;
-        snapshot.forEach((doc) => {
-          const status = String(doc.data().status || "");
-          if (activeStatuses.has(status)) {
-            count += 1;
-          }
-        });
-
-        setActiveOrdersCount(count);
-      },
-      (error) => {
-        console.error("Error loading active orders count:", error);
-      },
-    );
-
-    return () => unsubscribe();
-  }, []);
 
   const navItems = [
     { path: "/dashboard", icon: "home", label: "Home" },
     { path: "/orders", icon: "box", label: "My Orders" },
-    { path: "/track", icon: "map-pin", label: "Track Order" },
     { path: "/track-map", icon: "map", label: "Live Tracking" },
     { path: "/profile", icon: "user", label: "My Profile" },
     { path: "/settings", icon: "settings", label: "Settings" },
@@ -94,28 +50,6 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
               strokeLinejoin="round"
               strokeWidth={2}
               d="M20.354 15.354A9 9 0 015.646 5.646 9.003 9.003 0 0012 2c4.97 0 9.185 3.364 9.88 7.848.005.033.01.066.015.099a5.003 5.003 0 01-.9 9.407"
-            />
-          </svg>
-        );
-      case "map-pin":
-        return (
-          <svg
-            className={iconClass}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-            />
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
             />
           </svg>
         );
@@ -241,20 +175,6 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
           ))}
         </ul>
       </nav>
-
-      {/* Quick Stats (only when expanded) */}
-      {!collapsed && (
-        <div className="p-3 border-t border-emerald-800">
-          <NavLink
-            to="/orders?filter=active"
-            onClick={handleNavClick}
-            className="block bg-emerald-800 rounded-md p-3 transition-colors hover:bg-emerald-700"
-          >
-            <p className="text-xs text-emerald-200 mb-2">Active Orders</p>
-            <p className="text-2xl font-bold">{activeOrdersCount}</p>
-          </NavLink>
-        </div>
-      )}
     </aside>
   );
 }

@@ -8,7 +8,6 @@ import {
   faBox,
   faCircleCheck,
   faHourglassHalf,
-  faLocationDot,
   faMap,
   faMoneyBillWave,
   faPenToSquare,
@@ -84,12 +83,6 @@ export default function Dashboard({ user, userProfile }: Props) {
       color: "bg-blue-600 hover:bg-blue-700",
     },
     {
-      label: "Track Order",
-      icon: faLocationDot,
-      path: "/track",
-      color: "bg-green-600 hover:bg-green-700",
-    },
-    {
       label: "Live Tracking",
       icon: faMap,
       path: "/track-map",
@@ -139,9 +132,6 @@ export default function Dashboard({ user, userProfile }: Props) {
               </p>
               <p className="mt-0.5 text-2xl font-semibold text-blue-600">
                 {stats.totalOrders}
-              </p>
-              <p className="mt-1 text-xs font-medium text-blue-600">
-                Tap to view all orders →
               </p>
             </div>
           </div>
