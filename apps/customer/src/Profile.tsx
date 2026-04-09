@@ -1,7 +1,9 @@
 // apps/customer/src/Profile.tsx
 import { useState } from "react";
-import { db } from "@config";
+import { db, auth } from "@config";
 import { doc, updateDoc } from "firebase/firestore";
+import { signOut } from "firebase/auth";
+import { useNavigate } from "react-router-dom";
 import { toast, Toaster } from "react-hot-toast";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleCheck } from "@fortawesome/free-solid-svg-icons";
@@ -21,6 +23,7 @@ export default function Profile({ user, userProfile }: Props) {
   });
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(false);
+  const navigate = useNavigate();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -46,6 +49,16 @@ export default function Profile({ user, userProfile }: Props) {
       toast.error("Failed to update profile");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      navigate("/login");
+    } catch (error) {
+      console.error("Error logging out:", error);
+      toast.error("Failed to logout");
     }
   };
 
@@ -165,7 +178,7 @@ export default function Profile({ user, userProfile }: Props) {
                   {userProfile?.createdAt
                     ? new Date(
                         userProfile.createdAt.toDate?.() ||
-                          userProfile.createdAt
+                          userProfile.createdAt,
                       ).toLocaleDateString()
                     : "N/A"}
                 </p>
@@ -177,7 +190,10 @@ export default function Profile({ user, userProfile }: Props) {
               <div>
                 <p className="text-gray-500">Verified Email</p>
                 <p className="font-medium">
-                  <FontAwesomeIcon icon={faCircleCheck} className="mr-2 text-green-600" />
+                  <FontAwesomeIcon
+                    icon={faCircleCheck}
+                    className="mr-2 text-green-600"
+                  />
                   Yes
                 </p>
               </div>
@@ -202,6 +218,27 @@ export default function Profile({ user, userProfile }: Props) {
               </div>
             </div>
           </div>
+
+          {/* Logout Section */}
+          <button
+            onClick={handleLogout}
+            className="w-full px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium flex items-center justify-center gap-2"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+              />
+            </svg>
+            Logout
+          </button>
         </div>
       </div>
     </div>

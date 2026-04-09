@@ -12,36 +12,36 @@ interface AppRouterProps {
 
 export default function AppRouter({ user }: AppRouterProps) {
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="carrier-shell min-h-screen bg-[#0b1020] text-slate-100">
       {/* Persistent Navigation Header */}
-      <div className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-gray-200 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 py-2 flex items-center justify-between gap-4">
+      <div className="fixed top-0 left-0 right-0 z-40 border-b border-slate-800 bg-[#0f172a]/95 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
           {/* Brand */}
           <div className="flex items-center gap-2 shrink-0">
-            <span className="w-8 h-8 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-full flex items-center justify-center">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-cyan-500">
               <i className="fa-solid fa-truck-fast text-white text-xs" />
             </span>
-            <span className="font-bold text-gray-800 text-sm hidden sm:block">
+            <span className="hidden text-sm font-semibold text-slate-100 sm:block">
               PTROS Carrier
             </span>
           </div>
 
           {/* Page Tabs */}
-          <div className="inline-flex items-center gap-1 bg-gray-100 rounded-full p-1">
+          <div className="hidden items-center gap-1 rounded-full bg-slate-800 p-1 md:inline-flex">
             <NavLink
               to="/dashboard"
               className={({ isActive }) =>
                 `px-3 py-1.5 rounded-full text-sm font-semibold transition inline-flex items-center gap-1.5 ${
                   isActive
-                    ? "bg-white text-blue-700 shadow-sm"
-                    : "text-gray-600 hover:text-gray-800"
+                    ? "bg-slate-100 text-blue-700 shadow-sm"
+                    : "text-slate-300 hover:text-slate-100"
                 }`
               }
             >
               {({ isActive }) => (
                 <>
                   <span
-                    className={`w-6 h-6 rounded-full inline-flex items-center justify-center text-xs ${isActive ? "bg-blue-100 text-blue-700" : "bg-gray-200 text-gray-500"}`}
+                    className={`w-6 h-6 rounded-full inline-flex items-center justify-center text-xs ${isActive ? "bg-blue-100 text-blue-700" : "bg-slate-700 text-slate-300"}`}
                   >
                     <i className="fa-solid fa-chart-column" />
                   </span>
@@ -54,15 +54,15 @@ export default function AppRouter({ user }: AppRouterProps) {
               className={({ isActive }) =>
                 `px-3 py-1.5 rounded-full text-sm font-semibold transition inline-flex items-center gap-1.5 ${
                   isActive
-                    ? "bg-white text-purple-700 shadow-sm"
-                    : "text-gray-600 hover:text-gray-800"
+                    ? "bg-slate-100 text-blue-700 shadow-sm"
+                    : "text-slate-300 hover:text-slate-100"
                 }`
               }
             >
               {({ isActive }) => (
                 <>
                   <span
-                    className={`w-6 h-6 rounded-full inline-flex items-center justify-center text-xs ${isActive ? "bg-purple-100 text-purple-700" : "bg-gray-200 text-gray-500"}`}
+                    className={`w-6 h-6 rounded-full inline-flex items-center justify-center text-xs ${isActive ? "bg-blue-100 text-blue-700" : "bg-slate-700 text-slate-300"}`}
                   >
                     <i className="fa-solid fa-box" />
                   </span>
@@ -75,15 +75,15 @@ export default function AppRouter({ user }: AppRouterProps) {
               className={({ isActive }) =>
                 `px-3 py-1.5 rounded-full text-sm font-semibold transition inline-flex items-center gap-1.5 ${
                   isActive
-                    ? "bg-white text-emerald-700 shadow-sm"
-                    : "text-gray-600 hover:text-gray-800"
+                    ? "bg-slate-100 text-blue-700 shadow-sm"
+                    : "text-slate-300 hover:text-slate-100"
                 }`
               }
             >
               {({ isActive }) => (
                 <>
                   <span
-                    className={`w-6 h-6 rounded-full inline-flex items-center justify-center text-xs ${isActive ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-500"}`}
+                    className={`w-6 h-6 rounded-full inline-flex items-center justify-center text-xs ${isActive ? "bg-blue-100 text-blue-700" : "bg-slate-700 text-slate-300"}`}
                   >
                     <i className="fa-regular fa-clipboard" />
                   </span>
@@ -95,12 +95,22 @@ export default function AppRouter({ user }: AppRouterProps) {
 
           {/* User + Logout */}
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-gray-500 text-xs hidden md:block truncate max-w-[160px]">
+            <button
+              type="button"
+              className="hidden h-9 w-9 items-center justify-center rounded-full bg-slate-800 text-slate-200 md:inline-flex"
+              title="Notifications"
+            >
+              <i className="fa-regular fa-bell" />
+            </button>
+            <span className="hidden h-9 w-9 items-center justify-center rounded-full bg-slate-700 text-sm font-semibold text-slate-100 md:inline-flex">
+              {(user.email?.[0] || "C").toUpperCase()}
+            </span>
+            <span className="text-xs text-slate-400 hidden md:block truncate max-w-[160px]">
               {user.email}
             </span>
             <button
               onClick={() => signOut(auth)}
-              className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-red-600 px-3 py-1.5 rounded-full bg-gray-100 hover:bg-red-50 transition font-medium"
+              className="flex items-center gap-1.5 rounded-full bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:bg-slate-700 hover:text-red-300"
             >
               <i className="fa-solid fa-right-from-bracket" />
               <span className="hidden sm:inline">Logout</span>
@@ -110,7 +120,7 @@ export default function AppRouter({ user }: AppRouterProps) {
       </div>
 
       {/* Page Content */}
-      <main className="pb-20 md:pb-4">
+      <main className="pb-24 pt-[72px] md:pb-6">
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard user={user} />} />
@@ -121,15 +131,15 @@ export default function AppRouter({ user }: AppRouterProps) {
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-gray-200 z-50 md:hidden">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-800 bg-[#0f172a]/95 backdrop-blur md:hidden">
         <div className="flex justify-around">
           <NavLink
             to="/dashboard"
             className={({ isActive }) =>
               `flex-1 py-3 text-center text-xs font-medium transition ${
                 isActive
-                  ? "text-blue-600 border-t-2 border-blue-600"
-                  : "text-gray-600"
+                  ? "text-blue-400 border-t-2 border-blue-400"
+                  : "text-slate-400"
               }`
             }
           >
@@ -143,8 +153,8 @@ export default function AppRouter({ user }: AppRouterProps) {
             className={({ isActive }) =>
               `flex-1 py-3 text-center text-xs font-medium transition ${
                 isActive
-                  ? "text-blue-600 border-t-2 border-blue-600"
-                  : "text-gray-600"
+                  ? "text-blue-400 border-t-2 border-blue-400"
+                  : "text-slate-400"
               }`
             }
           >
@@ -158,8 +168,8 @@ export default function AppRouter({ user }: AppRouterProps) {
             className={({ isActive }) =>
               `flex-1 py-3 text-center text-xs font-medium transition ${
                 isActive
-                  ? "text-blue-600 border-t-2 border-blue-600"
-                  : "text-gray-600"
+                  ? "text-blue-400 border-t-2 border-blue-400"
+                  : "text-slate-400"
               }`
             }
           >
