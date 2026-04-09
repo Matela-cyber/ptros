@@ -191,7 +191,7 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
       } ${collapsed ? "lg:w-20" : "lg:w-64"}`}
     >
       {/* Logo */}
-      <div className="p-6 border-b border-emerald-800">
+      <div className="p-4 border-b border-emerald-800">
         <div className="flex items-center justify-between">
           {!collapsed && (
             <div className="flex items-center space-x-3">
@@ -219,15 +219,15 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-4 overflow-y-auto">
-        <ul className="space-y-2">
+      <nav className="flex-1 p-3 overflow-y-auto">
+        <ul className="space-y-1.5">
           {navItems.map((item) => (
             <li key={item.path}>
               <NavLink
                 to={item.path}
                 onClick={handleNavClick}
                 className={({ isActive }) =>
-                  `flex items-center px-4 py-3 rounded-lg transition-colors whitespace-nowrap ${
+                  `flex items-center px-3 py-2 rounded-md text-sm transition-colors whitespace-nowrap ${
                     isActive
                       ? "bg-emerald-800 text-white"
                       : "text-emerald-100 hover:bg-emerald-800 hover:text-white"
@@ -244,15 +244,14 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
 
       {/* Quick Stats (only when expanded) */}
       {!collapsed && (
-        <div className="p-4 border-t border-emerald-800">
+        <div className="p-3 border-t border-emerald-800">
           <NavLink
             to="/orders?filter=active"
             onClick={handleNavClick}
-            className="block bg-emerald-800 rounded-lg p-4 transition-colors hover:bg-emerald-700"
+            className="block bg-emerald-800 rounded-md p-3 transition-colors hover:bg-emerald-700"
           >
             <p className="text-xs text-emerald-200 mb-2">Active Orders</p>
             <p className="text-2xl font-bold">{activeOrdersCount}</p>
-            <p className="mt-1 text-xs text-emerald-200">Tap to view active orders →</p>
           </NavLink>
         </div>
       )}

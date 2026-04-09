@@ -1698,24 +1698,24 @@ export default function CreateOrder({ user }: Props) {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className="max-w-6xl mx-auto px-3 py-6 sm:px-4 lg:px-6">
       <Toaster position="top-right" />
 
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">
+            <h1 className="text-2xl font-semibold tracking-tight text-gray-800">
               Create New Order
             </h1>
-            <p className="text-gray-600 mt-2">
+            <p className="mt-1.5 text-sm text-gray-600">
               Fill in delivery details. Package location will start at pickup
               address.
             </p>
           </div>
           <button
             onClick={() => navigate("/orders")}
-            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
           >
             ← Back to Orders
           </button>
@@ -1723,7 +1723,7 @@ export default function CreateOrder({ user }: Props) {
       </div>
 
       {/* Location Status Banner */}
-      <div className="mb-6 bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-4">
+      <div className="mb-6 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100 p-4">
         <div className="flex items-center">
           <div className="flex-shrink-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center mr-3">
             <span className="text-white text-sm">
@@ -1742,7 +1742,7 @@ export default function CreateOrder({ user }: Props) {
         </div>
       </div>
 
-      <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4">
+      <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <span
             className={`px-3 py-1 rounded-full font-medium ${
@@ -1770,14 +1770,14 @@ export default function CreateOrder({ user }: Props) {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-8">
+      <form onSubmit={handleSubmit} className="space-y-6">
         {/* Section 1: Package */}
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <div className="flex items-center mb-6 pb-4 border-b">
+        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="mb-5 flex items-center border-b pb-3">
             <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center mr-3">
               1
             </div>
-            <h2 className="text-2xl font-bold text-gray-800">
+            <h2 className="text-xl font-semibold text-gray-800">
               Package Information
             </h2>
           </div>
@@ -1870,12 +1870,12 @@ export default function CreateOrder({ user }: Props) {
         </div>
 
         {/* Section 2: Pickup Details */}
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <div className="flex items-center mb-6 pb-4 border-b">
+        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="mb-5 flex items-center border-b pb-3">
             <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center mr-3">
               2
             </div>
-            <h2 className="text-2xl font-bold text-gray-800">
+            <h2 className="text-xl font-semibold text-gray-800">
               Pickup Details (Start Location)
             </h2>
           </div>
@@ -2029,12 +2029,12 @@ export default function CreateOrder({ user }: Props) {
         </div>
 
         {/* Section 3: Delivery Details */}
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <div className="flex items-center mb-6 pb-4 border-b">
+        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="mb-5 flex items-center border-b pb-3">
             <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center mr-3">
               3
             </div>
-            <h2 className="text-2xl font-bold text-gray-800">
+            <h2 className="text-xl font-semibold text-gray-800">
               Delivery Details (Destination)
             </h2>
           </div>
@@ -2192,12 +2192,12 @@ export default function CreateOrder({ user }: Props) {
         </div>
 
         {/* Section 4: Requirements & Payment */}
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <div className="flex items-center mb-6 pb-4 border-b">
+        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="mb-5 flex items-center border-b pb-3">
             <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center mr-3">
               4
             </div>
-            <h2 className="text-2xl font-bold text-gray-800">
+            <h2 className="text-xl font-semibold text-gray-800">
               Special Requirements & Payment
             </h2>
           </div>
@@ -2322,7 +2322,7 @@ export default function CreateOrder({ user }: Props) {
 
         {/* Location Summary */}
         {(formData.pickupCoordinates || formData.deliveryCoordinates) && (
-          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6">
+          <div className="rounded-lg border border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 p-5">
             <h3 className="text-lg font-semibold text-green-800 mb-4 flex items-center">
               <span className="mr-2">
                 <FontAwesomeIcon icon={faCircleCheck} />
@@ -2371,12 +2371,12 @@ export default function CreateOrder({ user }: Props) {
 
         {/* Section 5: Recommended Carrier */}
         {formData.pickupCoordinates && formData.deliveryCoordinates && (
-          <div className="bg-white rounded-xl shadow-lg p-8">
-            <div className="flex items-center mb-6 pb-4 border-b">
+          <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="mb-5 flex items-center border-b pb-3">
               <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center mr-3">
                 5
               </div>
-              <h2 className="text-2xl font-bold text-gray-800">
+              <h2 className="text-xl font-semibold text-gray-800">
                 Choose Recommended Carrier
               </h2>
             </div>
@@ -2441,7 +2441,7 @@ export default function CreateOrder({ user }: Props) {
                     return (
                       <label
                         key={carrier.id}
-                        className={`block rounded-xl border p-4 cursor-pointer transition ${
+                        className={`block cursor-pointer rounded-lg border p-4 transition ${
                           isSelected
                             ? "border-blue-500 bg-blue-50"
                             : "border-gray-200 hover:border-blue-300"
@@ -2515,7 +2515,7 @@ export default function CreateOrder({ user }: Props) {
         )}
 
         {/* Form Actions */}
-        <div className="bg-white rounded-xl shadow-lg p-6">
+        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
             <div>
               {formData.pickupCoordinates && formData.deliveryCoordinates && (
@@ -2532,7 +2532,7 @@ export default function CreateOrder({ user }: Props) {
               <button
                 type="button"
                 onClick={() => navigate("/orders")}
-                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition"
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
               >
                 Cancel
               </button>
@@ -2540,7 +2540,7 @@ export default function CreateOrder({ user }: Props) {
               <button
                 type="submit"
                 disabled={submitting}
-                className="px-8 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center shadow-md"
+                className="flex items-center rounded-md bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:from-blue-700 hover:to-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {submitting ? (
                   <>
@@ -2562,8 +2562,8 @@ export default function CreateOrder({ user }: Props) {
       </form>
 
       {/* Help Information */}
-      <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+      <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
           <div className="text-blue-600 font-medium mb-2">
             <FontAwesomeIcon icon={faLocationDot} className="mr-2" />
             Location Tracking
@@ -2574,7 +2574,7 @@ export default function CreateOrder({ user }: Props) {
           </p>
         </div>
 
-        <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4">
           <div className="text-green-600 font-medium mb-2">
             <FontAwesomeIcon icon={faMoneyBillWave} className="mr-2" />
             Pricing
@@ -2585,7 +2585,7 @@ export default function CreateOrder({ user }: Props) {
           </p>
         </div>
 
-        <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+        <div className="rounded-lg border border-purple-200 bg-purple-50 p-4">
           <div className="text-purple-600 font-medium mb-2">
             <FontAwesomeIcon icon={faTruckFast} className="mr-2" />
             Carrier Assignment
