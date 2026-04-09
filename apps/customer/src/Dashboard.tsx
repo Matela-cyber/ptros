@@ -103,143 +103,184 @@ export default function Dashboard({ user, userProfile }: Props) {
     },
   ];
 
+  const getStatusBadgeClass = (status: string) => {
+    if (status === "delivered") return "bg-green-100 text-green-800";
+    if (status === "in_transit") return "bg-blue-100 text-blue-800";
+    return "bg-amber-100 text-amber-800";
+  };
+
+  const formatStatus = (status: string) =>
+    status.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+
   return (
     <div>
-      <div className="mb-5 sm:mb-8">
-        <h1 className="text-2xl font-bold text-gray-800 sm:text-3xl">
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-gray-800">
           Welcome Back, {userProfile?.fullName || "Customer"}!
         </h1>
-        <p className="mt-2 text-sm text-gray-600 sm:text-base">
+        <p className="mt-1.5 text-sm text-gray-600">
           Here's an overview of your deliveries and account.
         </p>
       </div>
 
       {/* Stats Cards */}
-      <div className="mb-6 grid grid-cols-1 gap-3 sm:mb-8 sm:gap-6 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Link
           to="/orders?filter=all"
-          className="rounded-xl bg-white p-4 shadow transition hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 sm:p-6"
+          className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <div className="flex items-center">
-            <div className="p-3 bg-blue-100 rounded-lg mr-4">
-              <FontAwesomeIcon icon={faBox} className="text-2xl text-blue-600" />
+            <div className="mr-3 rounded-md bg-blue-100 p-2.5">
+              <FontAwesomeIcon icon={faBox} className="text-lg text-blue-600" />
             </div>
             <div>
-              <p className="text-xs text-gray-500 sm:text-sm">Total Orders</p>
-              <p className="text-2xl font-bold sm:text-3xl">{stats.totalOrders}</p>
-              <p className="mt-1 text-xs font-medium text-blue-600">Tap to view all orders →</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Total Orders
+              </p>
+              <p className="mt-0.5 text-2xl font-semibold text-blue-600">
+                {stats.totalOrders}
+              </p>
+              <p className="mt-1 text-xs font-medium text-blue-600">
+                Tap to view all orders →
+              </p>
             </div>
           </div>
         </Link>
 
         <Link
           to="/orders?filter=active"
-          className="rounded-xl bg-white p-4 shadow transition hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 sm:p-6"
+          className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
         >
           <div className="flex items-center">
-            <div className="p-3 bg-yellow-100 rounded-lg mr-4">
-              <FontAwesomeIcon icon={faHourglassHalf} className="text-2xl text-yellow-700" />
+            <div className="mr-3 rounded-md bg-yellow-100 p-2.5">
+              <FontAwesomeIcon
+                icon={faHourglassHalf}
+                className="text-lg text-yellow-700"
+              />
             </div>
             <div>
-              <p className="text-xs text-gray-500 sm:text-sm">Active Orders</p>
-              <p className="text-2xl font-bold sm:text-3xl">{stats.activeOrders}</p>
-              <p className="mt-1 text-xs font-medium text-yellow-700">Tap to view in-transit & assigned →</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Active Orders
+              </p>
+              <p className="mt-0.5 text-2xl font-semibold text-yellow-700">
+                {stats.activeOrders}
+              </p>
             </div>
           </div>
         </Link>
 
         <Link
           to="/orders?filter=completed"
-          className="rounded-xl bg-white p-4 shadow transition hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-green-500 sm:p-6"
+          className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md focus:outline-none focus:ring-2 focus:ring-green-500"
         >
           <div className="flex items-center">
-            <div className="p-3 bg-green-100 rounded-lg mr-4">
-              <FontAwesomeIcon icon={faCircleCheck} className="text-2xl text-green-600" />
+            <div className="mr-3 rounded-md bg-green-100 p-2.5">
+              <FontAwesomeIcon
+                icon={faCircleCheck}
+                className="text-lg text-green-600"
+              />
             </div>
             <div>
-              <p className="text-xs text-gray-500 sm:text-sm">Completed</p>
-              <p className="text-2xl font-bold sm:text-3xl">{stats.completedOrders}</p>
-              <p className="mt-1 text-xs font-medium text-green-700">Tap to view delivered orders →</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Completed
+              </p>
+              <p className="mt-0.5 text-2xl font-semibold text-green-600">
+                {stats.completedOrders}
+              </p>
             </div>
           </div>
         </Link>
 
         <Link
           to="/orders?filter=completed&focus=spent"
-          className="rounded-xl bg-white p-4 shadow transition hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-purple-500 sm:p-6"
+          className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md focus:outline-none focus:ring-2 focus:ring-purple-500"
         >
           <div className="flex items-center">
-            <div className="p-3 bg-purple-100 rounded-lg mr-4">
+            <div className="mr-3 rounded-md bg-purple-100 p-2.5">
               <FontAwesomeIcon
                 icon={faMoneyBillWave}
-                className="text-2xl text-purple-600"
+                className="text-lg text-purple-600"
               />
             </div>
             <div>
-              <p className="text-xs text-gray-500 sm:text-sm">Total Spent</p>
-              <p className="text-2xl font-bold sm:text-3xl">M{stats.totalSpent.toFixed(2)}</p>
-              <p className="mt-1 text-xs font-medium text-purple-700">Tap to view spending details →</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Total Spent
+              </p>
+              <p className="mt-0.5 text-2xl font-semibold text-purple-600">
+                M{stats.totalSpent.toFixed(2)}
+              </p>
             </div>
           </div>
         </Link>
       </div>
 
       {/* Quick Actions */}
-      <div className="mb-6 rounded-xl bg-white p-4 shadow sm:mb-8 sm:p-8">
-        <h3 className="mb-4 text-xl font-bold sm:mb-6 sm:text-2xl">Quick Actions</h3>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 md:grid-cols-4 md:gap-4">
+      <div className="mb-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <h3 className="mb-4 text-lg font-semibold text-gray-800">
+          Quick Actions
+        </h3>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {quickActions.map((action, index) => (
             <Link
               key={index}
               to={action.path}
-              className={`${action.color} rounded-lg p-3 text-center text-white transition transform hover:scale-105 sm:p-4`}
+              className={`${action.color} rounded-md p-3 text-center text-sm font-medium text-white shadow-sm transition hover:opacity-95`}
             >
-              <span className="mb-1 block text-2xl sm:mb-2 sm:text-3xl">
+              <span className="mb-1 block text-xl">
                 <FontAwesomeIcon icon={action.icon} />
               </span>
-              <span className="text-sm font-medium sm:text-base">{action.label}</span>
+              <span>{action.label}</span>
             </Link>
           ))}
         </div>
       </div>
 
       {/* Recent Orders */}
-      <div className="rounded-xl bg-white p-4 shadow sm:p-6">
-        <h3 className="mb-4 text-lg font-bold sm:text-xl">Recent Orders</h3>
+      <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <h3 className="mb-4 text-lg font-semibold text-gray-800">
+          Recent Orders
+        </h3>
         {deliveries.length === 0 ? (
           <p className="text-gray-500 text-center py-8">No orders yet</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px]">
               <thead>
-                <tr className="border-b">
-                  <th className="text-left py-3 px-4">Tracking Code</th>
-                  <th className="text-left py-3 px-4">Delivery To</th>
-                  <th className="text-left py-3 px-4">Status</th>
-                  <th className="text-left py-3 px-4">Date</th>
+                <tr className="border-b border-gray-200">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Tracking Code
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Delivery To
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Status
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Date
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {deliveries.map((delivery) => (
-                  <tr key={delivery.id} className="border-b hover:bg-gray-50">
-                    <td className="py-3 px-4 font-medium">
+                  <tr
+                    key={delivery.id}
+                    className="border-b border-gray-100 transition-colors hover:bg-gray-50"
+                  >
+                    <td className="px-4 py-3 text-sm font-medium text-gray-800">
                       {delivery.trackingCode}
                     </td>
-                    <td className="py-3 px-4">{delivery.deliveryAddress}</td>
-                    <td className="py-3 px-4">
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {delivery.deliveryAddress}
+                    </td>
+                    <td className="px-4 py-3">
                       <span
-                        className={`px-3 py-1 rounded-full text-sm font-medium ${
-                          delivery.status === "delivered"
-                            ? "bg-green-100 text-green-800"
-                            : delivery.status === "in_transit"
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-yellow-100 text-yellow-800"
-                        }`}
+                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusBadgeClass(delivery.status)}`}
                       >
-                        {delivery.status}
+                        {formatStatus(delivery.status)}
                       </span>
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="px-4 py-3 text-sm text-gray-600">
                       {delivery.createdAt.toLocaleDateString()}
                     </td>
                   </tr>

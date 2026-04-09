@@ -17,12 +17,18 @@ import { useNavigate } from "react-router-dom";
 import { toast, Toaster } from "react-hot-toast";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
+  faCircleHalfStroke,
   faKey,
   faLock,
   faRightFromBracket,
   faTrashCan,
   faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
+import {
+  applyDarkMode,
+  getStoredSettings,
+  saveStoredSettings,
+} from "./settingsStore";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -31,6 +37,7 @@ export default function Settings() {
     smsNotifications: true,
     pushNotifications: true,
     showProfile: true,
+    darkMode: false,
   });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -54,7 +61,12 @@ export default function Settings() {
   useEffect(() => {
     const loadSecurityProfile = async () => {
       const user = auth.currentUser;
-      if (!user) return;
+      if (!user) {
+        const stored = getStoredSettings();
+        setSettings((prev) => ({ ...prev, darkMode: stored.darkMode }));
+        applyDarkMode(stored.darkMode);
+        return;
+      }
 
       setMfaEnabled(multiFactor(user).enrolledFactors.length > 0);
 
@@ -63,6 +75,17 @@ export default function Settings() {
         if (userDoc.exists()) {
           const data = userDoc.data();
           setMfaPhoneNumber(String(data.phone || data.whatsapp || ""));
+
+          const docDarkMode = Boolean(
+            data?.preferences?.darkMode ?? data?.darkMode,
+          );
+          setSettings((prev) => ({ ...prev, darkMode: docDarkMode }));
+          applyDarkMode(docDarkMode);
+          saveStoredSettings({ darkMode: docDarkMode });
+        } else {
+          const stored = getStoredSettings();
+          setSettings((prev) => ({ ...prev, darkMode: stored.darkMode }));
+          applyDarkMode(stored.darkMode);
         }
       } catch (error) {
         console.error("Error loading security profile:", error);
@@ -96,17 +119,46 @@ export default function Settings() {
       throw new Error("reCAPTCHA container not ready");
     }
 
-    const verifier = new RecaptchaVerifier(auth, recaptchaContainerRef.current, {
-      size: "invisible",
-    });
+    const verifier = new RecaptchaVerifier(
+      auth,
+      recaptchaContainerRef.current,
+      {
+        size: "invisible",
+      },
+    );
 
     await verifier.render();
     recaptchaVerifierRef.current = verifier;
     return verifier;
   };
 
-  const handleToggle = (key: keyof typeof settings) => {
-    setSettings((prev) => ({ ...prev, [key]: !prev[key] }));
+  const handleToggle = async (key: keyof typeof settings) => {
+    const nextSettings = {
+      ...settings,
+      [key]: !settings[key],
+    };
+
+    setSettings(nextSettings);
+
+    if (key === "darkMode") {
+      applyDarkMode(Boolean(nextSettings.darkMode));
+      saveStoredSettings({ darkMode: Boolean(nextSettings.darkMode) });
+    }
+
+    const user = auth.currentUser;
+    if (user) {
+      try {
+        await updateDoc(doc(db, "users", user.uid), {
+          preferences: nextSettings,
+          darkMode: Boolean(nextSettings.darkMode),
+        });
+      } catch (error) {
+        console.error("Error saving preference:", error);
+        toast.error("Could not sync preference, saved locally.");
+        return;
+      }
+    }
+
     toast.success("Preference updated");
   };
 
@@ -198,7 +250,10 @@ export default function Settings() {
       console.error("Error changing password:", error);
       const err = error as { code?: string };
 
-      if (err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
+      if (
+        err.code === "auth/wrong-password" ||
+        err.code === "auth/invalid-credential"
+      ) {
         toast.error("Current password is incorrect.");
       } else if (err.code === "auth/weak-password") {
         toast.error("New password is too weak.");
@@ -260,10 +315,15 @@ export default function Settings() {
       console.error("Error starting 2FA enrollment:", error);
       const err = error as { code?: string };
 
-      if (err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
+      if (
+        err.code === "auth/wrong-password" ||
+        err.code === "auth/invalid-credential"
+      ) {
         toast.error("Current password is incorrect.");
       } else if (err.code === "auth/operation-not-allowed") {
-        toast.error("Phone authentication must be enabled in Firebase Console.");
+        toast.error(
+          "Phone authentication must be enabled in Firebase Console.",
+        );
       } else if (err.code === "auth/invalid-phone-number") {
         toast.error("Phone number format is invalid.");
       } else if (err.code === "auth/quota-exceeded") {
@@ -337,7 +397,9 @@ export default function Settings() {
     }
 
     if (!mfaPassword.trim()) {
-      toast.error("Enter your current password to disable two-factor authentication.");
+      toast.error(
+        "Enter your current password to disable two-factor authentication.",
+      );
       return;
     }
 
@@ -366,7 +428,10 @@ export default function Settings() {
       console.error("Error disabling 2FA:", error);
       const err = error as { code?: string };
 
-      if (err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
+      if (
+        err.code === "auth/wrong-password" ||
+        err.code === "auth/invalid-credential"
+      ) {
         toast.error("Current password is incorrect.");
       } else {
         toast.error("Failed to disable two-factor authentication.");
@@ -381,10 +446,40 @@ export default function Settings() {
       <Toaster position="top-right" />
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-800">Settings</h1>
-        <p className="text-gray-600 mt-2">Manage your preferences and account</p>
+        <p className="text-gray-600 mt-2">
+          Manage your preferences and account
+        </p>
       </div>
 
       <div className="max-w-2xl space-y-6">
+        {/* Appearance */}
+        <div className="bg-white rounded-xl shadow p-6">
+          <h2 className="text-xl font-bold mb-6">Appearance</h2>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-gray-800">Dark Mode</p>
+              <p className="text-sm text-gray-500">
+                Reduce brightness and use a darker interface theme
+              </p>
+            </div>
+            <button
+              onClick={() => handleToggle("darkMode")}
+              className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
+                settings.darkMode ? "bg-blue-600" : "bg-gray-300"
+              }`}
+            >
+              <span className="absolute left-2 text-[10px] text-white/90">
+                <FontAwesomeIcon icon={faCircleHalfStroke} />
+              </span>
+              <span
+                className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
+                  settings.darkMode ? "translate-x-7" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
         {/* Notifications */}
         <div className="bg-white rounded-xl shadow p-6">
           <h2 className="text-xl font-bold mb-6">Notifications</h2>
@@ -404,7 +499,9 @@ export default function Settings() {
               >
                 <span
                   className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
-                    settings.emailNotifications ? "translate-x-7" : "translate-x-1"
+                    settings.emailNotifications
+                      ? "translate-x-7"
+                      : "translate-x-1"
                   }`}
                 />
               </button>
@@ -425,7 +522,9 @@ export default function Settings() {
               >
                 <span
                   className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
-                    settings.smsNotifications ? "translate-x-7" : "translate-x-1"
+                    settings.smsNotifications
+                      ? "translate-x-7"
+                      : "translate-x-1"
                   }`}
                 />
               </button>
@@ -446,7 +545,9 @@ export default function Settings() {
               >
                 <span
                   className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
-                    settings.pushNotifications ? "translate-x-7" : "translate-x-1"
+                    settings.pushNotifications
+                      ? "translate-x-7"
+                      : "translate-x-1"
                   }`}
                 />
               </button>
@@ -587,7 +688,9 @@ export default function Settings() {
             <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-medium text-gray-800">SMS two-factor authentication</p>
+                  <p className="font-medium text-gray-800">
+                    SMS two-factor authentication
+                  </p>
                   <p className="text-sm text-gray-500">
                     Protect your account with a one-time code sent by SMS.
                   </p>
@@ -702,8 +805,8 @@ export default function Settings() {
               />
 
               <p className="text-xs text-gray-500">
-                Make sure Phone Authentication is enabled in Firebase Console and
-                your phone number uses international format.
+                Make sure Phone Authentication is enabled in Firebase Console
+                and your phone number uses international format.
               </p>
             </div>
           )}
@@ -736,8 +839,8 @@ export default function Settings() {
               Delete Account
             </h3>
             <p className="text-red-700 mb-6">
-              Are you sure you want to delete your account? This action cannot be
-              undone and all your data will be permanently removed.
+              Are you sure you want to delete your account? This action cannot
+              be undone and all your data will be permanently removed.
             </p>
             <div className="flex gap-3">
               <button

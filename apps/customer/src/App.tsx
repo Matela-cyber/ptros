@@ -14,6 +14,11 @@ import ForgotPassword from "./ForgotPassword";
 import GuestTrack from "./GuestTrack";
 import PackageTracking from "./components/PackageTracking";
 import { Toaster } from "react-hot-toast";
+import {
+  applyDarkMode,
+  getStoredSettings,
+  saveStoredSettings,
+} from "./settingsStore";
 
 const REQUIRED_ROLE = "customer";
 
@@ -23,14 +28,28 @@ function App() {
   const [userRole, setUserRole] = useState<string | null>(null);
 
   useEffect(() => {
+    applyDarkMode(false);
+
     const unsub = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         const userDoc = await getDoc(doc(db, "users", currentUser.uid));
         const role = userDoc.exists() ? userDoc.data()?.role : null;
+        const stored = getStoredSettings();
+        const darkModeEnabled = userDoc.exists()
+          ? Boolean(
+              userDoc.data()?.preferences?.darkMode ??
+              userDoc.data()?.darkMode ??
+              stored.darkMode,
+            )
+          : stored.darkMode;
+
+        applyDarkMode(darkModeEnabled);
+        saveStoredSettings({ darkMode: darkModeEnabled });
 
         setUser(currentUser);
         setUserRole(role);
       } else {
+        applyDarkMode(false);
         setUser(null);
         setUserRole(null);
       }

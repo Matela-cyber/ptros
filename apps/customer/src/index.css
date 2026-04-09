@@ -3,8 +3,65 @@
 @tailwind utilities;
 
 :root {
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
-    Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu",
+    "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+
+  --primary: #2563eb;
+  --primary-dark: #1e40af;
+  --primary-light: #3b82f6;
+  --primary-lighter: #60a5fa;
+  --primary-bg: #eff6ff;
+
+  --accent: #f59e0b;
+  --accent-dark: #d97706;
+  --accent-light: #fbbf24;
+  --accent-bg: #fef3c7;
+
+  --success: #10b981;
+  --success-dark: #059669;
+  --success-light: #34d399;
+  --success-bg: #d1fae5;
+
+  --error: #ef4444;
+  --error-dark: #dc2626;
+  --error-light: #f87171;
+  --error-bg: #fee2e2;
+
+  --warning: #f59e0b;
+  --warning-dark: #d97706;
+  --warning-light: #fbbf24;
+  --warning-bg: #fef3c7;
+
+  --info: #3b82f6;
+  --info-dark: #2563eb;
+  --info-light: #60a5fa;
+  --info-bg: #dbeafe;
+
+  --bg: #f9fafb;
+  --bg-dark: #f3f4f6;
+  --card-bg: #ffffff;
+
+  --text: #111827;
+  --text-light: #6b7280;
+  --text-lighter: #9ca3af;
+
+  --border: #e5e7eb;
+  --border-light: #f3f4f6;
+
+  --dark-bg: #111827;
+  --dark-card: #1f2937;
+  --dark-text: #f9fafb;
+  --dark-text-secondary: #9ca3af;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  --shadow-md:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg:
+    0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl:
+    0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 
 /* Simple global styles */
@@ -21,11 +78,76 @@ body,
 body {
   margin: 0;
   font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
-    monospace;
+  background-color: var(--bg);
+  color: var(--text);
 }
 
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+/* Dark mode (enabled by toggling html.dark) */
+html.dark body {
+  background-color: #0b1220;
+  color: #e5e7eb;
+}
+
+html.dark .bg-white {
+  background-color: #111827 !important;
+}
+
+html.dark .bg-gray-50,
+html.dark .bg-gray-100 {
+  background-color: #0f172a !important;
+}
+
+html.dark .text-gray-900,
+html.dark .text-gray-800 {
+  color: #f3f4f6 !important;
+}
+
+html.dark .text-gray-700,
+html.dark .text-gray-600,
+html.dark .text-gray-500,
+html.dark .text-gray-400 {
+  color: #9ca3af !important;
+}
+
+html.dark .border-gray-100,
+html.dark .border-gray-200,
+html.dark .border-gray-300 {
+  border-color: #374151 !important;
+}
+
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: #0b1220 !important;
+  color: #e5e7eb !important;
+  border-color: #374151 !important;
+}
+
+html.dark .shadow,
+html.dark .shadow-sm,
+html.dark .shadow-md,
+html.dark .shadow-lg,
+html.dark .shadow-xl {
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.35) !important;
+}
+
+html.dark img,
+html.dark svg {
+  filter: brightness(0.8);
+}
+
+code {
+  font-family:
+    source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
+}
