@@ -25,6 +25,48 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #fff;
-  color: #111;
+  background: #0b1020;
+  color: #e5e7eb;
+}
+
+.carrier-shell {
+  background:
+    radial-gradient(
+      1200px 600px at 0% -20%,
+      rgba(59, 130, 246, 0.18),
+      transparent
+    ),
+    radial-gradient(
+      1000px 500px at 100% -20%,
+      rgba(34, 211, 238, 0.12),
+      transparent
+    ),
+    #0b1020;
+}
+
+.carrier-shell .bg-white {
+  background-color: #111827 !important;
+}
+
+.carrier-shell .text-gray-900,
+.carrier-shell .text-gray-800 {
+  color: #f3f4f6 !important;
+}
+
+.carrier-shell .text-gray-700,
+.carrier-shell .text-gray-600,
+.carrier-shell .text-gray-500,
+.carrier-shell .text-gray-400 {
+  color: #9ca3af !important;
+}
+
+.carrier-shell .border-gray-100,
+.carrier-shell .border-gray-200,
+.carrier-shell .border-gray-300 {
+  border-color: #374151 !important;
+}
+
+.carrier-shell .bg-gray-50,
+.carrier-shell .bg-gray-100 {
+  background-color: #0f172a !important;
 }
