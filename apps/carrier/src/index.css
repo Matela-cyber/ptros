@@ -25,8 +25,47 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #0b1020;
-  color: #e5e7eb;
+  background: #f9fafb;
+  color: #111827;
+}
+
+/* Carrier authenticated app cleanup scope */
+.carrier-interface .text-white {
+  color: #111827 !important;
+}
+
+.carrier-interface .text-slate-100,
+.carrier-interface .text-slate-200,
+.carrier-interface .text-blue-100,
+.carrier-interface .text-blue-200,
+.carrier-interface .text-purple-100,
+.carrier-interface .text-purple-200,
+.carrier-interface .text-green-100,
+.carrier-interface .text-emerald-100,
+.carrier-interface .text-cyan-100,
+.carrier-interface .text-fuchsia-100,
+.carrier-interface .text-amber-100,
+.carrier-interface .text-yellow-300,
+.carrier-interface .text-pink-100 {
+  color: #334155 !important;
+}
+
+.carrier-interface [class*="bg-white/"] {
+  background-color: #f3f4f6 !important;
+}
+
+.carrier-interface [class*="border-white/"] {
+  border-color: #d1d5db !important;
+}
+
+.carrier-interface [class*="bg-gradient-to"] {
+  background-image: none !important;
+}
+
+.carrier-interface .shadow-2xl,
+.carrier-interface .shadow-xl,
+.carrier-interface .shadow-lg {
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12) !important;
 }
 
 .carrier-shell {

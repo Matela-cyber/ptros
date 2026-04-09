@@ -584,7 +584,7 @@ export default function MyDeliveries() {
                 className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition"
               >
                 {/* Card Header */}
-                <div className="p-4 border-b bg-gradient-to-r from-gray-50 to-gray-100">
+                <div className="p-4 border-b bg-gray-50">
                   <div className="flex justify-between items-start">
                     <div>
                       <div className="flex items-center gap-2 mb-2">
@@ -742,7 +742,7 @@ export default function MyDeliveries() {
                             setSelectedDelivery(delivery);
                             setShowOtpModal(true);
                           }}
-                          className="w-full py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-medium hover:shadow-md transition flex items-center justify-center gap-2"
+                          className="w-full py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition flex items-center justify-center gap-2"
                         >
                           <i className="fa-solid fa-circle-check" />
                           Complete Delivery

@@ -241,12 +241,12 @@ export default function Dashboard({ user }: DashboardProps) {
 
   if (loading || statsLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="relative">
-            <div className="w-20 h-20 border-4 border-purple-300 border-t-indigo-600 rounded-full animate-spin mx-auto shadow-lg"></div>
+            <div className="w-20 h-20 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full animate-pulse"></div>
+              <div className="w-10 h-10 bg-blue-500 rounded-full animate-pulse"></div>
             </div>
           </div>
           <p className="mt-6 text-gray-700 font-semibold text-lg">
@@ -258,7 +258,7 @@ export default function Dashboard({ user }: DashboardProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
+    <div className="carrier-clean-ui min-h-screen bg-gray-50">
       <Toaster
         position="top-center"
         toastOptions={{
@@ -288,11 +288,11 @@ export default function Dashboard({ user }: DashboardProps) {
 
       {/* Offline Banner */}
       {!isSharing && (
-        <div className="bg-gradient-to-r from-rose-100 via-red-100 to-orange-100 border-b-2 border-red-300 shadow-md">
+        <div className="bg-red-50 border-b border-red-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
             <div className="flex items-center gap-3">
               <div className="flex-shrink-0">
-                <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-lg"></div>
+                <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
               </div>
               <div className="flex-1">
                 <p className="font-bold text-red-900">You are Offline</p>
@@ -303,7 +303,7 @@ export default function Dashboard({ user }: DashboardProps) {
               </div>
               <button
                 onClick={() => setShowLocationModal(true)}
-                className="px-5 py-2.5 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-xl text-sm font-bold hover:from-red-700 hover:to-orange-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-105"
+                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 transition"
               >
                 Enable Now
               </button>
@@ -313,7 +313,7 @@ export default function Dashboard({ user }: DashboardProps) {
       )}
 
       {/* Header */}
-      <header className="bg-gradient-to-r from-indigo-900 via-purple-900 to-pink-900 text-white sticky top-0 z-40 shadow-2xl border-b-2 border-purple-600">
+      <header className="hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-4 gap-4">
             <div>
@@ -380,20 +380,19 @@ export default function Dashboard({ user }: DashboardProps) {
           <button
             type="button"
             onClick={() => openStatModal("todayDeliveries")}
-            className="bg-gradient-to-br from-emerald-500 via-green-600 to-teal-600 rounded-2xl p-6 text-white shadow-2xl transform hover:scale-105 transition-all hover:shadow-green-500/50 border-2 border-emerald-400/30 text-left"
+            className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition text-left"
           >
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-green-100 text-sm font-medium uppercase tracking-wider">
+                <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">
                   Today's Deliveries
                 </p>
-                <p className="text-3xl font-bold mt-2">
+                <p className="text-3xl font-bold mt-2 text-emerald-700">
                   {stats.todayDeliveries}
                 </p>
-                <p className="text-green-100 text-xs mt-2">Tap to view list</p>
               </div>
-              <div className="bg-white/20 rounded-xl p-3">
-                <i className="fa-solid fa-truck-fast text-2xl"></i>
+              <div className="bg-emerald-100 text-emerald-700 rounded-xl p-3">
+                <i className="fa-solid fa-truck-fast text-xl"></i>
               </div>
             </div>
           </button>
@@ -401,22 +400,19 @@ export default function Dashboard({ user }: DashboardProps) {
           <button
             type="button"
             onClick={() => openStatModal("totalDeliveries")}
-            className="bg-gradient-to-br from-cyan-500 via-blue-600 to-indigo-600 rounded-2xl p-6 text-white shadow-2xl transform hover:scale-105 transition-all hover:shadow-cyan-500/50 border-2 border-cyan-400/30 text-left"
+            className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition text-left"
           >
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-blue-100 text-sm font-medium uppercase tracking-wider">
+                <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">
                   Total Deliveries
                 </p>
-                <p className="text-3xl font-bold mt-2">
+                <p className="text-3xl font-bold mt-2 text-blue-700">
                   {stats.totalDeliveries}
                 </p>
-                <p className="text-blue-100 text-xs mt-2">
-                  Tap to view history
-                </p>
               </div>
-              <div className="bg-white/20 rounded-xl p-3">
-                <i className="fa-solid fa-box-open text-2xl"></i>
+              <div className="bg-blue-100 text-blue-700 rounded-xl p-3">
+                <i className="fa-solid fa-box-open text-xl"></i>
               </div>
             </div>
           </button>
@@ -424,22 +420,19 @@ export default function Dashboard({ user }: DashboardProps) {
           <button
             type="button"
             onClick={() => openStatModal("totalEarnings")}
-            className="bg-gradient-to-br from-fuchsia-500 via-purple-600 to-violet-600 rounded-2xl p-6 text-white shadow-2xl transform hover:scale-105 transition-all hover:shadow-purple-500/50 border-2 border-fuchsia-400/30 text-left"
+            className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition text-left"
           >
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-purple-100 text-sm font-medium uppercase tracking-wider">
+                <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">
                   Total Earnings
                 </p>
-                <p className="text-3xl font-bold mt-2">
+                <p className="text-3xl font-bold mt-2 text-purple-700">
                   {formatCurrency(stats.totalEarnings)}
                 </p>
-                <p className="text-purple-100 text-xs mt-2">
-                  Tap for breakdown
-                </p>
               </div>
-              <div className="bg-white/20 rounded-xl p-3">
-                <i className="fa-solid fa-chart-line text-2xl"></i>
+              <div className="bg-purple-100 text-purple-700 rounded-xl p-3">
+                <i className="fa-solid fa-chart-line text-xl"></i>
               </div>
             </div>
           </button>
@@ -447,23 +440,22 @@ export default function Dashboard({ user }: DashboardProps) {
           <button
             type="button"
             onClick={() => openStatModal("rating")}
-            className="bg-gradient-to-br from-yellow-500 via-amber-600 to-orange-600 rounded-2xl p-6 text-white shadow-2xl transform hover:scale-105 transition-all hover:shadow-amber-500/50 border-2 border-yellow-400/30 text-left"
+            className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition text-left"
           >
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-amber-100 text-sm font-medium uppercase tracking-wider">
+                <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">
                   Rating
                 </p>
                 <div className="flex items-center gap-2 mt-2">
-                  <span className="text-3xl font-bold">
+                  <span className="text-3xl font-bold text-amber-700">
                     {parseFloat(stats.rating.toFixed(2))}
                   </span>
-                  <i className="fa-solid fa-star text-amber-200 text-xl"></i>
+                  <i className="fa-solid fa-star text-amber-500 text-xl"></i>
                 </div>
-                <p className="text-amber-100 text-xs mt-2">Customer score</p>
               </div>
-              <div className="bg-white/20 rounded-xl p-3">
-                <i className="fa-solid fa-face-smile text-2xl"></i>
+              <div className="bg-amber-100 text-amber-700 rounded-xl p-3">
+                <i className="fa-solid fa-face-smile text-xl"></i>
               </div>
             </div>
           </button>
@@ -474,57 +466,63 @@ export default function Dashboard({ user }: DashboardProps) {
           <button
             type="button"
             onClick={() => navigate("/tasks")}
-            className="text-left bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl p-5 shadow-xl hover:shadow-emerald-500/40 hover:-translate-y-0.5 transition-all"
+            className="text-left bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md transition"
           >
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-emerald-100 text-xs uppercase tracking-wider font-semibold">
+                <p className="text-gray-500 text-xs uppercase tracking-wider font-semibold">
                   Tasks
                 </p>
-                <p className="text-xl font-bold mt-1">Open Tasks</p>
-                <p className="text-emerald-100 text-sm mt-1">
+                <p className="text-xl font-bold mt-1 text-gray-800">
+                  Open Tasks
+                </p>
+                <p className="text-gray-600 text-sm mt-1">
                   Accept assigned or available jobs
                 </p>
               </div>
-              <i className="fa-solid fa-list-check text-2xl"></i>
+              <i className="fa-solid fa-list-check text-2xl text-emerald-600"></i>
             </div>
           </button>
 
           <button
             type="button"
             onClick={() => navigate("/deliveries")}
-            className="text-left bg-gradient-to-r from-fuchsia-500 to-violet-600 text-white rounded-2xl p-5 shadow-xl hover:shadow-fuchsia-500/40 hover:-translate-y-0.5 transition-all"
+            className="text-left bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md transition"
           >
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-fuchsia-100 text-xs uppercase tracking-wider font-semibold">
+                <p className="text-gray-500 text-xs uppercase tracking-wider font-semibold">
                   Deliveries
                 </p>
-                <p className="text-xl font-bold mt-1">My Deliveries</p>
-                <p className="text-fuchsia-100 text-sm mt-1">
+                <p className="text-xl font-bold mt-1 text-gray-800">
+                  My Deliveries
+                </p>
+                <p className="text-gray-600 text-sm mt-1">
                   Update delivery statuses quickly
                 </p>
               </div>
-              <i className="fa-solid fa-box text-2xl"></i>
+              <i className="fa-solid fa-box text-2xl text-purple-600"></i>
             </div>
           </button>
 
           <button
             type="button"
             onClick={() => navigate("/deliveries")}
-            className="text-left bg-gradient-to-r from-slate-700 to-gray-900 text-white rounded-2xl p-5 shadow-xl hover:shadow-gray-500/40 hover:-translate-y-0.5 transition-all"
+            className="text-left bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md transition"
           >
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-slate-200 text-xs uppercase tracking-wider font-semibold">
+                <p className="text-gray-500 text-xs uppercase tracking-wider font-semibold">
                   Recent Deliveries
                 </p>
-                <p className="text-xl font-bold mt-1">View History</p>
-                <p className="text-slate-200 text-sm mt-1">
+                <p className="text-xl font-bold mt-1 text-gray-800">
+                  View History
+                </p>
+                <p className="text-gray-600 text-sm mt-1">
                   See completed and active deliveries
                 </p>
               </div>
-              <i className="fa-solid fa-clock-rotate-left text-2xl"></i>
+              <i className="fa-solid fa-clock-rotate-left text-2xl text-slate-600"></i>
             </div>
           </button>
         </div>
@@ -1492,6 +1490,29 @@ export default function Dashboard({ user }: DashboardProps) {
         }
         .animate-fadeIn {
           animation: fadeIn 0.2s ease-out;
+        }
+
+        .carrier-clean-ui [class*="bg-gradient-to"] {
+          background-image: none !important;
+        }
+
+        .carrier-clean-ui .shadow-2xl,
+        .carrier-clean-ui .shadow-xl,
+        .carrier-clean-ui .shadow-lg {
+          box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12) !important;
+        }
+
+        .carrier-clean-ui .border-2 {
+          border-width: 1px !important;
+        }
+
+        .carrier-clean-ui .transform {
+          transform: none !important;
+        }
+
+        .carrier-clean-ui [class*="text-transparent"] {
+          color: #111827 !important;
+          -webkit-text-fill-color: currentColor !important;
         }
       `}{" "}
         as any
