@@ -16,7 +16,7 @@ import { toast, Toaster } from "react-hot-toast";
 import { CarrierService } from "./carrierService";
 import { useDeliveryStatus } from "./hooks/useDeliveryStatus";
 import { getCarrierLiveTrackUrl } from "./liveTrackUrl";
-import { formatCurrency, formatDate } from "./utils";
+import { formatCurrency, formatDate, formatNumber } from "./utils";
 
 interface Delivery {
   id: string;
@@ -584,10 +584,7 @@ export default function MyDeliveries() {
                         </span>
                         {delivery.packageWeight > 0 && (
                           <span className="font-medium whitespace-nowrap">
-                            {parseFloat(
-                              Number(delivery.packageWeight).toFixed(2),
-                            )}{" "}
-                            kg
+                            {formatNumber(delivery.packageWeight)} kg
                           </span>
                         )}
                       </div>
@@ -634,7 +631,7 @@ export default function MyDeliveries() {
                           <div className="flex items-center justify-between text-sm">
                             <span className="text-gray-600">Distance:</span>
                             <span className="font-medium">
-                              {parseFloat(delivery.distance.toFixed(2))} km
+                              {formatNumber(delivery.distance)} km
                             </span>
                           </div>
                         )}

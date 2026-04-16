@@ -1,3 +1,14 @@
+// Format a number for display (non-money): no trailing zeros if integer, up to 2 decimals if needed
+export const formatNumber = (value?: number | null) => {
+  if (value == null || Number.isNaN(value)) return "0";
+  // Show up to 2 decimals, but trim trailing zeros
+  return value % 1 === 0
+    ? value.toString()
+    : value
+        .toFixed(2)
+        .replace(/\.00$/, "")
+        .replace(/(\.[1-9]*)0+$/, "$1");
+};
 export const formatCoords = (lat?: number, lng?: number) => {
   if (lat == null || lng == null) return "-";
   return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
