@@ -190,48 +190,49 @@ export default function AvailableTasks() {
           </div>
 
           {/* Tab Navigation */}
-          <div className="inline-flex items-center gap-2 bg-gray-100 rounded-full p-1">
+          <div className="inline-flex items-center gap-1 sm:gap-1.5 md:gap-2 bg-gray-100 rounded-full p-0.5 sm:p-1">
             <button
               onClick={() => setTab("assigned")}
-              className={`px-4 py-2 rounded-full text-sm font-semibold transition inline-flex items-center gap-2 ${
+              className={`px-2 sm:px-3 md:px-4 py-1 sm:py-1.5 md:py-2 rounded-full text-sm font-semibold transition inline-flex items-center gap-1 sm:gap-1.5 md:gap-2 ${
                 tab === "assigned"
                   ? "bg-white text-blue-700 shadow-sm"
                   : "text-gray-600 hover:text-gray-800"
               }`}
             >
               <span
-                className={`w-6 h-6 rounded-full inline-flex items-center justify-center ${
+                className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full inline-flex items-center justify-center ${
                   tab === "assigned"
                     ? "bg-blue-100 text-blue-700"
                     : "bg-gray-200 text-gray-600"
                 }`}
               >
-                <i className="fa-solid fa-thumbtack" />
+                <i className="fa-solid fa-thumbtack text-xs sm:text-sm" />
               </span>
               Assigned
-              <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+              <span className="text-xs font-bold text-blue-700 bg-blue-100 px-1 sm:px-1.5 md:px-2 py-0.5 rounded-full">
                 {totalAssignedCount}
               </span>
             </button>
+
             <button
               onClick={() => setTab("available")}
-              className={`px-4 py-2 rounded-full text-sm font-semibold transition inline-flex items-center gap-2 ${
+              className={`px-2 sm:px-3 md:px-4 py-1 sm:py-1.5 md:py-2 rounded-full text-sm font-semibold transition inline-flex items-center gap-1 sm:gap-1.5 md:gap-2 ${
                 tab === "available"
                   ? "bg-white text-emerald-700 shadow-sm"
                   : "text-gray-600 hover:text-gray-800"
               }`}
             >
               <span
-                className={`w-6 h-6 rounded-full inline-flex items-center justify-center ${
+                className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full inline-flex items-center justify-center ${
                   tab === "available"
                     ? "bg-emerald-100 text-emerald-700"
                     : "bg-gray-200 text-gray-600"
                 }`}
               >
-                <i className="fa-solid fa-list-check" />
+                <i className="fa-solid fa-list-check text-xs sm:text-sm" />
               </span>
               Available
-              <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+              <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-1 sm:px-1.5 md:px-2 py-0.5 rounded-full">
                 {totalAvailableCount}
               </span>
             </button>
@@ -240,35 +241,6 @@ export default function AvailableTasks() {
       </div>
 
       <div className="p-4">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 gap-3 mb-6">
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-gray-500">Assigned</p>
-                <p className="text-2xl font-bold text-blue-700">
-                  {totalAssignedCount}
-                </p>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 inline-flex items-center justify-center">
-                <i className="fa-solid fa-thumbtack" />
-              </div>
-            </div>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-gray-500">Available</p>
-                <p className="text-2xl font-bold text-emerald-700">
-                  {totalAvailableCount}
-                </p>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 inline-flex items-center justify-center">
-                <i className="fa-solid fa-list-check" />
-              </div>
-            </div>
-          </div>
-        </div>
         {/* ASSIGNED JOBS TAB */}
         {tab === "assigned" && (
           <div>
@@ -285,11 +257,11 @@ export default function AvailableTasks() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {assignedTasks.map((job) => (
                   <div
                     key={job.id}
-                    className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition p-4 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition p-4 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-300 flex flex-col"
                     role="button"
                     tabIndex={0}
                     onClick={() => openTaskDetails(job)}
@@ -408,70 +380,14 @@ export default function AvailableTasks() {
                     </div>
 
                     {/* Actions */}
-                    {job.status === "assigned" ? (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={(event) =>
-                            withStop(event, () => openTaskDetails(job))
-                          }
-                          className="px-3 py-3 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold rounded-lg transition"
-                        >
-                          Open Details
-                        </button>
-                        <button
-                          onClick={(event) =>
-                            withStop(event, () => openLiveTrack(job.id))
-                          }
-                          className="px-3 py-3 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 font-semibold rounded-lg transition"
-                        >
-                          Live Track
-                        </button>
-                        <button
-                          onClick={(event) =>
-                            withStop(event, () =>
-                              handleAcceptAssignedJob(job.id),
-                            )
-                          }
-                          disabled={accepting === job.id || !isSharing}
-                          className="flex-1 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold rounded-lg transition flex items-center justify-center gap-2"
-                        >
-                          {accepting === job.id ? (
-                            <>
-                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                              Accepting...
-                            </>
-                          ) : !isSharing ? (
-                            <>Enable Location to Accept</>
-                          ) : (
-                            <>Accept Job</>
-                          )}
-                        </button>
-                        <button
-                          onClick={(event) =>
-                            withStop(event, () =>
-                              handleRejectAssignedJob(job.id),
-                            )
-                          }
-                          disabled={accepting === job.id}
-                          className="flex-1 py-3 bg-red-100 hover:bg-red-200 disabled:bg-gray-200 text-red-700 font-semibold rounded-lg transition"
-                        >
-                          Decline
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="bg-green-50 p-3 rounded border border-green-200 text-center">
-                        <div className="flex items-center justify-center gap-2 mb-2">
-                          <p className="text-sm text-green-900 font-semibold inline-flex items-center gap-2">
-                            <i className="fa-solid fa-circle-check" />
-                            You have accepted this job
-                          </p>
-                        </div>
-                        <div className="flex items-center justify-center gap-2">
+                    <div className="mt-auto">
+                      {job.status === "assigned" ? (
+                        <div className="flex gap-2">
                           <button
                             onClick={(event) =>
                               withStop(event, () => openTaskDetails(job))
                             }
-                            className="px-3 py-1.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold rounded-lg text-sm"
+                            className="px-3 py-3 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold rounded-lg transition"
                           >
                             Open Details
                           </button>
@@ -479,13 +395,71 @@ export default function AvailableTasks() {
                             onClick={(event) =>
                               withStop(event, () => openLiveTrack(job.id))
                             }
-                            className="px-3 py-1.5 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 font-semibold rounded-lg text-sm"
+                            className="px-3 py-3 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 font-semibold rounded-lg transition"
                           >
                             Live Track
                           </button>
+                          <button
+                            onClick={(event) =>
+                              withStop(event, () =>
+                                handleAcceptAssignedJob(job.id),
+                              )
+                            }
+                            disabled={accepting === job.id || !isSharing}
+                            className="flex-1 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold rounded-lg transition flex items-center justify-center gap-2"
+                          >
+                            {accepting === job.id ? (
+                              <>
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                Accepting...
+                              </>
+                            ) : !isSharing ? (
+                              <>Enable Location to Accept</>
+                            ) : (
+                              <>Accept Job</>
+                            )}
+                          </button>
+                          <button
+                            onClick={(event) =>
+                              withStop(event, () =>
+                                handleRejectAssignedJob(job.id),
+                              )
+                            }
+                            disabled={accepting === job.id}
+                            className="flex-1 py-3 bg-red-100 hover:bg-red-200 disabled:bg-gray-200 text-red-700 font-semibold rounded-lg transition"
+                          >
+                            Decline
+                          </button>
                         </div>
-                      </div>
-                    )}
+                      ) : (
+                        <div className="bg-green-50 p-3 rounded border border-green-200 text-center">
+                          <div className="flex items-center justify-center gap-2 mb-2">
+                            <p className="text-sm text-green-900 font-semibold inline-flex items-center gap-2">
+                              <i className="fa-solid fa-circle-check" />
+                              You have accepted this job
+                            </p>
+                          </div>
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={(event) =>
+                                withStop(event, () => openTaskDetails(job))
+                              }
+                              className="px-3 py-1.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold rounded-lg text-sm"
+                            >
+                              Open Details
+                            </button>
+                            <button
+                              onClick={(event) =>
+                                withStop(event, () => openLiveTrack(job.id))
+                              }
+                              className="px-3 py-1.5 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 font-semibold rounded-lg text-sm"
+                            >
+                              Live Track
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -509,11 +483,11 @@ export default function AvailableTasks() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {availableTasks.map((task) => (
                   <div
                     key={task.id}
-                    className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition p-4 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition p-4 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-300 flex flex-col"
                     role="button"
                     tabIndex={0}
                     onClick={() => openTaskDetails(task)}
@@ -609,7 +583,7 @@ export default function AvailableTasks() {
                     </div>
 
                     {/* Accept Button */}
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 mt-auto">
                       <button
                         onClick={(event) =>
                           withStop(event, () => openTaskDetails(task))

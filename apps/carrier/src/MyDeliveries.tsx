@@ -418,26 +418,34 @@ export default function MyDeliveries() {
 
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-800">My Deliveries</h1>
+        <div>
+          <p className="text-xs text-blue-700 font-semibold">Total Earnings</p>
+          <p className="text-lg font-bold text-blue-900">
+            {formatCurrency(
+              deliveries.reduce((sum, d) => sum + (d.earnings || 0), 0),
+            )}
+          </p>
+        </div>
         <p className="text-gray-600 mt-2">
           Manage your active and completed deliveries
         </p>
       </div>
 
       {/* Filters & Summary */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6 mb-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-          <div className="inline-flex items-center gap-2 bg-gray-100 rounded-full p-1">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-1 sm:p-2 md:p-1 mb-3 sm:mb-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
+          <div className="inline-flex items-center gap-1 sm:gap-2 bg-gray-100 rounded-full p-0.5 sm:p-1">
             <button
               onClick={() => setFilter("active")}
-              className={`px-4 py-2 rounded-full text-sm font-semibold transition inline-flex items-center gap-2 ${
+              className={`px-2 sm:px-3 md:px-4 py-1 sm:py-2 rounded-full text-xs sm:text-sm font-semibold transition inline-flex items-center gap-1 sm:gap-2 ${
                 filter === "active"
                   ? "bg-white text-blue-700 shadow-sm"
                   : "text-gray-600 hover:text-gray-800"
               }`}
             >
-              <i className="fa-solid fa-bolt" />
+              <i className="fa-solid fa-bolt text-xs sm:text-sm" />
               Active
-              <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+              <span className="text-[10px] sm:text-xs font-bold text-blue-700 bg-blue-100 px-1.5 sm:px-2 py-0.5 rounded-full">
                 {
                   deliveries.filter((d) =>
                     [
@@ -453,104 +461,32 @@ export default function MyDeliveries() {
             </button>
             <button
               onClick={() => setFilter("completed")}
-              className={`px-4 py-2 rounded-full text-sm font-semibold transition inline-flex items-center gap-2 ${
+              className={`px-2 sm:px-3 md:px-4 py-1 sm:py-2 rounded-full text-xs sm:text-sm font-semibold transition inline-flex items-center gap-1 sm:gap-2 ${
                 filter === "completed"
                   ? "bg-white text-emerald-700 shadow-sm"
                   : "text-gray-600 hover:text-gray-800"
               }`}
             >
-              <i className="fa-solid fa-circle-check" />
+              <i className="fa-solid fa-circle-check text-xs sm:text-sm" />
               Completed
-              <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+              <span className="text-[10px] sm:text-xs font-bold text-emerald-700 bg-emerald-100 px-1.5 sm:px-2 py-0.5 rounded-full">
                 {deliveries.filter((d) => d.status === "delivered").length}
               </span>
             </button>
             <button
               onClick={() => setFilter("all")}
-              className={`px-4 py-2 rounded-full text-sm font-semibold transition inline-flex items-center gap-2 ${
+              className={`px-2 sm:px-3 md:px-4 py-1 sm:py-2 rounded-full text-xs sm:text-sm font-semibold transition inline-flex items-center gap-1 sm:gap-2 ${
                 filter === "all"
                   ? "bg-white text-gray-700 shadow-sm"
                   : "text-gray-600 hover:text-gray-800"
               }`}
             >
-              <i className="fa-solid fa-layer-group" />
+              <i className="fa-solid fa-layer-group text-xs sm:text-sm" />
               All
-              <span className="text-xs font-bold text-gray-700 bg-gray-200 px-2 py-0.5 rounded-full">
+              <span className="text-[10px] sm:text-xs font-bold text-gray-700 bg-gray-200 px-1.5 sm:px-2 py-0.5 rounded-full">
                 {deliveries.length}
               </span>
             </button>
-          </div>
-        </div>
-
-        {/* Stats Summary */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-blue-700 font-semibold">
-                  Total Earnings
-                </p>
-                <p className="text-lg font-bold text-blue-900">
-                  {formatCurrency(
-                    deliveries.reduce((sum, d) => sum + (d.earnings || 0), 0),
-                  )}
-                </p>
-              </div>
-              <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 inline-flex items-center justify-center">
-                <i className="fa-solid fa-wallet" />
-              </div>
-            </div>
-          </div>
-          <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-emerald-700 font-semibold">Active</p>
-                <p className="text-lg font-bold text-emerald-900">
-                  {
-                    deliveries.filter((d) =>
-                      [
-                        "assigned",
-                        "accepted",
-                        "picked_up",
-                        "in_transit",
-                        "stuck",
-                      ].includes(d.status),
-                    ).length
-                  }
-                </p>
-              </div>
-              <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 inline-flex items-center justify-center">
-                <i className="fa-solid fa-bolt" />
-              </div>
-            </div>
-          </div>
-          <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-purple-700 font-semibold">
-                  Completed
-                </p>
-                <p className="text-lg font-bold text-purple-900">
-                  {deliveries.filter((d) => d.status === "delivered").length}
-                </p>
-              </div>
-              <div className="w-9 h-9 rounded-full bg-purple-100 text-purple-700 inline-flex items-center justify-center">
-                <i className="fa-solid fa-circle-check" />
-              </div>
-            </div>
-          </div>
-          <div className="bg-orange-50 rounded-lg p-3 border border-orange-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-orange-700 font-semibold">Total</p>
-                <p className="text-lg font-bold text-orange-900">
-                  {deliveries.length}
-                </p>
-              </div>
-              <div className="w-9 h-9 rounded-full bg-orange-100 text-orange-700 inline-flex items-center justify-center">
-                <i className="fa-solid fa-layer-group" />
-              </div>
-            </div>
           </div>
         </div>
       </div>
