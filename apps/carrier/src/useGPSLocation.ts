@@ -1,48 +1,54 @@
-import { useState, useEffect } from 'react'
-import { CarrierService } from './carrierService'
-import { LocationUpdate } from './types'
+import { useState, useEffect } from "react";
+import { CarrierService } from "./carrierService";
+import { LocationUpdate } from "./types";
 
 export const useGPSLocation = (activeDeliveryId?: string) => {
-  const [isSharing, setIsSharing] = useState(() => CarrierService.isLocationSharingActive())
-  const [lastLocation, setLastLocation] = useState<LocationUpdate | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [accuracy, setAccuracy] = useState<number>(0)
+  const [isSharing, setIsSharing] = useState(() =>
+    CarrierService.isLocationSharingActive(),
+  );
+  const [lastLocation, setLastLocation] = useState<LocationUpdate | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [accuracy, setAccuracy] = useState<number>(0);
 
-  const startSharing = () => {
-    const success = CarrierService.startLocationSharing(activeDeliveryId)
+  const startSharing = async () => {
+    const success = CarrierService.startLocationSharing(activeDeliveryId);
     if (success) {
-      setIsSharing(true)
-      setError(null)
+      setIsSharing(true);
+      setError(null);
+      await CarrierService.updateShareLocation(true);
     }
-    return success
-  }
+    return success;
+  };
 
-  const stopSharing = () => {
-    CarrierService.stopLocationSharing()
-    setIsSharing(false)
-  }
+  const stopSharing = async () => {
+    CarrierService.stopLocationSharing();
+    setIsSharing(false);
+    await CarrierService.updateShareLocation(false);
+  };
 
-  const toggleSharing = () => {
+  const toggleSharing = async () => {
     if (isSharing) {
-      stopSharing()
+      await stopSharing();
     } else {
-      startSharing()
+      await startSharing();
     }
-  }
+  };
 
   useEffect(() => {
     // Subscribe to location updates from the service
-    const unsubscribe = CarrierService.subscribeToLocationUpdates((location) => {
-      if (location) {
-        setLastLocation(location)
-        setAccuracy(location.accuracy || 0)
-      }
-    })
+    const unsubscribe = CarrierService.subscribeToLocationUpdates(
+      (location) => {
+        if (location) {
+          setLastLocation(location);
+          setAccuracy(location.accuracy || 0);
+        }
+      },
+    );
 
     return () => {
-      unsubscribe()
-    }
-  }, [])
+      unsubscribe();
+    };
+  }, []);
 
   return {
     isSharing,
@@ -51,6 +57,6 @@ export const useGPSLocation = (activeDeliveryId?: string) => {
     accuracy,
     startSharing,
     stopSharing,
-    toggleSharing
-  }
-}
+    toggleSharing,
+  };
+};
