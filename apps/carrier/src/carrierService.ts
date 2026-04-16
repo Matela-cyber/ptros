@@ -162,6 +162,8 @@ export class CarrierService {
   private static ROUTE_PERSIST_INTERVAL_MS = 15 * 1000; // 15 sec
   private static ROUTE_SNAPSHOT_POINTS = 30;
   private static ROUTE_MIN_POINT_DISTANCE_M = 8;
+  static markAsPickedUp: any;
+  static verifyDelivery: any;
 
   private static appendRoutePoint(
     deliveryId: string,

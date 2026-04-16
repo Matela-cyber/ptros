@@ -287,30 +287,6 @@ export default function Dashboard({ user }: DashboardProps) {
       />
 
       {/* Offline Banner */}
-      {!isSharing && (
-        <div className="bg-red-50 border-b border-red-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-            <div className="flex items-center gap-3">
-              <div className="flex-shrink-0">
-                <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-              </div>
-              <div className="flex-1">
-                <p className="font-bold text-red-900">You are Offline</p>
-                <p className="text-sm text-red-700 font-medium">
-                  Location sharing is disabled. Enable it to accept jobs and be
-                  visible to coordinators.
-                </p>
-              </div>
-              <button
-                onClick={() => setShowLocationModal(true)}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 transition"
-              >
-                Enable Now
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Header */}
       <header className="hidden">
@@ -376,92 +352,199 @@ export default function Dashboard({ user }: DashboardProps) {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <button
-            type="button"
-            onClick={() => openStatModal("todayDeliveries")}
-            className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition text-left"
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">
-                  Today's Deliveries
-                </p>
-                <p className="text-3xl font-bold mt-2 text-emerald-700">
-                  {stats.todayDeliveries}
-                </p>
-              </div>
-              <div className="bg-emerald-100 text-emerald-700 rounded-xl p-3">
-                <i className="fa-solid fa-truck-fast text-xl"></i>
-              </div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => openStatModal("totalDeliveries")}
-            className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition text-left"
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">
-                  Total Deliveries
-                </p>
-                <p className="text-3xl font-bold mt-2 text-blue-700">
-                  {stats.totalDeliveries}
-                </p>
-              </div>
-              <div className="bg-blue-100 text-blue-700 rounded-xl p-3">
-                <i className="fa-solid fa-box-open text-xl"></i>
-              </div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => openStatModal("totalEarnings")}
-            className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition text-left"
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">
-                  Total Earnings
-                </p>
-                <p className="text-3xl font-bold mt-2 text-purple-700">
-                  {formatCurrency(stats.totalEarnings)}
-                </p>
-              </div>
-              <div className="bg-purple-100 text-purple-700 rounded-xl p-3">
-                <i className="fa-solid fa-chart-line text-xl"></i>
-              </div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => openStatModal("rating")}
-            className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition text-left"
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">
-                  Rating
-                </p>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="text-3xl font-bold text-amber-700">
-                    {parseFloat(stats.rating.toFixed(2))}
-                  </span>
-                  <i className="fa-solid fa-star text-amber-500 text-xl"></i>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          {/* Status Controls - Column 1 */}
+          <div>
+            <div className="bg-gradient-to-br from-white to-purple-50 rounded-2xl shadow-2xl p-5 border-2 border-purple-200 h-full">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                    <i className="fa-solid fa-signal text-blue-600"></i>
+                    Your Status
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Control your availability
+                  </p>
+                </div>
+                <div
+                  className={`px-2.5 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1.5 ${
+                    status === "active"
+                      ? "bg-green-100 text-green-700 border border-green-200"
+                      : status === "busy"
+                        ? "bg-amber-100 text-amber-700 border border-amber-200"
+                        : "bg-gray-100 text-gray-700 border border-gray-200"
+                  }`}
+                >
+                  <div
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      status === "active"
+                        ? "bg-green-500"
+                        : status === "busy"
+                          ? "bg-amber-500"
+                          : "bg-gray-500"
+                    }`}
+                  ></div>
+                  {status === "active"
+                    ? "Available"
+                    : status === "busy"
+                      ? "On Delivery"
+                      : "Offline"}
                 </div>
               </div>
-              <div className="bg-amber-100 text-amber-700 rounded-xl p-3">
-                <i className="fa-solid fa-face-smile text-xl"></i>
-              </div>
-            </div>
-          </button>
-        </div>
 
-        {/* Quick Access Cards */}
+              <div className="space-y-2">
+                <button
+                  onClick={() => handleStatusChange("active")}
+                  className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${
+                    status === "active"
+                      ? "bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/50 transform scale-105"
+                      : "bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 hover:from-gray-200 hover:to-gray-300 border border-gray-300 shadow-sm"
+                  }`}
+                >
+                  <i className="fa-solid fa-bolt text-xs"></i>
+                  Available
+                </button>
+
+                <button
+                  onClick={() => handleStatusChange("busy")}
+                  className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${
+                    status === "busy"
+                      ? "bg-gradient-to-r from-yellow-600 via-amber-600 to-orange-600 text-white shadow-md shadow-amber-500/50 transform scale-105"
+                      : "bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 hover:from-gray-200 hover:to-gray-300 border border-gray-300 shadow-sm"
+                  }`}
+                >
+                  <i className="fa-solid fa-truck-moving text-xs"></i>
+                  On Delivery
+                </button>
+
+                <button
+                  onClick={() => handleStatusChange("inactive")}
+                  disabled={
+                    !!(
+                      activeDelivery &&
+                      ["picked_up", "in_transit", "out_for_delivery"].includes(
+                        activeDelivery.status,
+                      )
+                    )
+                  }
+                  className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${
+                    status === "inactive"
+                      ? "bg-gradient-to-r from-rose-600 via-red-600 to-red-700 text-white shadow-md shadow-red-500/50 transform scale-105"
+                      : "bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 hover:from-gray-200 hover:to-gray-300 border border-gray-300 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  }`}
+                >
+                  <i className="fa-solid fa-moon text-xs"></i>
+                  Offline
+                </button>
+              </div>
+
+              {status === "inactive" && (
+                <div className="mt-3 p-3 bg-gradient-to-r from-red-50 to-rose-100 border border-red-300 rounded-lg shadow-sm">
+                  <div className="flex items-start gap-2">
+                    <i className="fa-solid fa-circle-exclamation text-red-600 mt-0.5 text-sm"></i>
+                    <div>
+                      <p className="text-xs font-bold text-red-900">
+                        You are Offline
+                      </p>
+                      <p className="text-xs text-red-700 mt-0.5">
+                        You won't receive new job assignments while offline.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Stats Grid - Columns 2 & 3 */}
+          <div className="lg:col-span-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <button
+                type="button"
+                onClick={() => openStatModal("todayDeliveries")}
+                className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition text-left"
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">
+                      Today's Deliveries
+                    </p>
+                    <p className="text-3xl font-bold mt-2 text-emerald-700">
+                      {stats.todayDeliveries}
+                    </p>
+                  </div>
+                  <div className="bg-emerald-100 text-emerald-700 rounded-xl p-3">
+                    <i className="fa-solid fa-truck-fast text-xl"></i>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => openStatModal("totalDeliveries")}
+                className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition text-left"
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">
+                      Total Deliveries
+                    </p>
+                    <p className="text-3xl font-bold mt-2 text-blue-700">
+                      {stats.totalDeliveries}
+                    </p>
+                  </div>
+                  <div className="bg-blue-100 text-blue-700 rounded-xl p-3">
+                    <i className="fa-solid fa-box-open text-xl"></i>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => openStatModal("totalEarnings")}
+                className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition text-left"
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">
+                      Total Earnings
+                    </p>
+                    <p className="text-3xl font-bold mt-2 text-purple-700">
+                      {formatCurrency(stats.totalEarnings)}
+                    </p>
+                  </div>
+                  <div className="bg-purple-100 text-purple-700 rounded-xl p-3">
+                    <i className="fa-solid fa-chart-line text-xl"></i>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => openStatModal("rating")}
+                className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition text-left"
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">
+                      Rating
+                    </p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-3xl font-bold text-amber-700">
+                        {parseFloat(stats.rating.toFixed(2))}
+                      </span>
+                      <i className="fa-solid fa-star text-amber-500 text-xl"></i>
+                    </div>
+                  </div>
+                  <div className="bg-amber-100 text-amber-700 rounded-xl p-3">
+                    <i className="fa-solid fa-face-smile text-xl"></i>
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+        {/* Quick Access Cards 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <button
             type="button"
@@ -526,116 +609,14 @@ export default function Dashboard({ user }: DashboardProps) {
             </div>
           </button>
         </div>
+        */}
 
-        {/* Two Column Layout for Status and Active Delivery */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Status Controls - Left Column */}
-          <div className="lg:col-span-1">
-            <div className="bg-gradient-to-br from-white to-purple-50 rounded-2xl shadow-2xl p-6 sticky top-24 border-2 border-purple-200">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                    <i className="fa-solid fa-signal text-blue-600"></i>
-                    Your Status
-                  </h2>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Control your availability
-                  </p>
-                </div>
-                <div
-                  className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-2 ${
-                    status === "active"
-                      ? "bg-green-100 text-green-700 border border-green-200"
-                      : status === "busy"
-                        ? "bg-amber-100 text-amber-700 border border-amber-200"
-                        : "bg-gray-100 text-gray-700 border border-gray-200"
-                  }`}
-                >
-                  <div
-                    className={`w-2 h-2 rounded-full ${
-                      status === "active"
-                        ? "bg-green-500"
-                        : status === "busy"
-                          ? "bg-amber-500"
-                          : "bg-gray-500"
-                    }`}
-                  ></div>
-                  {status === "active"
-                    ? "Available"
-                    : status === "busy"
-                      ? "On Delivery"
-                      : "Offline"}
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <button
-                  onClick={() => handleStatusChange("active")}
-                  className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold transition-all ${
-                    status === "active"
-                      ? "bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 text-white shadow-2xl shadow-blue-500/50 transform scale-105"
-                      : "bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 hover:from-gray-200 hover:to-gray-300 border-2 border-gray-300 shadow-md"
-                  }`}
-                >
-                  <i className="fa-solid fa-bolt"></i>
-                  Available
-                </button>
-
-                <button
-                  onClick={() => handleStatusChange("busy")}
-                  className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold transition-all ${
-                    status === "busy"
-                      ? "bg-gradient-to-r from-yellow-600 via-amber-600 to-orange-600 text-white shadow-2xl shadow-amber-500/50 transform scale-105"
-                      : "bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 hover:from-gray-200 hover:to-gray-300 border-2 border-gray-300 shadow-md"
-                  }`}
-                >
-                  <i className="fa-solid fa-truck-moving"></i>
-                  On Delivery
-                </button>
-
-                <button
-                  onClick={() => handleStatusChange("inactive")}
-                  disabled={
-                    !!(
-                      activeDelivery &&
-                      ["picked_up", "in_transit", "out_for_delivery"].includes(
-                        activeDelivery.status,
-                      )
-                    )
-                  }
-                  className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold transition-all ${
-                    status === "inactive"
-                      ? "bg-gradient-to-r from-rose-600 via-red-600 to-red-700 text-white shadow-2xl shadow-red-500/50 transform scale-105"
-                      : "bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 hover:from-gray-200 hover:to-gray-300 border-2 border-gray-300 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-                  }`}
-                >
-                  <i className="fa-solid fa-moon"></i>
-                  Offline
-                </button>
-              </div>
-
-              {status === "inactive" && (
-                <div className="mt-4 p-4 bg-gradient-to-r from-red-50 to-rose-100 border-2 border-red-300 rounded-xl shadow-lg">
-                  <div className="flex items-start gap-3">
-                    <i className="fa-solid fa-circle-exclamation text-red-600 mt-0.5 text-xl"></i>
-                    <div>
-                      <p className="text-sm font-bold text-red-900">
-                        You are Offline
-                      </p>
-                      <p className="text-xs text-red-700 mt-1 font-semibold">
-                        You won't receive new job assignments while offline.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Active Delivery / Empty State - Right Column (2/3 width) */}
-          <div className="lg:col-span-2">
+        {/* Two Column Layout for Active Delivery and Recent Deliveries */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {/* Active Delivery / Empty State - Left Column */}
+          <div>
             {activeDelivery ? (
-              <div className="bg-white rounded-2xl shadow-2xl overflow-hidden border-2 border-purple-200">
+              <div className="bg-white rounded-2xl shadow-2xl overflow-hidden border-2 border-purple-200 h-full">
                 {/* Delivery Header */}
                 <div className="bg-gradient-to-r from-indigo-900 via-purple-900 to-pink-900 p-6 text-white shadow-lg">
                   <div className="flex flex-wrap items-start justify-between gap-4">
@@ -880,7 +861,7 @@ export default function Dashboard({ user }: DashboardProps) {
               </div>
             ) : (
               // Empty State
-              <div className="bg-gradient-to-br from-white via-purple-50 to-pink-50 rounded-2xl shadow-2xl p-12 text-center border-2 border-purple-200">
+              <div className="bg-gradient-to-br from-white via-purple-50 to-pink-50 rounded-2xl shadow-2xl p-12 text-center border-2 border-purple-200 h-full">
                 <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-purple-200 via-pink-200 to-blue-200 rounded-full flex items-center justify-center shadow-lg">
                   <i className="fa-solid fa-box-open text-4xl bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent"></i>
                 </div>
@@ -924,63 +905,65 @@ export default function Dashboard({ user }: DashboardProps) {
               </div>
             )}
           </div>
-        </div>
 
-        {/* Recent Deliveries */}
-        <div className="bg-white rounded-2xl shadow-2xl overflow-hidden border-2 border-purple-200">
-          <div className="bg-gradient-to-r from-slate-800 via-gray-900 to-zinc-900 px-6 py-4 shadow-md">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <i className="fa-solid fa-clock-rotate-left"></i>
-              Recent Deliveries
-            </h2>
-          </div>
-
-          {deliveries.length === 0 ? (
-            <div className="p-12 text-center">
-              <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-                <i className="fa-regular fa-inbox text-2xl text-gray-400"></i>
+          {/* Recent Deliveries - Right Column */}
+          <div>
+            <div className="bg-white rounded-2xl shadow-2xl overflow-hidden border-2 border-purple-200 h-full">
+              <div className="bg-gradient-to-r from-slate-800 via-gray-900 to-zinc-900 px-6 py-4 shadow-md">
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <i className="fa-solid fa-clock-rotate-left"></i>
+                  Recent Deliveries
+                </h2>
               </div>
-              <p className="text-gray-500">No completed deliveries yet</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-100">
-              {deliveries.map((delivery) => (
-                <button
-                  key={delivery.id}
-                  type="button"
-                  onClick={() => navigate("/deliveries")}
-                  className="w-full text-left p-4 hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className="font-mono font-semibold text-gray-800">
-                          {delivery.trackingCode}
-                        </span>
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1 ${getStatusColor(delivery.status)}`}
-                        >
-                          <i className={getStatusIcon(delivery.status)}></i>
-                          {delivery.status.replace("_", " ")}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-600 truncate">
-                        {delivery.customerName}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-lg font-bold text-green-600">
-                        {formatCurrency(delivery.earnings)}
-                      </p>
-                      <p className="text-xs text-gray-400">
-                        {formatDate(delivery.deliveryTime?.toDate())}
-                      </p>
-                    </div>
+
+              {deliveries.length === 0 ? (
+                <div className="p-12 text-center">
+                  <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+                    <i className="fa-regular fa-inbox text-2xl text-gray-400"></i>
                   </div>
-                </button>
-              ))}
+                  <p className="text-gray-500">No completed deliveries yet</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {deliveries.map((delivery) => (
+                    <button
+                      key={delivery.id}
+                      type="button"
+                      onClick={() => navigate("/deliveries")}
+                      className="w-full text-left p-4 hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3 mb-2">
+                            <span className="font-mono font-semibold text-gray-800">
+                              {delivery.trackingCode}
+                            </span>
+                            <span
+                              className={`px-2 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1 ${getStatusColor(delivery.status)}`}
+                            >
+                              <i className={getStatusIcon(delivery.status)}></i>
+                              {delivery.status.replace("_", " ")}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600 truncate">
+                            {delivery.customerName}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-green-600">
+                            {formatCurrency(delivery.earnings)}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            {formatDate(delivery.deliveryTime?.toDate())}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </main>
 
