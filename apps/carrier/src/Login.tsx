@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { auth, db } from "@config";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { Link } from "react-router-dom";
 
 export default function Login() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -50,8 +52,9 @@ export default function Login() {
         return;
       }
 
-      // 4. Login successful - user will be redirected by App.tsx
+      // 4. Login successful - redirect to dashboard
       console.log("Login successful for:", user.email);
+      navigate("/dashboard", { replace: true });
     } catch (err: any) {
       console.error("Login error:", err);
 

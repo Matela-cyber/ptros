@@ -690,7 +690,18 @@ export default function Dashboard({ user }: DashboardProps) {
                     </div>
                     <div className="w-full bg-white/20 rounded-full h-2.5">
                       <div
-                        className="bg-gradient-to-r from-green-400 to-green-500 h-2.5 rounded-full transition-all duration-500"
+                        className={
+                          `h-2.5 rounded-full transition-all duration-500 ` +
+                          (
+                            calculateDeliveryProgress(activeDelivery) < 40
+                              ? "bg-red-500"
+                              : calculateDeliveryProgress(activeDelivery) < 70
+                              ? "bg-yellow-400"
+                              : calculateDeliveryProgress(activeDelivery) < 100
+                              ? "bg-blue-500"
+                              : "bg-green-500"
+                          )
+                        }
                         style={{
                           width: `${calculateDeliveryProgress(activeDelivery)}%`,
                         }}

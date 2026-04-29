@@ -4,15 +4,18 @@
 
 [36mvite v5.4.21 [32mbuilding for production...[36m[39m
 transforming...
-[32m✓[39m 84 modules transformed.
+[32m✓[39m 90 modules transformed.
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugin vite:reporter] 
+(!) C:/Users/Lenovo/Desktop/ptros-platform/node_modules/.pnpm/firebase@12.8.0/node_modules/firebase/firestore/dist/esm/index.esm.js is dynamically imported by C:/Users/Lenovo/Desktop/ptros-platform/apps/carrier/src/carrierService.ts, C:/Users/Lenovo/Desktop/ptros-platform/apps/carrier/src/carrierService.ts but also statically imported by C:/Users/Lenovo/Desktop/ptros-platform/apps/carrier/src/App.tsx, C:/Users/Lenovo/Desktop/ptros-platform/apps/carrier/src/CarrierLiveTrack.tsx, C:/Users/Lenovo/Desktop/ptros-platform/apps/carrier/src/Login.tsx, C:/Users/Lenovo/Desktop/ptros-platform/apps/carrier/src/MyDeliveries.tsx, C:/Users/Lenovo/Desktop/ptros-platform/apps/carrier/src/Register.tsx, C:/Users/Lenovo/Desktop/ptros-platform/apps/carrier/src/carrierService.ts, C:/Users/Lenovo/Desktop/ptros-platform/apps/carrier/src/services/deliveryService.ts, C:/Users/Lenovo/Desktop/ptros-platform/apps/carrier/src/useCarrierStats.ts, C:/Users/Lenovo/Desktop/ptros-platform/packages/config/src/businessRules.ts, C:/Users/Lenovo/Desktop/ptros-platform/packages/config/src/index.ts, C:/Users/Lenovo/Desktop/ptros-platform/packages/config/src/locationGraphSync.ts, C:/Users/Lenovo/Desktop/ptros-platform/packages/config/src/routeNetwork.ts, dynamic import will not move module into another chunk.
 rendering chunks...
+[39m
 computing gzip size...
 [2mdist/[22m[32mindex.html                 [39m[1m[2m    0.78 kB[22m[1m[22m[2m │ gzip:   0.50 kB[22m
 [33m
-[2mdist/[22m[35massets/index-fLjOQ5tZ.css  [39m[1m[2m   55.25 kB[22m[1m[22m[2m │ gzip:   8.80 kB[22m
+[2mdist/[22m[35massets/index-Bx0NJEMr.css  [39m[1m[2m   53.56 kB[22m[1m[22m[2m │ gzip:   8.77 kB[22m
+[2mdist/[22m[36massets/index-B2Q9Aiym.js   [39m[1m[33m1,215.33 kB[39m[22m[2m │ gzip: 297.79 kB[22m
 (!) Some chunks are larger than 500 kB after minification. Consider:
-[2mdist/[22m[36massets/index-CvEKGAPf.js   [39m[1m[33m1,197.69 kB[39m[22m[2m │ gzip: 291.89 kB[22m
-[32m✓ built in 18.21s[39m
 - Using dynamic import() to code-split the application
+[32m✓ built in 13.08s[39m
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
