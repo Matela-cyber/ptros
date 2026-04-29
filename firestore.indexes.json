@@ -10,6 +10,30 @@
       ]
     },
     {
+      "collectionGroup": "blockedRoutes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "fromNodeId", "order": "ASCENDING" },
+        { "fieldPath": "toNodeId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "obstacleRoutes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "fromNodeId", "order": "ASCENDING" },
+        { "fieldPath": "toNodeId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "shortcuts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "fromNodeId", "order": "ASCENDING" },
+        { "fieldPath": "toNodeId", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "deliveries",
       "queryScope": "COLLECTION",
       "fields": [

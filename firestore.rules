@@ -150,6 +150,10 @@ service cloud.firestore {
     // ==================== USERS COLLECTION ====================
     // All user profiles with role, approval status, location, etc.
     match /users/{userId} {
+            // Allow carriers to read/write their own routeStops subcollection
+            match /routeStops/{stopId} {
+              allow read, write: if isCarrier() && request.auth.uid == userId;
+            }
       // Everyone can read their own user document
       allow read: if isAuth() && request.auth.uid == userId;
       
@@ -390,6 +394,25 @@ service cloud.firestore {
 
       // Prevent clients from deleting notification records directly
       allow delete: if false;
+    }
+
+
+    // ==================== BLOCKED ROUTES ====================
+    match /blockedRoutes/{docId} {
+      allow read: if true;
+      allow create, update, delete: if isCarrier() || isCoordinator();
+    }
+
+    // ==================== OBSTACLE ROUTES ====================
+    match /obstacleRoutes/{docId} {
+      allow read: if true;
+      allow create, update, delete: if isCarrier() || isCoordinator();
+    }
+
+    // ==================== SHORTCUTS ====================
+    match /shortcuts/{docId} {
+      allow read: if true;
+      allow create, update, delete: if isCarrier() || isCoordinator();
     }
 
     // ==================== ROUTE NETWORK SEGMENTS ====================

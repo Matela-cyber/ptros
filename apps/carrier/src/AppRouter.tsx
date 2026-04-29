@@ -4,6 +4,8 @@ import Dashboard from "./Dashboard";
 import AvailableTasks from "./AvailableTasks";
 import MyDeliveries from "./MyDeliveries";
 import Header from "./Header";
+import MapManagement from "./MapManagement";
+import RouteTab from "./RouteTab";
 
 interface AppRouterProps {
   user: User;
@@ -21,12 +23,14 @@ export default function AppRouter({ user }: AppRouterProps) {
             <Route path="/dashboard" element={<Dashboard user={user} />} />
             <Route path="/tasks" element={<AvailableTasks />} />
             <Route path="/deliveries" element={<MyDeliveries />} />
+            <Route path="/map-management" element={<MapManagement />} />
+            <Route path="/route" element={<RouteTab />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </main>
 
         <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-gray-200 bg-white/95 backdrop-blur">
-          <div className="mx-auto grid max-w-3xl grid-cols-3">
+          <div className="mx-auto grid max-w-3xl grid-cols-4">
             <NavLink
               to="/dashboard"
               className={({ isActive }) =>
@@ -61,6 +65,30 @@ export default function AppRouter({ user }: AppRouterProps) {
             >
               <i className="fa-solid fa-clipboard-list text-base" />
               <span>Tasks</span>
+            </NavLink>
+
+            <NavLink
+              to="/map-management"
+              className={({ isActive }) =>
+                `flex flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium transition ${
+                  isActive ? "text-blue-600" : "text-gray-500"
+                }`
+              }
+            >
+              <i className="fa-solid fa-road text-base" />
+              <span>Map</span>
+            </NavLink>
+
+            <NavLink
+              to="/route"
+              className={({ isActive }) =>
+                `flex flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium transition ${
+                  isActive ? "text-blue-600" : "text-gray-500"
+                }`
+              }
+            >
+              <i className="fa-solid fa-route text-base" />
+              <span>Route</span>
             </NavLink>
           </div>
         </nav>

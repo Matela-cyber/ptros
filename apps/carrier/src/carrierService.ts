@@ -20,6 +20,8 @@ import {
   limit,
   getDoc, // added
   serverTimestamp,
+  setDoc, // ensure setDoc is imported
+  deleteDoc, // <-- add this import
 } from "firebase/firestore";
 import {
   ref as rtdbRef,
@@ -140,6 +142,55 @@ const getTrackingTimestamps = (): {
   return { ms, utcISO, lesothoISO };
 };
 
+// --- Types for Route Rules ---
+export interface BlockedRoute {
+  fromNodeId: string;
+  toNodeId: string;
+  name: string;
+  reason: string;
+  description?: string;
+  reportedBy: string;
+  reportedById?: string;
+  reportedByEmail?: string;
+  timestamp: number;
+  deletedById?: string;
+  deletedByName?: string;
+  deletedByEmail?: string;
+  deletedAt?: number;
+}
+
+export interface ObstacleRoute {
+  fromNodeId: string;
+  toNodeId: string;
+  name: string;
+  obstacleType: string;
+  severity: number;
+  description?: string;
+  reportedBy: string;
+  reportedById?: string;
+  reportedByEmail?: string;
+  timestamp: number;
+  deletedById?: string;
+  deletedByName?: string;
+  deletedByEmail?: string;
+  deletedAt?: number;
+}
+
+export interface Shortcut {
+  fromNodeId: string;
+  toNodeId: string;
+  name: string;
+  description: string;
+  addedBy: string;
+  addedById?: string;
+  addedByEmail?: string;
+  timestamp: number;
+  deletedById?: string;
+  deletedByName?: string;
+  deletedByEmail?: string;
+  deletedAt?: number;
+}
+
 export class CarrierService {
   // Track last Firestore write time for rate limiting
   private static lastFirestoreWrite: { [userId: string]: number } = {};
@@ -149,11 +200,82 @@ export class CarrierService {
   private static lastRouteSnapshotAtMs: Record<string, number> = {};
   private static lastRoutePersistAtMs: Record<string, number> = {};
 
+  // --- Route Linked List Firestore Integration ---
+  /**
+   * Save the optimized route stops (doubly linked list) for the current carrier.
+   * Each stop is a document in subcollection `routeStops` under the carrier's user doc.
+   */
+  static async saveRouteStops(stops: any[]): Promise<void> {
+    const user = auth.currentUser;
+    if (!user) throw new Error("Not authenticated");
+    const batch = (await import("firebase/firestore")).writeBatch(db);
+    const stopsCol = collection(db, "users", user.uid, "routeStops");
+    // Write new stops with prevId/nextId
+    stops.forEach((stop) => {
+      const docRef = doc(stopsCol, `${stop.id}_${stop.type}`);
+      batch.set(docRef, {
+        ...stop,
+        prevId: stop.prevId ?? null,
+        nextId: stop.nextId ?? null,
+      });
+    });
+    // Remove any stops not in the new list
+    const prev = await getDocs(stopsCol);
+    const keepKeys = new Set(stops.map((s) => `${s.id}_${s.type}`));
+    prev.forEach((docSnap) => {
+      if (!keepKeys.has(docSnap.id)) batch.delete(docSnap.ref);
+    });
+    await batch.commit();
+  }
+
+  /**
+   * Get the current route stops (linked list) for the current carrier.
+   */
+  static async getRouteStops(): Promise<any[]> {
+    const user = auth.currentUser;
+    if (!user) throw new Error("Not authenticated");
+    const stopsCol = collection(db, "users", user.uid, "routeStops");
+    const snap = await getDocs(stopsCol);
+    return snap.docs.map((d) => d.data());
+  }
+
+  /**
+   * Mark a stop as visited in Firestore.
+   */
+  static async markRouteStopVisited(
+    stopId: string,
+    type: "pickup" | "dropoff",
+  ): Promise<void> {
+    const user = auth.currentUser;
+    if (!user) throw new Error("Not authenticated");
+    const stopRef = doc(
+      db,
+      "users",
+      user.uid,
+      "routeStops",
+      `${stopId}_${type}`,
+    );
+    const deliveryRef = doc(db, "deliveries", stopId);
+    const updates: any = { visited: true };
+    // Also update delivery status if needed
+    if (type === "pickup") {
+      updates.status = "picked_up";
+      updates.pickupTime = Timestamp.now();
+    } else if (type === "dropoff") {
+      updates.status = "delivered";
+      updates.deliveryTime = Timestamp.now();
+    }
+    // Use Firestore batch for atomicity
+    const batch = (await import("firebase/firestore")).writeBatch(db);
+    batch.update(stopRef, { visited: true });
+    batch.update(deliveryRef, updates);
+    await batch.commit();
+  }
   // GPS tracking state (persists across component unmounts)
   private static gpsWatchId: number | null = null;
   private static lastSavedLocation: { lat: number; lng: number } | null = null;
   private static lastSavedTime: number | null = null;
-  private static offlineTimeoutId: NodeJS.Timeout | null = null;
+  private static offlineTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private static locationUpdateCallbacks: Set<
     (location: LocationUpdate | null) => void
   > = new Set();
@@ -1494,5 +1616,147 @@ export class CarrierService {
       console.error("Error fetching preferred location (delivery):", e);
       return null;
     }
+  }
+
+  // --- Blocked Routes CRUD ---
+  static async addBlockedRoute(route: BlockedRoute) {
+    const user = auth.currentUser;
+    await setDoc(
+      doc(db, "blockedRoutes", `${route.fromNodeId}_${route.toNodeId}`),
+      {
+        ...route,
+        reportedById: user?.uid || undefined,
+        reportedByEmail: user?.email || undefined,
+      },
+    );
+  }
+
+  static async getBlockedRoute(fromNodeId: string, toNodeId: string) {
+    const snap = await getDoc(
+      doc(db, "blockedRoutes", `${fromNodeId}_${toNodeId}`),
+    );
+    return snap.exists() ? (snap.data() as BlockedRoute) : null;
+  }
+
+  static async getAllBlockedRoutes(): Promise<BlockedRoute[]> {
+    const snap = await getDocs(collection(db, "blockedRoutes"));
+    return snap.docs.map((doc) => doc.data() as BlockedRoute);
+  }
+
+  static async updateBlockedRoute(
+    fromNodeId: string,
+    toNodeId: string,
+    updates: Partial<BlockedRoute>,
+  ) {
+    await updateDoc(
+      doc(db, "blockedRoutes", `${fromNodeId}_${toNodeId}`),
+      updates,
+    );
+  }
+
+  static async removeBlockedRoute(fromNodeId: string, toNodeId: string) {
+    const user = auth.currentUser;
+    const ref = doc(db, "blockedRoutes", `${fromNodeId}_${toNodeId}`);
+    // Update with deletion info before deleting
+    await updateDoc(ref, {
+      deletedById: user?.uid || undefined,
+      deletedByName: user?.displayName || undefined,
+      deletedByEmail: user?.email || undefined,
+      deletedAt: Date.now(),
+    }).catch(() => {}); // ignore if already deleted
+    await deleteDoc(ref);
+  }
+
+  // --- Obstacle Routes CRUD ---
+  static async addObstacleRoute(route: ObstacleRoute) {
+    const user = auth.currentUser;
+    await setDoc(
+      doc(db, "obstacleRoutes", `${route.fromNodeId}_${route.toNodeId}`),
+      {
+        ...route,
+        reportedById: user?.uid || undefined,
+        reportedByEmail: user?.email || undefined,
+      },
+    );
+  }
+
+  static async getObstacleRoute(fromNodeId: string, toNodeId: string) {
+    const snap = await getDoc(
+      doc(db, "obstacleRoutes", `${fromNodeId}_${toNodeId}`),
+    );
+    return snap.exists() ? (snap.data() as ObstacleRoute) : null;
+  }
+
+  static async getAllObstacleRoutes(): Promise<ObstacleRoute[]> {
+    const snap = await getDocs(collection(db, "obstacleRoutes"));
+    return snap.docs.map((doc) => doc.data() as ObstacleRoute);
+  }
+
+  static async updateObstacleRoute(
+    fromNodeId: string,
+    toNodeId: string,
+    updates: Partial<ObstacleRoute>,
+  ) {
+    await updateDoc(
+      doc(db, "obstacleRoutes", `${fromNodeId}_${toNodeId}`),
+      updates,
+    );
+  }
+
+  static async removeObstacleRoute(fromNodeId: string, toNodeId: string) {
+    const user = auth.currentUser;
+    const ref = doc(db, "obstacleRoutes", `${fromNodeId}_${toNodeId}`);
+    await updateDoc(ref, {
+      deletedById: user?.uid || undefined,
+      deletedByName: user?.displayName || undefined,
+      deletedByEmail: user?.email || undefined,
+      deletedAt: Date.now(),
+    }).catch(() => {});
+    await deleteDoc(ref);
+  }
+
+  // --- Shortcuts CRUD ---
+  static async addShortcut(shortcut: Shortcut) {
+    const user = auth.currentUser;
+    await setDoc(
+      doc(db, "shortcuts", `${shortcut.fromNodeId}_${shortcut.toNodeId}`),
+      {
+        ...shortcut,
+        addedById: user?.uid || undefined,
+        addedByEmail: user?.email || undefined,
+      },
+    );
+  }
+
+  static async getShortcut(fromNodeId: string, toNodeId: string) {
+    const snap = await getDoc(
+      doc(db, "shortcuts", `${fromNodeId}_${toNodeId}`),
+    );
+    return snap.exists() ? (snap.data() as Shortcut) : null;
+  }
+
+  static async getAllShortcuts(): Promise<Shortcut[]> {
+    const snap = await getDocs(collection(db, "shortcuts"));
+    return snap.docs.map((doc) => doc.data() as Shortcut);
+  }
+
+  static async updateShortcut(
+    fromNodeId: string,
+    toNodeId: string,
+    updates: Partial<Shortcut>,
+  ) {
+    await updateDoc(doc(db, "shortcuts", `${fromNodeId}_${toNodeId}`), updates);
+  }
+
+  static async removeShortcut(fromNodeId: string, toNodeId: string) {
+    const user = auth.currentUser;
+    const ref = doc(db, "shortcuts", `${fromNodeId}_${toNodeId}`);
+    await updateDoc(ref, {
+      deletedById: user?.uid || undefined,
+      deletedByName: user?.displayName || undefined,
+      deletedByEmail: user?.email || undefined,
+      deletedAt: Date.now(),
+    }).catch(() => {});
+    await deleteDoc(ref);
   }
 }
