@@ -1,50 +1,6 @@
 import { Delivery } from "./types";
-// Bundle-fit (grouped pickups first, then dropoffs) route optimization
-export function bundleFitRoute(stops: RouteStop[]): RouteStop[] {
-  if (stops.length === 0) return [];
-  const visited: RouteStop[] = [];
-  const unvisited = [...stops];
-  const pickedUpIds = new Set<string>();
-  // Always start with a pickup if possible
-  let currentIdx = unvisited.findIndex((s) => s.type === "pickup");
-  if (currentIdx === -1) currentIdx = 0;
-  let current = unvisited.splice(currentIdx, 1)[0];
-  visited.push(current);
-  if (current.type === "pickup") pickedUpIds.add(current.id);
 
-  while (unvisited.length) {
-    // Candidates: pickups not yet picked up, or dropoffs whose pickup is already visited
-    const candidates = unvisited.filter(
-      (s) =>
-        s.type === "pickup" || (s.type === "dropoff" && pickedUpIds.has(s.id)),
-    );
-    if (candidates.length === 0) {
-      // If no legal candidates, just append the rest (should not happen in normal data)
-      visited.push(...unvisited);
-      break;
-    }
-    // Find nearest candidate
-    let minIdx = 0;
-    let minDist = haversine(current, candidates[0]);
-    for (let i = 1; i < candidates.length; i++) {
-      const dist = haversine(current, candidates[i]);
-      if (dist < minDist) {
-        minIdx = i;
-        minDist = dist;
-      }
-    }
-    const next = candidates[minIdx];
-    // Remove from unvisited
-    const idx = unvisited.findIndex((s) => s === next);
-    if (idx !== -1) unvisited.splice(idx, 1);
-    visited.push(next);
-    if (next.type === "pickup") pickedUpIds.add(next.id);
-    current = next;
-  }
-  return visited;
-}
 // Carrier app: Multi-stop route optimization and linked list utilities
-// Supports pickup/dropoff distinction and integrates with carrier's accepted/assigned deliveries
 
 export interface RouteStop {
   id: string; // deliveryId
@@ -55,11 +11,18 @@ export interface RouteStop {
   prevId?: string | null;
   nextId?: string | null;
   visited?: boolean;
-  // ...other metadata
 }
 
-function haversine(a: RouteStop, b: RouteStop): number {
-  const R = 6371e3; // meters
+export interface CarrierPosition {
+  lat: number;
+  lng: number;
+}
+
+function haversineCoords(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const R = 6371e3;
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const dLat = toRad(b.lat - a.lat);
   const dLng = toRad(b.lng - a.lng);
@@ -72,44 +35,83 @@ function haversine(a: RouteStop, b: RouteStop): number {
   return R * c;
 }
 
-// Nearest Neighbor with pickup/dropoff logic
-export function nearestNeighbor(stops: RouteStop[]): RouteStop[] {
+/**
+ * Bundle-aware greedy route optimizer.
+ *
+ * - Starts from carrier's current GPS position (if provided).
+ * - Never drops off before picking up.
+ * - At each step chooses the nearest legal candidate stop.
+ * - Deduplicates stops to prevent repeated entries.
+ */
+export function bundleFitRoute(
+  stops: RouteStop[],
+  carrierPosition?: CarrierPosition,
+): RouteStop[] {
   if (stops.length === 0) return [];
+
+  // Deduplicate by id+type
+  const seenKeys = new Set<string>();
+  const uniqueStops: RouteStop[] = [];
+  for (const s of stops) {
+    const key = `${s.id}_${s.type}`;
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      uniqueStops.push(s);
+    }
+  }
+
   const visited: RouteStop[] = [];
-  const unvisited = [...stops];
-  // Always start with a pickup if possible
-  let currentIdx = unvisited.findIndex((s) => s.type === "pickup");
-  if (currentIdx === -1) currentIdx = 0;
-  visited.push(unvisited.splice(currentIdx, 1)[0]);
+  const unvisited = [...uniqueStops];
+  const pickedUpIds = new Set<string>();
+
+  // Determine starting position
+  let currentPos: { lat: number; lng: number };
+  if (
+    carrierPosition &&
+    (carrierPosition.lat !== 0 || carrierPosition.lng !== 0)
+  ) {
+    currentPos = { lat: carrierPosition.lat, lng: carrierPosition.lng };
+  } else {
+    const firstPickup = unvisited.find((s) => s.type === "pickup");
+    currentPos = firstPickup
+      ? { lat: firstPickup.lat, lng: firstPickup.lng }
+      : { lat: unvisited[0].lat, lng: unvisited[0].lng };
+  }
 
   while (unvisited.length) {
-    const last = visited[visited.length - 1];
-    // Only allow dropoff if its pickup is already visited
-    let candidates = unvisited.filter(
+    const candidates = unvisited.filter(
       (s) =>
-        s.type === "pickup" ||
-        (s.type === "dropoff" &&
-          visited.some((v) => v.id === s.id && v.type === "pickup")),
+        s.type === "pickup" || (s.type === "dropoff" && pickedUpIds.has(s.id)),
     );
-    if (candidates.length === 0) candidates = unvisited; // fallback
-    let minIdx = unvisited.indexOf(candidates[0]);
-    for (let i = 1; i < candidates.length; i++) {
-      if (haversine(last, candidates[i]) < haversine(last, candidates[0])) {
-        minIdx = unvisited.indexOf(candidates[i]);
+    const pool = candidates.length > 0 ? candidates : unvisited;
+
+    let bestIdx = 0;
+    let bestDist = haversineCoords(currentPos, pool[0]);
+    for (let i = 1; i < pool.length; i++) {
+      const dist = haversineCoords(currentPos, pool[i]);
+      if (dist < bestDist) {
+        bestIdx = i;
+        bestDist = dist;
       }
     }
-    visited.push(unvisited.splice(minIdx, 1)[0]);
+
+    const next = pool[bestIdx];
+    const idx = unvisited.findIndex((s) => s === next);
+    if (idx !== -1) unvisited.splice(idx, 1);
+
+    visited.push(next);
+    if (next.type === "pickup") pickedUpIds.add(next.id);
+    currentPos = { lat: next.lat, lng: next.lng };
   }
+
   return visited;
 }
 
 export function toDoublyLinkedList(stops: RouteStop[]): RouteStop[] {
-  // Use full key (id_type) for prevId/nextId, and avoid self-loops
   return stops.map((stop, i) => {
     const prev = i > 0 ? `${stops[i - 1].id}_${stops[i - 1].type}` : null;
     const next =
       i < stops.length - 1 ? `${stops[i + 1].id}_${stops[i + 1].type}` : null;
-    // Prevent self-loop: if next would be this stop's own key, set to null
     const myKey = `${stop.id}_${stop.type}`;
     return {
       ...stop,
@@ -131,51 +133,85 @@ export function markStopVisited(
   );
 }
 
-// Utility to build stops from deliveries
-// Always use deliveryAddress for dropoff, pickupAddress for pickup
+/**
+ * Reconstruct ordered stops from a doubly linked list stored in Firestore.
+ */
+export function getOrderedStops(stops: RouteStop[]): RouteStop[] {
+  if (!stops.length) return [];
+  const byKey: Record<string, RouteStop> = {};
+  stops.forEach((s) => {
+    byKey[`${s.id}_${s.type}`] = s;
+  });
+  // Find head: no prevId, or prevId not in map
+  let start = stops.find((s) => !s.prevId || !byKey[s.prevId]);
+  if (!start) start = stops[0];
+  const ordered: RouteStop[] = [];
+  const seen = new Set<string>();
+  let curr: RouteStop | undefined = start;
+  while (curr && !seen.has(`${curr.id}_${curr.type}`)) {
+    ordered.push(curr);
+    seen.add(`${curr.id}_${curr.type}`);
+    curr = curr.nextId ? byKey[curr.nextId] : undefined;
+  }
+  return ordered;
+}
+
 export function buildStopsFromDeliveries(
   deliveries: Delivery[],
   knownLocations?: Record<string, { lat: number; lng: number; name: string }>,
 ): RouteStop[] {
-  // Accept optional knownLocations map
   return deliveries.flatMap((delivery) => {
-    // Use knownLocations if present, fallback to delivery fields
-    // There are no pickupLocationId/dropoffLocationId fields in Delivery, so we match by normalized address
-    const pickupLoc = knownLocations
-      ? Object.values(knownLocations).find(
-          (loc) =>
-            loc.name?.toLowerCase().trim() ===
-            delivery.pickupAddress?.toLowerCase().trim(),
-        )
-      : undefined;
-    const dropoffLoc = knownLocations
-      ? Object.values(knownLocations).find(
-          (loc) =>
-            loc.name?.toLowerCase().trim() ===
-            delivery.deliveryAddress?.toLowerCase().trim(),
-        )
-      : undefined;
+    // Prefer stored geocoded coordinates, then knownLocations name-match, then currentLocation
+    const pickupLoc = delivery.pickupLocation
+      ? delivery.pickupLocation
+      : knownLocations
+        ? Object.values(knownLocations).find(
+            (loc) =>
+              loc.name?.toLowerCase().trim() ===
+              delivery.pickupAddress?.toLowerCase().trim(),
+          )
+        : undefined;
+    const dropoffLoc = delivery.deliveryLocation
+      ? delivery.deliveryLocation
+      : knownLocations
+        ? Object.values(knownLocations).find(
+            (loc) =>
+              loc.name?.toLowerCase().trim() ===
+              delivery.deliveryAddress?.toLowerCase().trim(),
+          )
+        : undefined;
+    // currentLocation is always the pickup point — only use it as pickup fallback
+    const pickupLat = pickupLoc?.lat ?? delivery.currentLocation?.lat ?? 0;
+    const pickupLng = pickupLoc?.lng ?? delivery.currentLocation?.lng ?? 0;
+    const dropoffLat = dropoffLoc?.lat ?? 0;
+    const dropoffLng = dropoffLoc?.lng ?? 0;
     return [
       {
         id: delivery.id,
-        type: "pickup",
-        address: pickupLoc?.name ?? delivery.pickupAddress,
-        lat: pickupLoc?.lat ?? delivery.currentLocation?.lat ?? 0,
-        lng: pickupLoc?.lng ?? delivery.currentLocation?.lng ?? 0,
+        type: "pickup" as const,
+        address: delivery.pickupAddress,
+        lat: pickupLat,
+        lng: pickupLng,
         visited: false,
         prevId: null,
         nextId: null,
       },
       {
         id: delivery.id,
-        type: "dropoff",
-        address: dropoffLoc?.name ?? delivery.deliveryAddress,
-        lat: dropoffLoc?.lat ?? delivery.currentLocation?.lat ?? 0,
-        lng: dropoffLoc?.lng ?? delivery.currentLocation?.lng ?? 0,
+        type: "dropoff" as const,
+        address: delivery.deliveryAddress,
+        lat: dropoffLat,
+        lng: dropoffLng,
         visited: false,
         prevId: null,
         nextId: null,
       },
     ];
   });
+}
+
+// Legacy alias
+export { haversineCoords as haversine };
+export function nearestNeighbor(stops: RouteStop[]): RouteStop[] {
+  return bundleFitRoute(stops);
 }
