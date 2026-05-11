@@ -240,8 +240,43 @@ export class CarrierService {
   }
 
   /**
-   * Mark a stop as visited in Firestore.
+   * Move a stop from routeStops → visitedRouteStops with a sequential visitOrder.
+   * visitedRouteStops is an ordered list (visitOrder 1, 2, 3…) — no linked-list
+   * pointers needed. The main routeStops stays clean for re-optimization.
    */
+  static async archiveVisitedStop(stop: any, visitedAt?: Date): Promise<void> {
+    const user = auth.currentUser;
+    if (!user) return;
+    const { writeBatch: wb } = await import("firebase/firestore");
+
+    const visitedCol = collection(db, "users", user.uid, "visitedRouteStops");
+    const srcRef = doc(
+      db,
+      "users",
+      user.uid,
+      "routeStops",
+      `${stop.id}_${stop.type}`,
+    );
+    const dstRef = doc(visitedCol, `${stop.id}_${stop.type}`);
+
+    // Count existing visited stops to assign the next sequential order
+    const existingSnap = await getDocs(visitedCol);
+    const visitOrder = existingSnap.size + 1;
+
+    const batch = wb(db);
+    batch.set(dstRef, {
+      ...stop,
+      visited: true,
+      visitOrder,
+      visitedAt: visitedAt ? Timestamp.fromDate(visitedAt) : Timestamp.now(),
+      // No linked-list pointers — order is determined by visitOrder
+      prevId: null,
+      nextId: null,
+    });
+    batch.delete(srcRef);
+    await batch.commit();
+  }
+
   static async markRouteStopVisited(
     stopId: string,
     type: "pickup" | "dropoff",
@@ -874,6 +909,38 @@ export class CarrierService {
       console.error("Error fetching available tasks:", error);
       return [];
     }
+  }
+
+  /**
+   * Subscribe to ALL active deliveries for this carrier (includes "delivered"
+   * so the route-stop visited-state sync can fire before the doc leaves the query).
+   */
+  static subscribeToActiveDeliveries(
+    callback: (deliveries: Delivery[]) => void,
+  ): () => void {
+    const user = auth.currentUser;
+    if (!user) return () => {};
+
+    const q = query(
+      collection(db, "deliveries"),
+      where("carrierId", "==", user.uid),
+      where("status", "in", [
+        "assigned",
+        "accepted",
+        "picked_up",
+        "in_transit",
+        "out_for_delivery",
+        "delivered",
+      ]),
+      orderBy("createdAt", "desc"),
+      limit(30),
+    );
+
+    return onSnapshot(q, (snapshot) => {
+      callback(
+        snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Delivery),
+      );
+    });
   }
 
   static subscribeToAvailableTasks(
