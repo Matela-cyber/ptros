@@ -247,7 +247,6 @@ export class CarrierService {
   static async archiveVisitedStop(stop: any, visitedAt?: Date): Promise<void> {
     const user = auth.currentUser;
     if (!user) return;
-    const { writeBatch: wb } = await import("firebase/firestore");
 
     const visitedCol = collection(db, "users", user.uid, "visitedRouteStops");
     const srcRef = doc(
@@ -257,24 +256,130 @@ export class CarrierService {
       "routeStops",
       `${stop.id}_${stop.type}`,
     );
-    const dstRef = doc(visitedCol, `${stop.id}_${stop.type}`);
+    const newKey = `${stop.id}_${stop.type}`;
+    const dstRef = doc(visitedCol, newKey);
 
-    // Count existing visited stops to assign the next sequential order
-    const existingSnap = await getDocs(visitedCol);
-    const visitOrder = existingSnap.size + 1;
+    // Use epoch-ms as visitOrder — monotonically increasing, no race condition.
+    const visitOrder = Date.now();
 
-    const batch = wb(db);
-    batch.set(dstRef, {
+    // Find the current tail of the visited list so we can wire prev/next pointers.
+    const tailSnap = await getDocs(
+      query(visitedCol, orderBy("visitOrder", "desc"), limit(1)),
+    );
+    const prevKey = tailSnap.empty ? null : tailSnap.docs[0].id;
+    const prevRef = tailSnap.empty ? null : tailSnap.docs[0].ref;
+
+    // Write the new visited stop with the correct prev pointer.
+    await setDoc(dstRef, {
       ...stop,
       visited: true,
       visitOrder,
       visitedAt: visitedAt ? Timestamp.fromDate(visitedAt) : Timestamp.now(),
-      // No linked-list pointers — order is determined by visitOrder
-      prevId: null,
+      prevId: prevKey,
       nextId: null,
     });
-    batch.delete(srcRef);
-    await batch.commit();
+
+    // Stitch the previous tail’s nextId to the new stop.
+    if (prevRef) {
+      await updateDoc(prevRef, { nextId: newKey });
+    }
+
+    // Remove from active routeStops (no-op if doc doesn’t exist).
+    await deleteDoc(srcRef);
+  }
+
+  /**
+   * Archive route stops for a delivery when its status changes.
+   * Works regardless of which page/component triggered the update.
+   *
+   * - "picked_up" / "in_transit" / "out_for_delivery" → archive pickup stop
+   * - "delivered" → archive both pickup and dropoff stops
+   *
+   * Silently skips stops that are already archived or don't exist.
+   */
+  static async archiveStopsForDelivery(
+    deliveryId: string,
+    status: string,
+  ): Promise<void> {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const typesToArchive: ("pickup" | "dropoff")[] = [];
+    if (
+      ["picked_up", "in_transit", "out_for_delivery", "delivered"].includes(
+        status,
+      )
+    ) {
+      typesToArchive.push("pickup");
+    }
+    if (status === "delivered") {
+      typesToArchive.push("dropoff");
+    }
+    if (typesToArchive.length === 0) return;
+
+    // Fetch delivery data once — needed to reconstruct stop when routeStops is empty
+    // (carrier may never have opened the Route tab, so routeStops may not exist)
+    let deliveryData: any = null;
+    const fetchDelivery = async () => {
+      if (deliveryData) return deliveryData;
+      const delSnap = await getDoc(doc(db, "deliveries", deliveryId));
+      deliveryData = delSnap.exists() ? delSnap.data() : null;
+      return deliveryData;
+    };
+
+    for (const type of typesToArchive) {
+      const stopKey = `${deliveryId}_${type}`;
+
+      // Skip if already archived (idempotent)
+      const dstSnap = await getDoc(
+        doc(db, "users", user.uid, "visitedRouteStops", stopKey),
+      );
+      if (dstSnap.exists()) continue;
+
+      // Try to get stop data from active routeStops first
+      const srcSnap = await getDoc(
+        doc(db, "users", user.uid, "routeStops", stopKey),
+      );
+
+      let stopData: any;
+      if (srcSnap.exists()) {
+        // Stop was in the active linked list — use its data directly
+        stopData = { ...srcSnap.data(), id: deliveryId, type };
+        // Enrich coordinates from delivery doc if the stop has 0,0
+        if ((stopData.lat === 0 && stopData.lng === 0) || (!stopData.lat && !stopData.lng)) {
+          const del = await fetchDelivery();
+          if (del) {
+            const isPickup = type === "pickup";
+            const loc = isPickup
+              ? (del.pickupLocation ?? del.currentLocation)
+              : del.deliveryLocation;
+            if (loc && (loc.lat !== 0 || loc.lng !== 0)) {
+              stopData = { ...stopData, lat: loc.lat, lng: loc.lng };
+            }
+          }
+        }
+      } else {
+        // Route tab was never opened / optimization never ran — reconstruct from delivery
+        const del = await fetchDelivery();
+        if (!del) continue;
+        const isPickup = type === "pickup";
+        const loc = isPickup
+          ? (del.pickupLocation ?? del.currentLocation)
+          : del.deliveryLocation;
+        stopData = {
+          id: deliveryId,
+          type,
+          address: isPickup
+            ? (del.pickupAddress ?? del.pickupLocation?.address ?? "")
+            : (del.deliveryAddress ?? del.deliveryLocation?.address ?? ""),
+          lat: loc?.lat ?? 0,
+          lng: loc?.lng ?? 0,
+          visited: true,
+        };
+      }
+
+      await CarrierService.archiveVisitedStop(stopData);
+    }
   }
 
   static async markRouteStopVisited(
@@ -676,6 +781,16 @@ export class CarrierService {
 
       await updateDoc(doc(db, "deliveries", deliveryId), updates);
 
+      // Archive route stops — non-critical, must not block or fail the status update
+      try {
+        await CarrierService.archiveStopsForDelivery(deliveryId, status);
+      } catch (archiveErr) {
+        console.error(
+          "archiveStopsForDelivery failed (updateDeliveryStatus):",
+          archiveErr,
+        );
+      }
+
       if (
         ["picked_up", "in_transit", "out_for_delivery", "delivered"].includes(
           status,
@@ -718,8 +833,6 @@ export class CarrierService {
     deliveryId: string,
     otpCode: string,
   ): Promise<boolean> {
-    // Dev bypass: "0000" always passes
-    if (otpCode.trim() === "0000") return true;
     try {
       const deliveryRef = doc(db, "deliveries", deliveryId);
       const deliveryDoc = await getDocs(
@@ -729,31 +842,44 @@ export class CarrierService {
         ),
       );
 
-      if (!deliveryDoc.empty) {
-        const data = deliveryDoc.docs[0].data();
-        if (data.otpCode === otpCode) {
-          const deliveryEarnings = data.earnings || data.estimatedEarnings || 0;
-          await updateDoc(deliveryRef, {
-            status: "delivered",
-            otpVerified: true,
-            deliveryTime: Timestamp.now(),
-            updatedAt: Timestamp.now(),
-          });
-          // Update carrier stats on their user document
-          const user = auth.currentUser;
-          if (user) {
-            try {
-              await updateDoc(doc(db, "users", user.uid), {
-                completedDeliveries: increment(1),
-                earnings: increment(deliveryEarnings),
-                updatedAt: Timestamp.now(),
-              });
-            } catch (e) {
-              console.error("Error updating carrier stats:", e);
-            }
-          }
-          return true;
+      // Accept real OTP or the "0000" dev bypass
+      const isBypass = otpCode.trim() === "0000";
+      const data = deliveryDoc.empty ? null : deliveryDoc.docs[0].data();
+      const otpMatches = data && (isBypass || data.otpCode === otpCode);
+
+      if (otpMatches) {
+        const deliveryEarnings = data
+          ? data.earnings || data.estimatedEarnings || 0
+          : 0;
+        await updateDoc(deliveryRef, {
+          status: "delivered",
+          otpVerified: true,
+          deliveryTime: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        });
+        // Archive route stops — non-critical, must not fail the OTP verification
+        try {
+          await CarrierService.archiveStopsForDelivery(deliveryId, "delivered");
+        } catch (archiveErr) {
+          console.error(
+            "archiveStopsForDelivery failed (verifyOTP):",
+            archiveErr,
+          );
         }
+        // Update carrier stats on their user document
+        const user = auth.currentUser;
+        if (user) {
+          try {
+            await updateDoc(doc(db, "users", user.uid), {
+              completedDeliveries: increment(1),
+              earnings: increment(deliveryEarnings),
+              updatedAt: Timestamp.now(),
+            });
+          } catch (e) {
+            console.error("Error updating carrier stats:", e);
+          }
+        }
+        return true;
       }
       return false;
     } catch (error) {
@@ -955,16 +1081,20 @@ export class CarrierService {
       orderBy("createdAt", "desc"),
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const tasks = snapshot.docs.map(
-        (doc) =>
-          ({
-            id: doc.id,
-            ...doc.data(),
-          }) as Delivery,
-      );
-      callback(tasks);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const tasks = snapshot.docs.map(
+          (doc) =>
+            ({
+              id: doc.id,
+              ...doc.data(),
+            }) as Delivery,
+        );
+        callback(tasks);
+      },
+      (err) => console.error("subscribeToAvailableTasks error:", err),
+    );
 
     return unsubscribe;
   }

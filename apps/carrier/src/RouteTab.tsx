@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CarrierService } from "./carrierService";
 import {
@@ -167,9 +167,10 @@ function DeliveryModal({
           </div>
           <button
             onClick={onClose}
-            className="text-white/80 hover:text-white text-xl font-bold"
+            className="text-white/70 hover:text-white w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/20 text-xl font-bold transition"
+            aria-label="Close"
           >
-            x
+            ✕
           </button>
         </div>
       </div>
@@ -619,11 +620,17 @@ export default function RouteTab() {
 
     // Visited history — separate ordered list, sorted by visitOrder (1, 2, 3…)
     const visitedCol = collection(db, "users", user.uid, "visitedRouteStops");
-    const unsubVisited = onSnapshot(visitedCol, (snap) => {
-      const docs = snap.docs.map((d) => d.data() as RouteStop);
-      docs.sort((a: any, b: any) => (a.visitOrder ?? 0) - (b.visitOrder ?? 0));
-      setVisitedStops(docs);
-    });
+    const unsubVisited = onSnapshot(
+      visitedCol,
+      (snap) => {
+        const docs = snap.docs.map((d) => d.data() as RouteStop);
+        docs.sort(
+          (a: any, b: any) => (a.visitOrder ?? 0) - (b.visitOrder ?? 0),
+        );
+        setVisitedStops(docs);
+      },
+      (err) => console.error("visitedRouteStops listener error:", err),
+    );
 
     return () => {
       if (typeof unsubDels === "function") unsubDels();
@@ -750,6 +757,7 @@ export default function RouteTab() {
 
   // â”€â”€ Auto re-optimize when delivery STATUS changes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
+    if (loading) return; // wait until routeStops snapshot has resolved
     if (deliveries.length === 0) return;
     const statusKey = deliveries
       .map((d) => `${d.id}:${d.status}`)
@@ -758,11 +766,12 @@ export default function RouteTab() {
     if (statusKey === prevStatusKeyRef.current) return;
     const isFirstLoad = prevStatusKeyRef.current === "";
     prevStatusKeyRef.current = statusKey;
-    // Skip re-optimize on initial load - let user see saved route first
-    if (isFirstLoad) return;
+    // Skip re-optimize on first load only when a saved route already exists.
+    // If routeStops is empty (new job, never optimized) we must build the route.
+    if (isFirstLoad && stops.length > 0) return;
     runOptimize(carrierPos ?? undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deliveries]);
+  }, [loading, deliveries]);
 
   const handleReoptimize = () => {
     runOptimize(carrierPos ?? undefined);
@@ -770,9 +779,12 @@ export default function RouteTab() {
   };
 
   // ── Archive stops to visitedRouteStops when delivery status changes ────────
-  // Visited stops leave routeStops entirely — separate collection for analytics
+  // Two complementary paths:
+  //   A) stops loop   — for stops already in routeStops (Route tab was used)
+  //   B) delivery loop — for stops NOT in routeStops (carrier used /deliveries page only)
   useEffect(() => {
-    if (!deliveries.length || !stops.length) return;
+    if (!deliveries.length) return;
+
     const pickupDoneStatuses = new Set([
       "picked_up",
       "in_transit",
@@ -782,6 +794,8 @@ export default function RouteTab() {
     const alreadyArchived = new Set(
       visitedStops.map((s) => `${s.id}_${s.type}`),
     );
+
+    // Path A: archive stops that exist in the active routeStops linked list
     for (const stop of stops) {
       const key = `${stop.id}_${stop.type}`;
       if (alreadyArchived.has(key) || archivingRef.current.has(key)) continue;
@@ -803,9 +817,35 @@ export default function RouteTab() {
         }
       }
       CarrierService.archiveVisitedStop(enriched).catch((e) => {
-        console.warn("Archive failed:", e);
+        console.warn("Archive failed (path A):", e);
         archivingRef.current.delete(key);
       });
+    }
+
+    // Path B: drive archiving from delivery status directly — covers the case
+    // where routeStops was never populated (Route tab never opened / optimized).
+    for (const del of deliveries) {
+      if (pickupDoneStatuses.has(del.status)) {
+        const pickupKey = `${del.id}_pickup`;
+        if (
+          !alreadyArchived.has(pickupKey) &&
+          !archivingRef.current.has(pickupKey)
+        ) {
+          archivingRef.current.add(pickupKey);
+          CarrierService.archiveStopsForDelivery(del.id, del.status).catch(
+            (e) => {
+              console.warn("Archive failed (path B):", e);
+              archivingRef.current.delete(pickupKey);
+              if (del.status === "delivered")
+                archivingRef.current.delete(`${del.id}_dropoff`);
+            },
+          );
+          // Mark dropoff too so we don't double-call for "delivered"
+          if (del.status === "delivered") {
+            archivingRef.current.add(`${del.id}_dropoff`);
+          }
+        }
+      }
     }
   }, [deliveries, stops]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -876,10 +916,6 @@ export default function RouteTab() {
     );
   }
 
-  const selectedDelivery = selectedStop
-    ? deliveries.find((d) => d.id === selectedStop.id)
-    : undefined;
-
   return (
     <div className="p-3 sm:p-4 space-y-3 max-w-2xl mx-auto">
       {/* Header */}
@@ -942,7 +978,7 @@ export default function RouteTab() {
             </span>
           )}
         </button>
-        {view === "map" && (
+        {(view === "map" || view === "visited") && (
           <button
             className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-300 bg-white text-gray-600 transition"
             onClick={() =>
@@ -956,12 +992,28 @@ export default function RouteTab() {
 
       {/* Map view */}
       {view === "map" && (
-        <RouteMap
-          orderedStops={orderedStops}
-          carrierPos={carrierPos}
-          pathMode={pathMode}
-          onStopClick={(stop) => setSelectedStop(stop)}
-        />
+        <>
+          <RouteMap
+            orderedStops={orderedStops}
+            carrierPos={carrierPos}
+            pathMode={pathMode}
+            onStopClick={(stop) =>
+              setSelectedStop(
+                selectedStop?.id === stop.id && selectedStop?.type === stop.type
+                  ? null
+                  : stop,
+              )
+            }
+          />
+          {selectedStop && (
+            <DeliveryModal
+              delivery={deliveries.find((d) => d.id === selectedStop.id)}
+              stop={selectedStop}
+              onClose={() => setSelectedStop(null)}
+              onStatusUpdated={() => setSelectedStop(null)}
+            />
+          )}
+        </>
       )}
 
       {/* List view */}
@@ -969,141 +1021,252 @@ export default function RouteTab() {
         <ol className="space-y-2">
           {orderedStops.map((stop, idx) => {
             const isPickup = stop.type === "pickup";
+            const isSelected =
+              selectedStop?.id === stop.id && selectedStop?.type === stop.type;
             const paired = orderedStops.find(
               (s) => s.id === stop.id && s.type !== stop.type,
             );
+            const stopDelivery = isSelected
+              ? deliveries.find((d) => d.id === stop.id)
+              : undefined;
             return (
-              <li
-                key={`${stop.id}_${stop.type}`}
-                className={`rounded-xl border p-3 cursor-pointer transition active:scale-[0.98] ${
-                  stop.visited
-                    ? "bg-gray-50 border-gray-200 opacity-60"
-                    : isPickup
-                      ? "bg-blue-50 border-blue-200"
-                      : "bg-green-50 border-green-200"
-                }`}
-                onClick={() => setSelectedStop(stop)}
-              >
-                <div className="flex items-start gap-3">
-                  <div
-                    className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${
-                      stop.visited
-                        ? "bg-gray-400"
+              <Fragment key={`${stop.id}_${stop.type}`}>
+                <li
+                  className={`rounded-xl border p-3 cursor-pointer transition active:scale-[0.98] ${
+                    isSelected
+                      ? isPickup
+                        ? "bg-blue-100 border-blue-400 ring-2 ring-blue-300"
+                        : "bg-green-100 border-green-400 ring-2 ring-green-300"
+                      : stop.visited
+                        ? "bg-gray-50 border-gray-200 opacity-60"
                         : isPickup
-                          ? "bg-blue-600"
-                          : "bg-green-600"
-                    }`}
-                  >
-                    {stop.visited ? "v" : idx + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`text-xs font-semibold uppercase tracking-wider ${
-                          stop.visited
-                            ? "text-gray-400"
-                            : isPickup
-                              ? "text-blue-700"
-                              : "text-green-700"
-                        }`}
-                      >
-                        {isPickup ? "Pickup" : "Dropoff"}
-                      </span>
-                      {stop.visited && (
-                        <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-                          Done
+                          ? "bg-blue-50 border-blue-200"
+                          : "bg-green-50 border-green-200"
+                  }`}
+                  onClick={() => setSelectedStop(isSelected ? null : stop)}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${
+                        stop.visited
+                          ? "bg-gray-400"
+                          : isPickup
+                            ? "bg-blue-600"
+                            : "bg-green-600"
+                      }`}
+                    >
+                      {stop.visited ? "v" : idx + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`text-xs font-semibold uppercase tracking-wider ${
+                            stop.visited
+                              ? "text-gray-400"
+                              : isPickup
+                                ? "text-blue-700"
+                                : "text-green-700"
+                          }`}
+                        >
+                          {isPickup ? "Pickup" : "Dropoff"}
                         </span>
+                        {stop.visited && (
+                          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                            Done
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm font-semibold text-gray-800 mt-0.5 truncate">
+                        {stop.address || "(no address)"}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5 font-mono">
+                        [{stop.lat.toFixed(5)}, {stop.lng.toFixed(5)}]
+                      </p>
+                      {stop.cumulativeLoad !== undefined && (
+                        <p className="text-xs mt-1">
+                          <span className="font-medium text-gray-600">
+                            {isPickup ? "+" : "-"}
+                            {stop.loadKg ?? 0} kg
+                          </span>
+                          <span className="text-gray-400"> · load after: </span>
+                          <span className="font-semibold text-gray-700">
+                            {stop.cumulativeLoad.toFixed(1)} kg
+                          </span>
+                        </p>
+                      )}
+                      {paired && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          {isPickup ? "> Drop at" : "< Picked up at"}{" "}
+                          <span className="font-medium text-gray-700">
+                            {paired.address || "(no address)"}
+                          </span>
+                        </p>
                       )}
                     </div>
-                    <p className="text-sm font-semibold text-gray-800 mt-0.5 truncate">
-                      {stop.address || "(no address)"}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5 font-mono">
-                      [{stop.lat.toFixed(5)}, {stop.lng.toFixed(5)}]
-                    </p>
-                    {stop.cumulativeLoad !== undefined && (
-                      <p className="text-xs mt-1">
-                        <span className="font-medium text-gray-600">
-                          {isPickup ? "+" : "-"}
-                          {stop.loadKg ?? 0} kg
-                        </span>
-                        <span className="text-gray-400"> · load after: </span>
-                        <span className="font-semibold text-gray-700">
-                          {stop.cumulativeLoad.toFixed(1)} kg
-                        </span>
-                      </p>
-                    )}
-                    {paired && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        {isPickup ? "> Drop at" : "< Picked up at"}{" "}
-                        <span className="font-medium text-gray-700">
-                          {paired.address || "(no address)"}
-                        </span>
-                      </p>
-                    )}
                   </div>
-                </div>
-              </li>
+                </li>
+                {isSelected && (
+                  <li className="list-none">
+                    <DeliveryModal
+                      delivery={stopDelivery}
+                      stop={stop}
+                      onClose={() => setSelectedStop(null)}
+                      onStatusUpdated={() => setSelectedStop(null)}
+                    />
+                  </li>
+                )}
+              </Fragment>
             );
           })}
         </ol>
       )}
 
-      {/* Visited tab view */}
+      {/* Visited tab — map view */}
+      {view === "visited" && visitedStops.length > 0 && (() => {
+        const enrichedVisited = visitedStops.map((stop) => {
+          if (stop.lat !== 0 || stop.lng !== 0) return stop;
+          const del = deliveries.find((d) => d.id === stop.id);
+          if (del) {
+            const loc =
+              stop.type === "pickup"
+                ? (del.pickupLocation ?? del.currentLocation)
+                : del.deliveryLocation;
+            if (loc && (loc.lat !== 0 || loc.lng !== 0))
+              return { ...stop, lat: loc.lat, lng: loc.lng };
+          }
+          return stop;
+        });
+        return (
+          <RouteMap
+            orderedStops={enrichedVisited}
+            carrierPos={carrierPos}
+            pathMode={pathMode}
+            onStopClick={(stop) =>
+              setSelectedStop(
+                selectedStop?.id === stop.id && selectedStop?.type === stop.type
+                  ? null
+                  : stop,
+              )
+            }
+          />
+        );
+      })()}
+      {view === "visited" && selectedStop && (
+        <DeliveryModal
+          delivery={deliveries.find((d) => d.id === selectedStop.id)}
+          stop={selectedStop}
+          onClose={() => setSelectedStop(null)}
+          onStatusUpdated={() => setSelectedStop(null)}
+        />
+      )}
+
+      {/* Visited tab — list view */}
       {view === "visited" &&
         (visitedStops.length === 0 ? (
           <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
             <p className="text-gray-400 text-sm">No stops visited yet.</p>
           </div>
         ) : (
-          <ol className="space-y-2">
-            {visitedStops.map((stop) => {
+          <ol className="mt-3 space-y-2">
+            {visitedStops.map((stop, idx) => {
               const isPickup = stop.type === "pickup";
               const del = deliveries.find((d) => d.id === stop.id);
-              const order = (stop as any).visitOrder ?? "?";
+              const paired = visitedStops.find(
+                (s) => s.id === stop.id && s.type !== stop.type,
+              );
+              const isSelected =
+                selectedStop?.id === stop.id &&
+                selectedStop?.type === stop.type;
+              const stopDelivery = isSelected
+                ? del
+                : undefined;
               return (
-                <li
-                  key={`visited_${stop.id}_${stop.type}`}
-                  className="rounded-xl border border-gray-200 bg-gray-50 p-3"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="shrink-0 w-7 h-7 rounded-full bg-gray-400 flex items-center justify-center text-white text-xs font-bold">
-                      {order}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                          {isPickup ? "Pickup" : "Dropoff"}
-                        </span>
-                        <span className="text-xs text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full font-medium">
-                          Done
-                        </span>
+                <Fragment key={`visited_${stop.id}_${stop.type}`}>
+                  <li
+                    className={`rounded-xl border p-3 cursor-pointer transition active:scale-[0.98] ${
+                      isSelected
+                        ? isPickup
+                          ? "bg-blue-100 border-blue-400 ring-2 ring-blue-300"
+                          : "bg-green-100 border-green-400 ring-2 ring-green-300"
+                        : isPickup
+                          ? "bg-blue-50 border-blue-200 opacity-70"
+                          : "bg-green-50 border-green-200 opacity-70"
+                    }`}
+                    onClick={() =>
+                      setSelectedStop(isSelected ? null : stop)
+                    }
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${
+                          isPickup ? "bg-blue-400" : "bg-green-500"
+                        }`}
+                      >
+                        {idx + 1}
                       </div>
-                      <p className="text-sm font-semibold text-gray-700 mt-0.5 truncate">
-                        {stop.address || "(no address)"}
-                      </p>
-                      {del && (
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {del.trackingCode} &middot; {del.recipientName}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`text-xs font-semibold uppercase tracking-wider ${
+                              isPickup ? "text-blue-600" : "text-green-600"
+                            }`}
+                          >
+                            {isPickup ? "Pickup" : "Dropoff"}
+                          </span>
+                          <span className="text-xs text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full font-medium">
+                            Done
+                          </span>
+                        </div>
+                        <p className="text-sm font-semibold text-gray-800 mt-0.5 truncate">
+                          {stop.address || "(no address)"}
                         </p>
-                      )}
+                        <p className="text-xs text-gray-400 mt-0.5 font-mono">
+                          [{stop.lat?.toFixed(5)}, {stop.lng?.toFixed(5)}]
+                        </p>
+                        {(stop as any).cumulativeLoad !== undefined && (
+                          <p className="text-xs mt-1">
+                            <span className="font-medium text-gray-600">
+                              {isPickup ? "+" : "-"}
+                              {(stop as any).loadKg ?? 0} kg
+                            </span>
+                            <span className="text-gray-400"> · load after: </span>
+                            <span className="font-semibold text-gray-700">
+                              {((stop as any).cumulativeLoad as number).toFixed(1)} kg
+                            </span>
+                          </p>
+                        )}
+                        {paired && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            {isPickup ? "> Drop at" : "< Picked up at"}{" "}
+                            <span className="font-medium text-gray-700">
+                              {paired.address || "(no address)"}
+                            </span>
+                          </p>
+                        )}
+                        {del && (
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {del.trackingCode}
+                            {del.recipientName ? ` · ${del.recipientName}` : ""}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </li>
+                  </li>
+                  {isSelected && (
+                    <li className="list-none">
+                      <DeliveryModal
+                        delivery={stopDelivery}
+                        stop={stop}
+                        onClose={() => setSelectedStop(null)}
+                        onStatusUpdated={() => setSelectedStop(null)}
+                      />
+                    </li>
+                  )}
+                </Fragment>
               );
             })}
           </ol>
         ))}
-
-      {/* Delivery detail modal */}
-      {selectedStop && (
-        <DeliveryModal
-          delivery={selectedDelivery}
-          stop={selectedStop}
-          onClose={() => setSelectedStop(null)}
-          onStatusUpdated={() => setSelectedStop(null)}
-        />
-      )}
     </div>
   );
 }

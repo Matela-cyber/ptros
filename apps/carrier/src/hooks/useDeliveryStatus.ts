@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { updateDeliveryStatus } from "../services/deliveryService";
+import { CarrierService } from "../carrierService";
 import { useCarrier } from "./useCarrier";
 
 export const useDeliveryStatus = () => {
@@ -70,6 +71,15 @@ export const useDeliveryStatus = () => {
         currentLocation,
         routeContext,
       );
+      // Archive route stops — non-critical, must not block or fail the status update
+      try {
+        await CarrierService.archiveStopsForDelivery(deliveryId, status);
+      } catch (archiveErr) {
+        console.error(
+          "archiveStopsForDelivery failed (useDeliveryStatus):",
+          archiveErr,
+        );
+      }
       setLoading(false);
       return { success: true, message: `Status updated to ${status}` };
     } catch (err: any) {
