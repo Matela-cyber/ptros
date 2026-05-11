@@ -249,42 +249,18 @@ export class CarrierService {
     if (!user) return;
 
     const visitedCol = collection(db, "users", user.uid, "visitedRouteStops");
-    const srcRef = doc(
-      db,
-      "users",
-      user.uid,
-      "routeStops",
-      `${stop.id}_${stop.type}`,
-    );
-    const newKey = `${stop.id}_${stop.type}`;
-    const dstRef = doc(visitedCol, newKey);
+    const srcRef = doc(db, "users", user.uid, "routeStops", `${stop.id}_${stop.type}`);
+    const dstRef = doc(visitedCol, `${stop.id}_${stop.type}`);
 
-    // Use epoch-ms as visitOrder — monotonically increasing, no race condition.
-    const visitOrder = Date.now();
-
-    // Find the current tail of the visited list so we can wire prev/next pointers.
-    const tailSnap = await getDocs(
-      query(visitedCol, orderBy("visitOrder", "desc"), limit(1)),
-    );
-    const prevKey = tailSnap.empty ? null : tailSnap.docs[0].id;
-    const prevRef = tailSnap.empty ? null : tailSnap.docs[0].ref;
-
-    // Write the new visited stop with the correct prev pointer.
+    // visitOrder = epoch-ms; snapshot listener sorts by this for display order.
     await setDoc(dstRef, {
       ...stop,
       visited: true,
-      visitOrder,
+      visitOrder: Date.now(),
       visitedAt: visitedAt ? Timestamp.fromDate(visitedAt) : Timestamp.now(),
-      prevId: prevKey,
-      nextId: null,
     });
 
-    // Stitch the previous tail’s nextId to the new stop.
-    if (prevRef) {
-      await updateDoc(prevRef, { nextId: newKey });
-    }
-
-    // Remove from active routeStops (no-op if doc doesn’t exist).
+    // Remove from active routeStops (no-op if doc does not exist).
     await deleteDoc(srcRef);
   }
 
