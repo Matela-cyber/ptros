@@ -150,8 +150,13 @@ service cloud.firestore {
     // ==================== USERS COLLECTION ====================
     // All user profiles with role, approval status, location, etc.
     match /users/{userId} {
-            // Allow carriers to read/write their own routeStops subcollection
+            // Allow carriers to read/write their own routeStops subcollection (active/unvisited)
             match /routeStops/{stopId} {
+              allow read, write: if isCarrier() && request.auth.uid == userId;
+            }
+
+            // Allow carriers to read/write their own visitedRouteStops subcollection (history/analytics)
+            match /visitedRouteStops/{stopId} {
               allow read, write: if isCarrier() && request.auth.uid == userId;
             }
       // Everyone can read their own user document

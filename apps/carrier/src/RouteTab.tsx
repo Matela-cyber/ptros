@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { CarrierService } from "./carrierService";
 import {
   bundleFitRoute,
@@ -12,137 +13,297 @@ import { Delivery } from "./types";
 import { toast } from "react-hot-toast";
 import { collection, onSnapshot, getDocs } from "firebase/firestore";
 import { auth, db } from "@config";
+import { useGPSLocation } from "./useGPSLocation";
 
 const MASERU_CENTER = { lat: -29.312, lng: 27.4869 };
 
-// ─── Delivery Detail Modal ───────────────────────────────────────────────────
+// â”€â”€â”€ Delivery Detail Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function DeliveryModal({
   delivery,
   stop,
   onClose,
+  onStatusUpdated,
 }: {
   delivery: Delivery | undefined;
   stop: RouteStop;
   onClose: () => void;
+  onStatusUpdated?: () => void;
 }) {
+  const navigate = useNavigate();
+  const [statusUpdating, setStatusUpdating] = useState(false);
+  const [showOtp, setShowOtp] = useState(false);
+  const [otpInput, setOtpInput] = useState("");
+
   if (!delivery) {
     return (
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-        onClick={onClose}
-      >
-        <div
-          className="bg-white rounded-xl p-5 max-w-sm w-full shadow-xl"
-          onClick={(e) => e.stopPropagation()}
+      <div className="rounded-xl border border-gray-200 bg-white shadow-md p-5">
+        <p className="text-gray-500 text-sm">Delivery details not found.</p>
+        <button
+          className="mt-3 text-blue-600 text-sm font-medium"
+          onClick={onClose}
         >
-          <p className="text-gray-500 text-sm">Delivery details not found.</p>
-          <button
-            className="mt-3 text-blue-600 text-sm font-medium"
-            onClick={onClose}
-          >
-            Close
-          </button>
-        </div>
+          Close
+        </button>
       </div>
     );
   }
-  const typeColor = stop.type === "pickup" ? "bg-blue-600" : "bg-green-600";
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className={`${typeColor} text-white px-5 py-4`}>
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="text-xs font-semibold uppercase tracking-wider opacity-80">
-                {stop.type === "pickup" ? "📦 Pickup" : "🏠 Dropoff"}
-              </span>
-              <h3 className="text-lg font-bold mt-0.5">
-                {stop.address || "—"}
-              </h3>
-            </div>
-            <button
-              onClick={onClose}
-              className="text-white/80 hover:text-white text-xl font-bold"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
 
-        <div className="p-5 space-y-3 text-sm">
-          <div className="flex items-center gap-2">
-            <span className="text-gray-400 w-28 shrink-0">Tracking</span>
+  const typeColor = stop.type === "pickup" ? "bg-blue-600" : "bg-green-600";
+
+  const handleStatusUpdate = async (newStatus: Delivery["status"]) => {
+    if (newStatus === "delivered") {
+      setShowOtp(true);
+      return;
+    }
+    setStatusUpdating(true);
+    try {
+      const ok = await CarrierService.updateDeliveryStatus(
+        delivery.id,
+        newStatus,
+      );
+      if (ok) {
+        toast.success(`Marked as ${newStatus.replace(/_/g, " ")}`);
+        onStatusUpdated?.();
+        onClose();
+      } else {
+        toast.error("Failed to update status");
+      }
+    } catch {
+      toast.error("Failed to update status");
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
+  const handleOtpSubmit = async () => {
+    if (!otpInput.trim()) {
+      toast.error("Enter OTP code");
+      return;
+    }
+    setStatusUpdating(true);
+    try {
+      const ok = await CarrierService.verifyOTP(delivery.id, otpInput.trim());
+      if (ok) {
+        toast.success("Delivered! OTP verified.");
+        onStatusUpdated?.();
+        onClose();
+      } else {
+        toast.error("Incorrect OTP code");
+      }
+    } catch {
+      toast.error("Failed to verify OTP");
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
+  type StatusAction = {
+    label: string;
+    status: Delivery["status"];
+    color: string;
+  };
+  const statusActions: StatusAction[] = (() => {
+    switch (delivery.status) {
+      case "assigned":
+        return [
+          {
+            label: "Accept Job",
+            status: "accepted",
+            color: "bg-blue-600 hover:bg-blue-700",
+          },
+        ];
+      case "accepted":
+        return [
+          {
+            label: "Mark Picked Up",
+            status: "picked_up",
+            color: "bg-indigo-600 hover:bg-indigo-700",
+          },
+        ];
+      case "picked_up":
+        return [
+          {
+            label: "In Transit",
+            status: "in_transit",
+            color: "bg-purple-600 hover:bg-purple-700",
+          },
+          {
+            label: "Out for Delivery",
+            status: "out_for_delivery",
+            color: "bg-orange-500 hover:bg-orange-600",
+          },
+        ];
+      case "in_transit":
+        return [
+          {
+            label: "Out for Delivery",
+            status: "out_for_delivery",
+            color: "bg-orange-500 hover:bg-orange-600",
+          },
+        ];
+      case "out_for_delivery":
+        return [
+          {
+            label: "Mark Delivered (OTP)",
+            status: "delivered",
+            color: "bg-green-600 hover:bg-green-700",
+          },
+        ];
+      default:
+        return [];
+    }
+  })();
+
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-xl overflow-hidden mt-2">
+      {/* Header */}
+      <div className={`${typeColor} text-white px-5 py-4`}>
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="text-xs font-semibold uppercase tracking-wider opacity-80">
+              {stop.type === "pickup" ? "Pickup" : "Dropoff"}
+            </span>
+            <h3 className="text-lg font-bold mt-0.5">{stop.address || "-"}</h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-white/80 hover:text-white text-xl font-bold"
+          >
+            x
+          </button>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-2 text-sm">
+        {[
+          [
+            "Tracking",
             <span className="font-mono font-semibold text-gray-800">
               {delivery.trackingCode}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-gray-400 w-28 shrink-0">Status</span>
-            <span className="font-medium capitalize text-blue-700">
+            </span>,
+          ],
+          [
+            "Status",
+            <span className="font-medium capitalize text-blue-700 px-2 py-0.5 bg-blue-50 rounded-full">
               {delivery.status.replace(/_/g, " ")}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-gray-400 w-28 shrink-0">Recipient</span>
-            <span className="text-gray-800">
-              {delivery.recipientName} · {delivery.recipientPhone}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-gray-400 w-28 shrink-0">Pickup</span>
-            <span className="text-gray-800">{delivery.pickupAddress}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-gray-400 w-28 shrink-0">Dropoff</span>
-            <span className="text-gray-800">{delivery.deliveryAddress}</span>
-          </div>
-          {delivery.packageDescription && (
-            <div className="flex items-center gap-2">
-              <span className="text-gray-400 w-28 shrink-0">Package</span>
-              <span className="text-gray-800">
-                {delivery.packageDescription} · {delivery.packageWeight}kg
-              </span>
-            </div>
-          )}
-          {delivery.deliveryInstructions && (
-            <div className="flex items-start gap-2">
-              <span className="text-gray-400 w-28 shrink-0">Instructions</span>
-              <span className="text-gray-800">
-                {delivery.deliveryInstructions}
-              </span>
-            </div>
-          )}
-          <div className="flex items-center gap-2">
-            <span className="text-gray-400 w-28 shrink-0">Earnings</span>
+            </span>,
+          ],
+          [
+            "Recipient",
+            `${delivery.recipientName} - ${delivery.recipientPhone}`,
+          ],
+          ["Pickup", delivery.pickupAddress],
+          ["Dropoff", delivery.deliveryAddress],
+          ...(delivery.packageDescription
+            ? [
+                [
+                  "Package",
+                  `${delivery.packageDescription} - ${delivery.packageWeight}kg`,
+                ],
+              ]
+            : []),
+          ...(delivery.deliveryInstructions
+            ? [["Instructions", delivery.deliveryInstructions]]
+            : []),
+          [
+            "Earnings",
             <span className="font-semibold text-green-700">
               M{" "}
               {(delivery.estimatedEarnings ?? delivery.earnings ?? 0).toFixed(
                 2,
               )}
+            </span>,
+          ],
+          [
+            "Coords",
+            <span className="font-mono text-xs text-gray-500">
+              [{stop.lat.toFixed(5)}, {stop.lng.toFixed(5)}]
+            </span>,
+          ],
+        ].map(([label, value], i) => (
+          <div key={i} className="flex items-start gap-2">
+            <span className="text-gray-400 w-28 shrink-0 mt-0.5">
+              {label as string}
+            </span>
+            <span className="text-gray-800 flex-1">
+              {value as React.ReactNode}
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-gray-400 w-28 shrink-0">Location</span>
-            <span className="font-mono text-xs text-gray-600">
-              [{stop.lat.toFixed(6)}, {stop.lng.toFixed(6)}]
-            </span>
+        ))}
+      </div>
+
+      {/* OTP entry */}
+      {showOtp && (
+        <div className="px-5 pb-4 space-y-2">
+          <p className="text-sm font-semibold text-gray-700">
+            Enter OTP from recipient:
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="number"
+              inputMode="numeric"
+              placeholder="4-digit OTP"
+              value={otpInput}
+              onChange={(e) => setOtpInput(e.target.value)}
+              maxLength={4}
+              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono text-center focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+            <button
+              onClick={handleOtpSubmit}
+              disabled={statusUpdating}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-bold disabled:opacity-60 hover:bg-green-700 transition"
+            >
+              {statusUpdating ? "..." : "Verify"}
+            </button>
           </div>
+          <button
+            onClick={() => setShowOtp(false)}
+            className="text-xs text-gray-400 hover:text-gray-600"
+          >
+            Cancel
+          </button>
         </div>
+      )}
+
+      {/* Status action buttons */}
+      {!showOtp && statusActions.length > 0 && (
+        <div className="px-5 pb-4 space-y-2">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            Quick actions
+          </p>
+          {statusActions.map((action) => (
+            <button
+              key={action.status}
+              onClick={() => handleStatusUpdate(action.status)}
+              disabled={statusUpdating}
+              className={`w-full py-2.5 ${action.color} text-white rounded-xl text-sm font-bold disabled:opacity-60 transition active:scale-[0.98]`}
+            >
+              {statusUpdating ? "Updating..." : action.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Footer */}
+      <div className="px-4 pb-4 pt-3 flex gap-2 border-t">
+        <button
+          onClick={() => navigate("/deliveries")}
+          className="flex-1 py-2.5 border border-blue-500 text-blue-600 rounded-xl text-sm font-semibold hover:bg-blue-50 transition"
+        >
+          View Full Details
+        </button>
+        <button
+          onClick={onClose}
+          className="px-5 py-2.5 border border-gray-200 text-gray-500 rounded-xl text-sm font-medium hover:bg-gray-50 transition"
+        >
+          Close
+        </button>
       </div>
     </div>
   );
 }
 
-// ─── Route Map View ───────────────────────────────────────────────────────────
-// Icon URLs — hosted by Google, always available, no window.google dependency
-// ─── Route Map View (vanilla window.google.maps — same pattern as coordinator LiveMap) ───
+// â”€â”€â”€ Route Map View (vanilla window.google.maps â€” same pattern as coordinator LiveMap) â”€â”€â”€
 function RouteMap({
   orderedStops,
   carrierPos,
@@ -169,7 +330,7 @@ function RouteMap({
     [orderedStops],
   );
 
-  // ── Wait for Google Maps API (same pattern as LiveMap) ───────────────────
+  // â”€â”€ Wait for Google Maps API (same pattern as LiveMap) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (window.google?.maps) {
       setMapsReady(true);
@@ -191,7 +352,7 @@ function RouteMap({
     };
   }, []);
 
-  // ── Initialize map imperatively when API is ready ────────────────────────
+  // â”€â”€ Initialize map imperatively when API is ready â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (!mapsReady || !mapDivRef.current || mapInstanceRef.current) return;
     const center =
@@ -211,7 +372,7 @@ function RouteMap({
     infoWindowRef.current = new window.google.maps.InfoWindow();
   }, [mapsReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Update stop markers ──────────────────────────────────────────────────
+  // â”€â”€ Update stop markers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !window.google?.maps) return;
@@ -266,7 +427,7 @@ function RouteMap({
         marker.addListener("click", () => {
           infoWindowRef.current?.setContent(
             `<div style="font-family:system-ui;padding:4px 2px;min-width:150px">` +
-              `<strong>${stop.type === "pickup" ? "📦 Pickup" : "🏠 Dropoff"} #${idx + 1}</strong>` +
+              `<strong>${stop.type === "pickup" ? "Pickup" : "Dropoff"} #${idx + 1}</strong>` +
               `<p style="margin:4px 0 0;font-size:12px;color:#374151">${stop.address || "(no address)"}</p></div>`,
           );
           infoWindowRef.current?.open(map, marker);
@@ -283,7 +444,7 @@ function RouteMap({
     if (!bounds.isEmpty()) map.fitBounds(bounds, 48);
   }, [validStops, carrierPos, onStopClick]);
 
-  // ── Carrier position marker ──────────────────────────────────────────────
+  // â”€â”€ Carrier position marker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !window.google?.maps) return;
@@ -313,7 +474,7 @@ function RouteMap({
     }
   }, [carrierPos, mapsReady]);
 
-  // ── Route polyline ───────────────────────────────────────────────────────
+  // â”€â”€ Route polyline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !window.google?.maps) return;
@@ -386,23 +547,32 @@ function RouteMap({
   );
 }
 
-// ─── Main RouteTab Component ──────────────────────────────────────────────────
+// â”€â”€â”€ Main RouteTab Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function RouteTab() {
+  // GPS from hook (polling-backed, RTDB-seeded â€” survives tab navigation)
+  const { isSharing, lastLocation } = useGPSLocation();
+  const carrierPos = lastLocation
+    ? { lat: lastLocation.lat, lng: lastLocation.lng }
+    : null;
+
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [knownLocs, setKnownLocs] = useState<
     Record<string, { lat: number; lng: number; name: string }>
   >({});
+  // Active (unvisited) route stops — the clean linked list for re-optimization
   const [stops, setStops] = useState<RouteStop[]>([]);
+  // Visited stops — separate collection, append-only history for analytics
+  const [visitedStops, setVisitedStops] = useState<RouteStop[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [carrierPos, setCarrierPos] = useState<CarrierPosition | null>(null);
-  const [view, setView] = useState<"list" | "map">("list");
+  const [view, setView] = useState<"list" | "map" | "visited">("list");
   const [pathMode, setPathMode] = useState<"straight" | "road">("straight");
   const [selectedStop, setSelectedStop] = useState<RouteStop | null>(null);
-  const prevDeliveryIdsRef = useRef<string>("");
+  const prevStatusKeyRef = useRef<string>("");
+  const archivingRef = useRef<Set<string>>(new Set());
 
-  // ── Load knownLocations once ──────────────────────────────────────────────
+  // â”€â”€ Load knownLocations once â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     getDocs(collection(db, "knownLocations")).then((snap) => {
       const locs: Record<string, { lat: number; lng: number; name: string }> =
@@ -419,169 +589,224 @@ export default function RouteTab() {
     });
   }, []);
 
-  // ── Watch carrier GPS position ────────────────────────────────────────────
-  useEffect(() => {
-    const unsub = CarrierService.subscribeToLocationUpdates((loc) => {
-      if (loc) setCarrierPos({ lat: loc.lat, lng: loc.lng });
-    });
-    return () => unsub();
-  }, []);
-
-  // ── Watch active deliveries and routeStops ────────────────────────────────
+  // â”€â”€ Watch active deliveries (real-time) + routeStops â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) {
       setLoading(false);
       return;
     }
-
-    let unsubStops: (() => void) | null = null;
     setLoading(true);
     setError(null);
 
-    // Real-time delivery watcher
-    const unsubDels = CarrierService.subscribeToActiveDelivery((_active) => {
-      // We re-fetch all active deliveries whenever active changes
-      CarrierService.getDeliveries(30).then((dels) => {
-        const filtered = dels.filter((d) =>
-          [
-            "assigned",
-            "accepted",
-            "picked_up",
-            "in_transit",
-            "out_for_delivery",
-          ].includes(d.status),
-        );
-        setDeliveries(filtered);
-      });
-    });
+    // subscribeToActiveDeliveries includes "delivered" so we catch transitions
+    const unsubDels = CarrierService.subscribeToActiveDeliveries((dels) =>
+      setDeliveries(dels),
+    );
 
-    // Fetch initial deliveries
-    CarrierService.getDeliveries(30)
-      .then((dels) => {
-        const filtered = dels.filter((d) =>
-          [
-            "assigned",
-            "accepted",
-            "picked_up",
-            "in_transit",
-            "out_for_delivery",
-          ].includes(d.status),
-        );
-        setDeliveries(filtered);
-
-        // Watch routeStops subcollection
-        const stopsCol = collection(db, "users", user.uid, "routeStops");
-        unsubStops = onSnapshot(
-          stopsCol,
-          (snap) => {
-            setStops(snap.docs.map((d) => d.data() as RouteStop));
-            setLoading(false);
-          },
-          (err) => {
-            setError(err.message || "Route stops permission error");
-            setLoading(false);
-          },
-        );
-      })
-      .catch((err) => {
-        setError(err.message || "Failed to load deliveries");
+    const stopsCol = collection(db, "users", user.uid, "routeStops");
+    const unsubStops = onSnapshot(
+      stopsCol,
+      (snap) => {
+        setStops(snap.docs.map((d) => d.data() as RouteStop));
         setLoading(false);
-      });
+      },
+      (err) => {
+        setError(err.message || "Route stops permission error");
+        setLoading(false);
+      },
+    );
+
+    // Visited history — separate ordered list, sorted by visitOrder (1, 2, 3…)
+    const visitedCol = collection(db, "users", user.uid, "visitedRouteStops");
+    const unsubVisited = onSnapshot(visitedCol, (snap) => {
+      const docs = snap.docs.map((d) => d.data() as RouteStop);
+      docs.sort((a: any, b: any) => (a.visitOrder ?? 0) - (b.visitOrder ?? 0));
+      setVisitedStops(docs);
+    });
 
     return () => {
       if (typeof unsubDels === "function") unsubDels();
-      if (unsubStops) unsubStops();
+      unsubStops();
+      unsubVisited();
     };
   }, []);
 
-  // ── Auto re-optimize when deliveries change (new job accepted/completed) ──
+  // â”€â”€ Optimization (preserves visited stops, optimizes remaining) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Optimization — only touches the active (unvisited) linked list ──────────
+  // visitedRouteStops is never written here; routeStops stays clean for re-opt
+  const runOptimize = async (pos?: CarrierPosition) => {
+    setUpdating(true);
+    try {
+      let locs = knownLocs;
+      if (Object.keys(locs).length === 0) {
+        const snap = await getDocs(collection(db, "knownLocations"));
+        const fresh: typeof locs = {};
+        snap.forEach((d) => {
+          const data = d.data();
+          fresh[d.id] = {
+            lat: data.lat,
+            lng: data.lng,
+            name: data.name || data.normalizedName || d.id,
+          };
+        });
+        locs = fresh;
+        setKnownLocs(fresh);
+      }
+
+      // Archive any stops still in routeStops that should already be visited
+      {
+        const pickupDoneNow = new Set([
+          "picked_up",
+          "in_transit",
+          "out_for_delivery",
+          "delivered",
+        ]);
+        const alreadyArchivedNow = new Set(
+          visitedStops.map((s) => `${s.id}_${s.type}`),
+        );
+        for (const stop of stops) {
+          const key = `${stop.id}_${stop.type}`;
+          if (alreadyArchivedNow.has(key) || archivingRef.current.has(key))
+            continue;
+          const del = deliveries.find((d) => d.id === stop.id);
+          if (!del) continue;
+          const shouldArchive =
+            (stop.type === "pickup" && pickupDoneNow.has(del.status)) ||
+            (stop.type === "dropoff" && del.status === "delivered");
+          if (!shouldArchive) continue;
+          archivingRef.current.add(key);
+          let enrichedStop = { ...stop, visited: true };
+          if (enrichedStop.lat === 0 && enrichedStop.lng === 0) {
+            const loc =
+              stop.type === "pickup"
+                ? (del.pickupLocation ?? del.currentLocation)
+                : del.deliveryLocation;
+            if (loc && (loc.lat !== 0 || loc.lng !== 0)) {
+              enrichedStop = { ...enrichedStop, lat: loc.lat, lng: loc.lng };
+            }
+          }
+          CarrierService.archiveVisitedStop(enrichedStop).catch(() => {
+            archivingRef.current.delete(key);
+          });
+        }
+      }
+
+      // Only optimize deliveries that aren't fully delivered
+      const activeDels = deliveries.filter((d) => d.status !== "delivered");
+      if (activeDels.length === 0) {
+        setUpdating(false);
+        return;
+      }
+
+      // Keys already in the visited history — exclude from active route
+      const archivedKeys = new Set(
+        visitedStops.map((s) => `${s.id}_${s.type}`),
+      );
+      // Also exclude pickup stops that have been picked up (in transit already)
+      const pickupDone = new Set([
+        "picked_up",
+        "in_transit",
+        "out_for_delivery",
+      ]);
+
+      const rawStops = buildStopsFromDeliveries(activeDels, locs).filter(
+        (s) => {
+          if (archivedKeys.has(`${s.id}_${s.type}`)) return false;
+          if (s.type === "pickup") {
+            const del = deliveries.find((d) => d.id === s.id);
+            if (del && pickupDone.has(del.status)) return false;
+          }
+          return true;
+        },
+      );
+
+      const optimized = bundleFitRoute(rawStops, pos);
+      const linked = toDoublyLinkedList(optimized);
+      setStops(linked);
+      await CarrierService.saveRouteStops(linked);
+    } catch (e: any) {
+      console.error("Route optimization failed:", e);
+      toast.error("Could not save optimized route");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  // â”€â”€ Auto re-optimize when delivery STATUS changes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (deliveries.length === 0) return;
-    const ids = deliveries
-      .map((d) => d.id)
+    const statusKey = deliveries
+      .map((d) => `${d.id}:${d.status}`)
       .sort()
       .join(",");
-    if (ids === prevDeliveryIdsRef.current) return;
-    prevDeliveryIdsRef.current = ids;
-    // Only auto-optimize if route is empty or delivery set changed
+    if (statusKey === prevStatusKeyRef.current) return;
+    const isFirstLoad = prevStatusKeyRef.current === "";
+    prevStatusKeyRef.current = statusKey;
+    // Skip re-optimize on initial load - let user see saved route first
+    if (isFirstLoad) return;
     runOptimize(carrierPos ?? undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deliveries]);
 
-  // ── Optimization function ─────────────────────────────────────────────────
-  const runOptimize = useCallback(
-    async (pos?: CarrierPosition) => {
-      if (deliveries.length === 0) return;
-      setUpdating(true);
-      try {
-        let locs = knownLocs;
-        if (Object.keys(locs).length === 0) {
-          const snap = await getDocs(collection(db, "knownLocations"));
-          const fresh: typeof locs = {};
-          snap.forEach((d) => {
-            const data = d.data();
-            fresh[d.id] = {
-              lat: data.lat,
-              lng: data.lng,
-              name: data.name || data.normalizedName || d.id,
-            };
-          });
-          locs = fresh;
-          setKnownLocs(fresh);
-        }
-        const rawStops = buildStopsFromDeliveries(deliveries, locs);
-        const optimized = bundleFitRoute(rawStops, pos);
-        const linked = toDoublyLinkedList(optimized);
-        setStops(linked);
-        await CarrierService.saveRouteStops(linked);
-      } catch (e: any) {
-        console.error("Route optimization failed:", e);
-        toast.error("Could not save optimized route");
-      } finally {
-        setUpdating(false);
-      }
-    },
-    [deliveries, knownLocs],
-  );
-
   const handleReoptimize = () => {
     runOptimize(carrierPos ?? undefined);
-    toast.success("Re-optimizing from your current position…");
+    toast.success("Re-optimizing...");
   };
 
-  // ── Enrich stops with delivery coordinates at display time ────────────────
-  // Stops stored in Firestore may have lat/lng = 0,0 if saved before geocoding
-  // was fixed. We patch them here from delivery.pickupLocation / deliveryLocation
-  // and from knownLocations as a fallback — no Firestore write needed for display.
-  const orderedStops = useMemo(() => {
-    const raw = getOrderedStops(stops);
-    return raw.map((stop) => {
-      if (stop.lat !== 0 || stop.lng !== 0) return stop; // already has coords
-      const delivery = deliveries.find((d) => d.id === stop.id);
-      if (delivery) {
-        if (stop.type === "pickup") {
-          const loc = delivery.pickupLocation;
-          if (loc && (loc.lat !== 0 || loc.lng !== 0))
-            return { ...stop, lat: loc.lat, lng: loc.lng };
-          // currentLocation is initialised at pickup point by coordinator
-          if (
-            delivery.currentLocation &&
-            (delivery.currentLocation.lat !== 0 ||
-              delivery.currentLocation.lng !== 0)
-          )
-            return {
-              ...stop,
-              lat: delivery.currentLocation.lat,
-              lng: delivery.currentLocation.lng,
-            };
-        } else {
-          const loc = delivery.deliveryLocation;
-          if (loc && (loc.lat !== 0 || loc.lng !== 0))
-            return { ...stop, lat: loc.lat, lng: loc.lng };
+  // ── Archive stops to visitedRouteStops when delivery status changes ────────
+  // Visited stops leave routeStops entirely — separate collection for analytics
+  useEffect(() => {
+    if (!deliveries.length || !stops.length) return;
+    const pickupDoneStatuses = new Set([
+      "picked_up",
+      "in_transit",
+      "out_for_delivery",
+      "delivered",
+    ]);
+    const alreadyArchived = new Set(
+      visitedStops.map((s) => `${s.id}_${s.type}`),
+    );
+    for (const stop of stops) {
+      const key = `${stop.id}_${stop.type}`;
+      if (alreadyArchived.has(key) || archivingRef.current.has(key)) continue;
+      const del = deliveries.find((d) => d.id === stop.id);
+      if (!del) continue;
+      const shouldArchive =
+        (stop.type === "pickup" && pickupDoneStatuses.has(del.status)) ||
+        (stop.type === "dropoff" && del.status === "delivered");
+      if (!shouldArchive) continue;
+      archivingRef.current.add(key);
+      let enriched = { ...stop, visited: true };
+      if (enriched.lat === 0 && enriched.lng === 0) {
+        const loc =
+          stop.type === "pickup"
+            ? (del.pickupLocation ?? del.currentLocation)
+            : del.deliveryLocation;
+        if (loc && (loc.lat !== 0 || loc.lng !== 0)) {
+          enriched = { ...enriched, lat: loc.lat, lng: loc.lng };
         }
       }
-      // Last resort: knownLocations name match
+      CarrierService.archiveVisitedStop(enriched).catch((e) => {
+        console.warn("Archive failed:", e);
+        archivingRef.current.delete(key);
+      });
+    }
+  }, [deliveries, stops]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Enrich active stops with coordinates (display only) ───────────────────
+  const enrichedActiveStops = useMemo(() => {
+    return getOrderedStops(stops).map((stop) => {
+      if (stop.lat !== 0 || stop.lng !== 0) return stop;
+      const del = deliveries.find((d) => d.id === stop.id);
+      if (del) {
+        const loc =
+          stop.type === "pickup"
+            ? (del.pickupLocation ?? del.currentLocation)
+            : del.deliveryLocation;
+        if (loc && (loc.lat !== 0 || loc.lng !== 0))
+          return { ...stop, lat: loc.lat, lng: loc.lng };
+      }
       if (stop.address) {
         const addrLower = stop.address.toLowerCase().trim();
         const known = Object.values(knownLocs).find(
@@ -593,30 +818,13 @@ export default function RouteTab() {
     });
   }, [stops, deliveries, knownLocs]);
 
-  // ── Re-save if any stop was enriched (persists fix to Firestore) ──────────
-  const enrichSavedRef = useRef(false);
-  useEffect(() => {
-    if (enrichSavedRef.current) return;
-    if (!orderedStops.length || !deliveries.length) return;
-    const stopsByKey = Object.fromEntries(
-      stops.map((s) => [`${s.id}_${s.type}`, s]),
-    );
-    const anyEnriched = orderedStops.some((s) => {
-      const orig = stopsByKey[`${s.id}_${s.type}`];
-      return (
-        orig && orig.lat === 0 && orig.lng === 0 && (s.lat !== 0 || s.lng !== 0)
-      );
-    });
-    if (anyEnriched) {
-      enrichSavedRef.current = true;
-      const enrichedLinked = toDoublyLinkedList(orderedStops);
-      CarrierService.saveRouteStops(enrichedLinked).catch((e) =>
-        console.warn("Could not persist enriched route stops:", e),
-      );
-    }
-  }, [orderedStops, stops, deliveries]);
+  // Active-only display list — visited stops are shown in a separate section
+  const orderedStops = useMemo(
+    () => enrichedActiveStops,
+    [enrichedActiveStops],
+  );
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (error) {
     return (
       <div className="p-4">
@@ -625,7 +833,7 @@ export default function RouteTab() {
           <p className="text-sm text-red-600 mt-1">{error}</p>
           <p className="text-xs text-gray-500 mt-2">
             Make sure Firestore rules allow carriers to read/write their own
-            routeStops, then deploy rules.
+            routeStops.
           </p>
         </div>
       </div>
@@ -640,7 +848,7 @@ export default function RouteTab() {
     );
   }
 
-  if (orderedStops.length === 0) {
+  if (enrichedActiveStops.length === 0 && visitedStops.length === 0) {
     return (
       <div className="p-4">
         <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
@@ -657,7 +865,6 @@ export default function RouteTab() {
     ? deliveries.find((d) => d.id === selectedStop.id)
     : undefined;
 
-  // Avoid declaring a variable named 'getOrderedStops' below
   return (
     <div className="p-3 sm:p-4 space-y-3 max-w-2xl mx-auto">
       {/* Header */}
@@ -665,13 +872,12 @@ export default function RouteTab() {
         <div>
           <h2 className="text-lg font-bold text-gray-900">My Route</h2>
           <p className="text-xs text-gray-500">
-            {orderedStops.length} stops ·{" "}
-            {carrierPos ? (
+            {enrichedActiveStops.length} active stop
+            {enrichedActiveStops.length === 1 ? "" : "s"} •{" "}
+            {isSharing ? (
               <span className="text-green-600 font-medium">GPS active</span>
             ) : (
-              <span className="text-orange-500">
-                No GPS – enable location sharing
-              </span>
+              <span className="text-orange-500">Location not sharing</span>
             )}
           </p>
         </div>
@@ -680,23 +886,46 @@ export default function RouteTab() {
           onClick={handleReoptimize}
           disabled={updating || deliveries.length === 0}
         >
-          {updating ? "Optimizing…" : "Re-optimize"}
+          {updating ? "Optimizing..." : "Re-optimize"}
         </button>
       </div>
 
       {/* View + path toggles */}
       <div className="flex gap-2">
         <button
-          className={`flex-1 py-1.5 rounded-lg text-sm font-medium border transition ${view === "list" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-300"}`}
+          className={`flex-1 py-1.5 rounded-lg text-sm font-medium border transition ${
+            view === "list"
+              ? "bg-blue-600 text-white border-blue-600"
+              : "bg-white text-gray-600 border-gray-300"
+          }`}
           onClick={() => setView("list")}
         >
           List
         </button>
         <button
-          className={`flex-1 py-1.5 rounded-lg text-sm font-medium border transition ${view === "map" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-300"}`}
+          className={`flex-1 py-1.5 rounded-lg text-sm font-medium border transition ${
+            view === "map"
+              ? "bg-blue-600 text-white border-blue-600"
+              : "bg-white text-gray-600 border-gray-300"
+          }`}
           onClick={() => setView("map")}
         >
           Map
+        </button>
+        <button
+          className={`relative flex-1 py-1.5 rounded-lg text-sm font-medium border transition ${
+            view === "visited"
+              ? "bg-gray-700 text-white border-gray-700"
+              : "bg-white text-gray-600 border-gray-300"
+          }`}
+          onClick={() => setView("visited")}
+        >
+          Done
+          {visitedStops.length > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-gray-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-0.5">
+              {visitedStops.length}
+            </span>
+          )}
         </button>
         {view === "map" && (
           <button
@@ -705,7 +934,7 @@ export default function RouteTab() {
               setPathMode((p) => (p === "straight" ? "road" : "straight"))
             }
           >
-            {pathMode === "straight" ? "Show Road Path" : "Show Straight Line"}
+            {pathMode === "straight" ? "Road" : "Straight"}
           </button>
         )}
       </div>
@@ -741,7 +970,6 @@ export default function RouteTab() {
                 onClick={() => setSelectedStop(stop)}
               >
                 <div className="flex items-start gap-3">
-                  {/* Step number */}
                   <div
                     className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${
                       stop.visited
@@ -751,7 +979,7 @@ export default function RouteTab() {
                           : "bg-green-600"
                     }`}
                   >
-                    {idx + 1}
+                    {stop.visited ? "v" : idx + 1}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -764,7 +992,7 @@ export default function RouteTab() {
                               : "text-green-700"
                         }`}
                       >
-                        {isPickup ? "📦 Pickup" : "🏠 Dropoff"}
+                        {isPickup ? "Pickup" : "Dropoff"}
                       </span>
                       {stop.visited && (
                         <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
@@ -780,7 +1008,7 @@ export default function RouteTab() {
                     </p>
                     {paired && (
                       <p className="text-xs text-gray-500 mt-1">
-                        {isPickup ? "→ Drop at" : "← Picked up at"}{" "}
+                        {isPickup ? "> Drop at" : "< Picked up at"}{" "}
                         <span className="font-medium text-gray-700">
                           {paired.address || "(no address)"}
                         </span>
@@ -794,12 +1022,59 @@ export default function RouteTab() {
         </ol>
       )}
 
+      {/* Visited tab view */}
+      {view === "visited" &&
+        (visitedStops.length === 0 ? (
+          <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
+            <p className="text-gray-400 text-sm">No stops visited yet.</p>
+          </div>
+        ) : (
+          <ol className="space-y-2">
+            {visitedStops.map((stop) => {
+              const isPickup = stop.type === "pickup";
+              const del = deliveries.find((d) => d.id === stop.id);
+              const order = (stop as any).visitOrder ?? "?";
+              return (
+                <li
+                  key={`visited_${stop.id}_${stop.type}`}
+                  className="rounded-xl border border-gray-200 bg-gray-50 p-3"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="shrink-0 w-7 h-7 rounded-full bg-gray-400 flex items-center justify-center text-white text-xs font-bold">
+                      {order}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+                          {isPickup ? "Pickup" : "Dropoff"}
+                        </span>
+                        <span className="text-xs text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full font-medium">
+                          Done
+                        </span>
+                      </div>
+                      <p className="text-sm font-semibold text-gray-700 mt-0.5 truncate">
+                        {stop.address || "(no address)"}
+                      </p>
+                      {del && (
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {del.trackingCode} &middot; {del.recipientName}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        ))}
+
       {/* Delivery detail modal */}
       {selectedStop && (
         <DeliveryModal
           delivery={selectedDelivery}
           stop={selectedStop}
           onClose={() => setSelectedStop(null)}
+          onStatusUpdated={() => setSelectedStop(null)}
         />
       )}
     </div>
