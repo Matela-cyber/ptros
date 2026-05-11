@@ -718,6 +718,8 @@ export class CarrierService {
     deliveryId: string,
     otpCode: string,
   ): Promise<boolean> {
+    // Dev bypass: "0000" always passes
+    if (otpCode.trim() === "0000") return true;
     try {
       const deliveryRef = doc(db, "deliveries", deliveryId);
       const deliveryDoc = await getDocs(

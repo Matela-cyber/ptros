@@ -722,7 +722,22 @@ export default function RouteTab() {
       );
 
       const optimized = bundleFitRoute(rawStops, pos);
-      const linked = toDoublyLinkedList(optimized);
+
+      // Compute cumulative load: pickups add package weight, dropoffs subtract
+      let runningLoad = 0;
+      const withLoad = optimized.map((stop) => {
+        const del = deliveries.find((d) => d.id === stop.id);
+        const pkg = Number(del?.packageWeight ?? 0);
+        if (stop.type === "pickup") runningLoad += pkg;
+        else if (stop.type === "dropoff") runningLoad -= pkg;
+        return {
+          ...stop,
+          loadKg: pkg,
+          cumulativeLoad: Math.max(0, runningLoad),
+        };
+      });
+
+      const linked = toDoublyLinkedList(withLoad);
       setStops(linked);
       await CarrierService.saveRouteStops(linked);
     } catch (e: any) {
@@ -1006,6 +1021,18 @@ export default function RouteTab() {
                     <p className="text-xs text-gray-400 mt-0.5 font-mono">
                       [{stop.lat.toFixed(5)}, {stop.lng.toFixed(5)}]
                     </p>
+                    {stop.cumulativeLoad !== undefined && (
+                      <p className="text-xs mt-1">
+                        <span className="font-medium text-gray-600">
+                          {isPickup ? "+" : "-"}
+                          {stop.loadKg ?? 0} kg
+                        </span>
+                        <span className="text-gray-400"> · load after: </span>
+                        <span className="font-semibold text-gray-700">
+                          {stop.cumulativeLoad.toFixed(1)} kg
+                        </span>
+                      </p>
+                    )}
                     {paired && (
                       <p className="text-xs text-gray-500 mt-1">
                         {isPickup ? "> Drop at" : "< Picked up at"}{" "}

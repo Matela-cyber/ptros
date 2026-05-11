@@ -11,6 +11,8 @@ export interface RouteStop {
   prevId?: string | null;
   nextId?: string | null;
   visited?: boolean;
+  loadKg?: number; // this stop's package weight
+  cumulativeLoad?: number; // running carrier load after this stop
 }
 
 export interface CarrierPosition {
