@@ -11,6 +11,7 @@ export interface RouteStop {
   prevId?: string | null;
   nextId?: string | null;
   visited?: boolean;
+  visitOrder?: number; // timestamp (ms) when this stop was archived as visited
   loadKg?: number; // this stop's package weight
   cumulativeLoad?: number; // running carrier load after this stop
 }

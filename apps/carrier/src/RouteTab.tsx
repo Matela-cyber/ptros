@@ -11,7 +11,7 @@ import {
 } from "./routeOptimization";
 import { Delivery } from "./types";
 import { toast } from "react-hot-toast";
-import { collection, onSnapshot, getDocs } from "firebase/firestore";
+import { collection, onSnapshot, getDocs, getDoc, doc } from "firebase/firestore";
 import { auth, db } from "@config";
 import { useGPSLocation } from "./useGPSLocation";
 
@@ -570,8 +570,33 @@ export default function RouteTab() {
   const [view, setView] = useState<"list" | "map" | "visited">("list");
   const [pathMode, setPathMode] = useState<"straight" | "road">("straight");
   const [selectedStop, setSelectedStop] = useState<RouteStop | null>(null);
+  const [effectiveCapacityKg, setEffectiveCapacityKg] = useState<number | null>(null);
   const prevStatusKeyRef = useRef<string>("");
   const archivingRef = useRef<Set<string>>(new Set());
+
+  // Load effective weight capacity: carrier-specific > coordinator vehicle default
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+    getDoc(doc(db, "users", user.uid)).then(async (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      const carrierCap = typeof data.capacityWeight === "number" ? data.capacityWeight : null;
+      if (carrierCap != null) {
+        setEffectiveCapacityKg(carrierCap);
+        return;
+      }
+      // Fallback: coordinator's vehicle profile config
+      try {
+        const rulesSnap = await getDoc(doc(db, "businessConfig", "orderEngine"));
+        if (!rulesSnap.exists()) return;
+        const profiles = rulesSnap.data()?.vehicleProfiles ?? {};
+        const vType = ((data.vehicleType as string) ?? "unknown").toLowerCase();
+        const cap = profiles[vType]?.capacityKg ?? profiles["unknown"]?.capacityKg ?? null;
+        if (typeof cap === "number") setEffectiveCapacityKg(cap);
+      } catch { /* ignore */ }
+    });
+  }, []);
 
   // â”€â”€ Load knownLocations once â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
@@ -971,7 +996,7 @@ export default function RouteTab() {
           }`}
           onClick={() => setView("visited")}
         >
-          Done
+          Visited
           {visitedStops.length > 0 && (
             <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-gray-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-0.5">
               {visitedStops.length}
@@ -1072,7 +1097,7 @@ export default function RouteTab() {
                         </span>
                         {stop.visited && (
                           <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-                            Done
+                            Visited
                           </span>
                         )}
                       </div>
@@ -1082,18 +1107,37 @@ export default function RouteTab() {
                       <p className="text-xs text-gray-400 mt-0.5 font-mono">
                         [{stop.lat.toFixed(5)}, {stop.lng.toFixed(5)}]
                       </p>
-                      {stop.cumulativeLoad !== undefined && (
-                        <p className="text-xs mt-1">
-                          <span className="font-medium text-gray-600">
-                            {isPickup ? "+" : "-"}
-                            {stop.loadKg ?? 0} kg
-                          </span>
-                          <span className="text-gray-400"> · load after: </span>
-                          <span className="font-semibold text-gray-700">
-                            {stop.cumulativeLoad.toFixed(1)} kg
-                          </span>
-                        </p>
-                      )}
+                      {stop.cumulativeLoad !== undefined && (() => {
+                          const load = stop.cumulativeLoad;
+                          const cap = effectiveCapacityKg;
+                          const isOver = cap != null && load > cap;
+                          const isNear = cap != null && !isOver && load >= cap * 0.85;
+                          return (
+                            <p className="text-xs mt-1">
+                              <span className="font-medium text-gray-600">
+                                {isPickup ? "+" : "-"}
+                                {stop.loadKg ?? 0} kg
+                              </span>
+                              <span className="text-gray-400"> · load after: </span>
+                              <span className={`font-semibold ${isOver ? "text-red-600" : isNear ? "text-orange-500" : "text-gray-700"}`}>
+                                {load.toFixed(1)} kg
+                                {cap != null && ` / ${cap} kg`}
+                              </span>
+                              {isOver && (
+                                <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">
+                                  <i className="fa-solid fa-triangle-exclamation" />
+                                  OVERLOAD +{(load - cap!).toFixed(1)} kg
+                                </span>
+                              )}
+                              {isNear && (
+                                <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700">
+                                  <i className="fa-solid fa-gauge-high" />
+                                  Near limit
+                                </span>
+                              )}
+                            </p>
+                          );
+                        })()}
                       {paired && (
                         <p className="text-xs text-gray-500 mt-1">
                           {isPickup ? "> Drop at" : "< Picked up at"}{" "}
@@ -1122,35 +1166,38 @@ export default function RouteTab() {
       )}
 
       {/* Visited tab — map view */}
-      {view === "visited" && visitedStops.length > 0 && (() => {
-        const enrichedVisited = visitedStops.map((stop) => {
-          if (stop.lat !== 0 || stop.lng !== 0) return stop;
-          const del = deliveries.find((d) => d.id === stop.id);
-          if (del) {
-            const loc =
-              stop.type === "pickup"
-                ? (del.pickupLocation ?? del.currentLocation)
-                : del.deliveryLocation;
-            if (loc && (loc.lat !== 0 || loc.lng !== 0))
-              return { ...stop, lat: loc.lat, lng: loc.lng };
-          }
-          return stop;
-        });
-        return (
-          <RouteMap
-            orderedStops={enrichedVisited}
-            carrierPos={carrierPos}
-            pathMode={pathMode}
-            onStopClick={(stop) =>
-              setSelectedStop(
-                selectedStop?.id === stop.id && selectedStop?.type === stop.type
-                  ? null
-                  : stop,
-              )
+      {view === "visited" &&
+        visitedStops.length > 0 &&
+        (() => {
+          const enrichedVisited = visitedStops.map((stop) => {
+            if (stop.lat !== 0 || stop.lng !== 0) return stop;
+            const del = deliveries.find((d) => d.id === stop.id);
+            if (del) {
+              const loc =
+                stop.type === "pickup"
+                  ? (del.pickupLocation ?? del.currentLocation)
+                  : del.deliveryLocation;
+              if (loc && (loc.lat !== 0 || loc.lng !== 0))
+                return { ...stop, lat: loc.lat, lng: loc.lng };
             }
-          />
-        );
-      })()}
+            return stop;
+          });
+          return (
+            <RouteMap
+              orderedStops={enrichedVisited}
+              carrierPos={carrierPos}
+              pathMode={pathMode}
+              onStopClick={(stop) =>
+                setSelectedStop(
+                  selectedStop?.id === stop.id &&
+                    selectedStop?.type === stop.type
+                    ? null
+                    : stop,
+                )
+              }
+            />
+          );
+        })()}
       {view === "visited" && selectedStop && (
         <DeliveryModal
           delivery={deliveries.find((d) => d.id === selectedStop.id)}
@@ -1177,9 +1224,7 @@ export default function RouteTab() {
               const isSelected =
                 selectedStop?.id === stop.id &&
                 selectedStop?.type === stop.type;
-              const stopDelivery = isSelected
-                ? del
-                : undefined;
+              const stopDelivery = isSelected ? del : undefined;
               return (
                 <Fragment key={`visited_${stop.id}_${stop.type}`}>
                   <li
@@ -1192,9 +1237,7 @@ export default function RouteTab() {
                           ? "bg-blue-50 border-blue-200 opacity-70"
                           : "bg-green-50 border-green-200 opacity-70"
                     }`}
-                    onClick={() =>
-                      setSelectedStop(isSelected ? null : stop)
-                    }
+                    onClick={() => setSelectedStop(isSelected ? null : stop)}
                   >
                     <div className="flex items-start gap-3">
                       <div
@@ -1214,8 +1257,19 @@ export default function RouteTab() {
                             {isPickup ? "Pickup" : "Dropoff"}
                           </span>
                           <span className="text-xs text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full font-medium">
-                            Done
+                            Visited
                           </span>
+                          {stop.visitOrder && (
+                            <span className="text-xs text-gray-400">
+                              {new Date(stop.visitOrder).toLocaleString([], {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          )}
                         </div>
                         <p className="text-sm font-semibold text-gray-800 mt-0.5 truncate">
                           {stop.address || "(no address)"}
@@ -1223,18 +1277,37 @@ export default function RouteTab() {
                         <p className="text-xs text-gray-400 mt-0.5 font-mono">
                           [{stop.lat?.toFixed(5)}, {stop.lng?.toFixed(5)}]
                         </p>
-                        {(stop as any).cumulativeLoad !== undefined && (
-                          <p className="text-xs mt-1">
-                            <span className="font-medium text-gray-600">
-                              {isPickup ? "+" : "-"}
-                              {(stop as any).loadKg ?? 0} kg
-                            </span>
-                            <span className="text-gray-400"> · load after: </span>
-                            <span className="font-semibold text-gray-700">
-                              {((stop as any).cumulativeLoad as number).toFixed(1)} kg
-                            </span>
-                          </p>
-                        )}
+                        {(stop as any).cumulativeLoad !== undefined && (() => {
+                            const load = (stop as any).cumulativeLoad as number;
+                            const cap = effectiveCapacityKg;
+                            const isOver = cap != null && load > cap;
+                            const isNear = cap != null && !isOver && load >= cap * 0.85;
+                            return (
+                              <p className="text-xs mt-1">
+                                <span className="font-medium text-gray-600">
+                                  {isPickup ? "+" : "-"}
+                                  {(stop as any).loadKg ?? 0} kg
+                                </span>
+                                <span className="text-gray-400"> · load after: </span>
+                                <span className={`font-semibold ${isOver ? "text-red-600" : isNear ? "text-orange-500" : "text-gray-700"}`}>
+                                  {load.toFixed(1)} kg
+                                  {cap != null && ` / ${cap} kg`}
+                                </span>
+                                {isOver && (
+                                  <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">
+                                    <i className="fa-solid fa-triangle-exclamation" />
+                                    OVERLOAD +{(load - cap!).toFixed(1)} kg
+                                  </span>
+                                )}
+                                {isNear && (
+                                  <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700">
+                                    <i className="fa-solid fa-gauge-high" />
+                                    Near limit
+                                  </span>
+                                )}
+                              </p>
+                            );
+                          })()}
                         {paired && (
                           <p className="text-xs text-gray-500 mt-1">
                             {isPickup ? "> Drop at" : "< Picked up at"}{" "}
