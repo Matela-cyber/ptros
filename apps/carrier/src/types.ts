@@ -25,6 +25,8 @@ export interface CarrierProfile {
     lng: number;
     timestamp: Timestamp;
   };
+  capacityWeight?: number; // max carrying weight in kg
+  capacityVolume?: number; // max carrying volume in m³
 }
 
 export interface Delivery {

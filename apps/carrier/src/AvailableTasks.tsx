@@ -273,7 +273,7 @@ export default function AvailableTasks() {
                         </div>
                         <div className="text-right">
                           <div className="text-xl font-bold text-green-600">
-                            L{job.earnings || job.estimatedEarnings || 0}
+                            {formatCurrency(job.earnings || job.estimatedEarnings || 0)}
                           </div>
                           <p className="text-xs text-gray-500">Payment</p>
                         </div>
@@ -484,7 +484,7 @@ export default function AvailableTasks() {
                         </div>
                         <div className="text-right">
                           <div className="text-xl font-bold text-green-600">
-                            L{task.estimatedEarnings || 0}
+                            {formatCurrency(task.estimatedEarnings || 0)}
                           </div>
                           <p className="text-xs text-gray-500">Estimated pay</p>
                         </div>
@@ -709,10 +709,7 @@ export default function AvailableTasks() {
                     Earnings
                   </p>
                   <p className="text-2xl font-bold text-emerald-700">
-                    L
-                    {selectedTask.earnings ||
-                      selectedTask.estimatedEarnings ||
-                      0}
+                    {formatCurrency(selectedTask.earnings || selectedTask.estimatedEarnings || 0)}
                   </p>
                 </div>
 

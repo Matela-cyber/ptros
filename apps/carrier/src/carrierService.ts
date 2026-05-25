@@ -249,7 +249,13 @@ export class CarrierService {
     if (!user) return;
 
     const visitedCol = collection(db, "users", user.uid, "visitedRouteStops");
-    const srcRef = doc(db, "users", user.uid, "routeStops", `${stop.id}_${stop.type}`);
+    const srcRef = doc(
+      db,
+      "users",
+      user.uid,
+      "routeStops",
+      `${stop.id}_${stop.type}`,
+    );
     const dstRef = doc(visitedCol, `${stop.id}_${stop.type}`);
 
     // visitOrder = epoch-ms; snapshot listener sorts by this for display order.
@@ -322,7 +328,10 @@ export class CarrierService {
         // Stop was in the active linked list — use its data directly
         stopData = { ...srcSnap.data(), id: deliveryId, type };
         // Enrich coordinates from delivery doc if the stop has 0,0
-        if ((stopData.lat === 0 && stopData.lng === 0) || (!stopData.lat && !stopData.lng)) {
+        if (
+          (stopData.lat === 0 && stopData.lng === 0) ||
+          (!stopData.lat && !stopData.lng)
+        ) {
           const del = await fetchDelivery();
           if (del) {
             const isPickup = type === "pickup";
@@ -544,6 +553,44 @@ export class CarrierService {
       return true;
     } catch (error) {
       console.error("Error updating carrier status:", error);
+      return false;
+    }
+  }
+
+  static async updateCarrierProfile(data: {
+    fullName?: string;
+    phone?: string;
+    whatsapp?: string;
+    city?: string;
+    address?: string;
+    vehicleType?: string;
+    licensePlate?: string;
+    capacityWeight?: number | null;
+    capacityVolume?: number | null;
+  }): Promise<boolean> {
+    try {
+      const user = auth.currentUser;
+      if (!user) return false;
+      const payload: Record<string, unknown> = { updatedAt: Timestamp.now() };
+      const fields: (keyof typeof data)[] = [
+        "fullName",
+        "phone",
+        "whatsapp",
+        "city",
+        "address",
+        "vehicleType",
+        "licensePlate",
+        "capacityWeight",
+        "capacityVolume",
+      ];
+      for (const key of fields) {
+        const val = data[key];
+        if (val !== undefined && val !== null) payload[key] = val;
+      }
+      await updateDoc(doc(db, "users", user.uid), payload);
+      return true;
+    } catch (error) {
+      console.error("Error updating carrier profile:", error);
       return false;
     }
   }
