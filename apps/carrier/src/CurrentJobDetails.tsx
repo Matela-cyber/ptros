@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  formatEtaCountdown,
   formatRouteNetworkSegmentType,
   getDisplayRouteNetworkSegments,
   getRouteNetworkSegmentStyle,
@@ -50,6 +51,29 @@ export default function CurrentJobDetails({
   useEffect(() => {
     return subscribeRouteNetworkSegments(setManagedSegments);
   }, []);
+
+  // ── ETA countdown ────────────────────────────────────────────────────────
+  const [etaRemainingMs, setEtaRemainingMs] = useState<number | null>(null);
+  useEffect(() => {
+    const eta = delivery?.eta;
+    if (!eta) {
+      setEtaRemainingMs(null);
+      return;
+    }
+    const prePickup = ["pending", "assigned", "accepted"].includes(
+      delivery?.status ?? "",
+    );
+    const etaMs = prePickup ? eta.pickupEtaMs : eta.deliveryEtaMs;
+    if (!etaMs) {
+      setEtaRemainingMs(null);
+      return;
+    }
+    const tick = () => setEtaRemainingMs(Math.max(0, etaMs - Date.now()));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [delivery?.eta, delivery?.status]);
+  // ─────────────────────────────────────────────────────────────────────────
 
   if (!delivery) {
     return (
@@ -354,6 +378,40 @@ export default function CurrentJobDetails({
             </div>
           </div>
         </div>
+
+        {/* ETA Countdown */}
+        {etaRemainingMs !== null &&
+          !["delivered", "cancelled"].includes(delivery.status) && (
+            <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-4 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">
+                  {["pending", "assigned", "accepted"].includes(delivery.status)
+                    ? "ETA to Pickup"
+                    : "ETA to Delivery"}
+                </p>
+                <p className="text-2xl font-bold text-emerald-700 mt-0.5">
+                  {etaRemainingMs <= 0
+                    ? "Arriving now"
+                    : formatEtaCountdown(etaRemainingMs)}
+                </p>
+                {delivery.eta?.computedAtMs && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Estimated at{" "}
+                    {new Date(delivery.eta.computedAtMs).toLocaleTimeString(
+                      [],
+                      {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      },
+                    )}
+                  </p>
+                )}
+              </div>
+              <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 inline-flex items-center justify-center text-lg">
+                <i className="fa-solid fa-clock" />
+              </div>
+            </div>
+          )}
 
         {/* Pickup & Delivery Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

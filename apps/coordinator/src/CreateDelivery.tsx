@@ -1,7 +1,13 @@
 // apps/coordinator/src/CreateDelivery.tsx
 import AddressAutocomplete from "./AddressAutocomplete";
 import { useState, useEffect, useRef } from "react";
-import { db, auth, defaultBusinessRules, loadBusinessRulesConfig, type BusinessRulesConfig } from "@config";
+import {
+  db,
+  auth,
+  defaultBusinessRules,
+  loadBusinessRulesConfig,
+  type BusinessRulesConfig,
+} from "@config";
 import {
   collection,
   addDoc,
@@ -1102,8 +1108,13 @@ export default function CreateDelivery() {
   ): number => {
     const baseValue = packageValue || businessRules.pricing.baseValueFallback;
     const distanceFee = distance * businessRules.pricing.distanceRatePerKm;
-    const valueFee = Math.round(baseValue * businessRules.pricing.packageValueRate);
-    return Math.max(businessRules.pricing.minimumCharge, valueFee + distanceFee);
+    const valueFee = Math.round(
+      baseValue * businessRules.pricing.packageValueRate,
+    );
+    return Math.max(
+      businessRules.pricing.minimumCharge,
+      valueFee + distanceFee,
+    );
   };
 
   const generateCarrierRecommendations = async (
@@ -1386,6 +1397,33 @@ export default function CreateDelivery() {
         distance: distance > 0 ? Math.round(distance * 100) / 100 : null,
         estimatedDeliveryTime,
         estimatedEarnings,
+        eta: (() => {
+          const carrier =
+            preferredCarrier ||
+            (effectiveSelectedCarrierId
+              ? recommendedCarriers.find(
+                  (c) => c.id === effectiveSelectedCarrierId,
+                )
+              : null);
+          if (!carrier) return null;
+          const nowMs = Date.now();
+          const SPEED = 30; // km/h
+          const pickupEtaMs =
+            nowMs + (carrier.distanceToPickupKm / SPEED) * 3_600_000;
+          const totalKm =
+            carrier.estimatedDeliveryHours != null
+              ? carrier.estimatedDeliveryHours * SPEED
+              : carrier.distanceToPickupKm + carrier.estimatedDetourKm;
+          return {
+            pickupEtaMs,
+            deliveryEtaMs: nowMs + (totalKm / SPEED) * 3_600_000,
+            computedAtMs: nowMs,
+            source: "assigned" as const,
+            distanceToPickupKm: carrier.distanceToPickupKm,
+            totalDistanceKm: totalKm,
+            avgSpeedKmh: SPEED,
+          };
+        })(),
 
         // Carrier Assignment
         carrierId: effectiveSelectedCarrierId || null,

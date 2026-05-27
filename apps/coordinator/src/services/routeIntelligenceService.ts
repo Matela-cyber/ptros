@@ -1051,6 +1051,18 @@ export const assignDeliveryIntelligently = async (deliveryId: string) => {
   const timestamp = await writeTimestamp(`deliveries/${deliveryId}/assigned`);
   const timeServiceStatus = getTimeServiceStatus();
 
+  // ── Compute initial ETA from selected carrier's recommendation data ──────
+  const etaNowMs = Date.now();
+  const ETA_SPEED_KMH = 30;
+  const etaPickupMs =
+    etaNowMs + (selected.distanceToPickupKm / ETA_SPEED_KMH) * 3_600_000;
+  const etaTotalKm =
+    selected.estimatedDeliveryHours != null
+      ? selected.estimatedDeliveryHours * ETA_SPEED_KMH
+      : selected.distanceToPickupKm + selected.estimatedDetourKm;
+  const etaDeliveryMs = etaNowMs + (etaTotalKm / ETA_SPEED_KMH) * 3_600_000;
+  // ────────────────────────────────────────────────────────────────────────
+
   let graphSnapshotNodeIds: {
     pickupNodeId?: string;
     dropoffNodeId?: string;
@@ -1093,6 +1105,15 @@ export const assignDeliveryIntelligently = async (deliveryId: string) => {
     assignedAt: timestamp,
     updatedAt: timestamp,
     timeSource: timeServiceStatus.primarySource,
+    eta: {
+      pickupEtaMs: etaPickupMs,
+      deliveryEtaMs: etaDeliveryMs,
+      computedAtMs: etaNowMs,
+      source: "assigned",
+      distanceToPickupKm: selected.distanceToPickupKm,
+      totalDistanceKm: etaTotalKm,
+      avgSpeedKmh: ETA_SPEED_KMH,
+    },
     locationGraph: {
       schemaVersion: 1,
       mode: "location_nodes",

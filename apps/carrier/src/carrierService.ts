@@ -40,6 +40,7 @@ import {
   haversineDistanceMeters,
   RoutePoint,
 } from "./services/routeHistoryService";
+import { getOrderedStops } from "./routeOptimization";
 
 // Minimum distance to trigger an update (in meters)
 const MIN_DISTANCE_THRESHOLD = 3;
@@ -253,6 +254,91 @@ export class CarrierService {
     await batch.commit();
   }
 
+  /**
+   * Recompute and persist ETAs for every delivery in the carrier's route.
+   * Walks the linked-list order from the carrier's live GPS position and
+   * accumulates haversine distances to produce an absolute ms timestamp
+   * for each pickup and dropoff stop.  All delivery docs are batch-updated.
+   */
+  private static async refreshRouteEtas(
+    stops: any[],
+    source: "accepted" | "reoptimized",
+  ): Promise<void> {
+    const user = auth.currentUser;
+    if (!user || !stops.length) return;
+
+    // Fetch carrier's live GPS from RTDB
+    const trackSnap = await rtdbGet(rtdbRef(realtimeDb, `tracks/${user.uid}`));
+    const track = trackSnap.val() as { lat?: number; lng?: number } | null;
+    if (!track?.lat || !track?.lng) return;
+
+    const nowMs = Date.now();
+    const AVG_SPEED_KMH = 30;
+    let cumKm = 0;
+    let prev = { lat: track.lat, lng: track.lng };
+
+    // Traverse stops in linked-list order
+    const ordered = getOrderedStops(
+      stops as Parameters<typeof getOrderedStops>[0],
+    );
+
+    // Map: deliveryId → { pickupEtaMs?, deliveryEtaMs?, distToPickupKm? }
+    const etaMap = new Map<
+      string,
+      {
+        pickupEtaMs?: number;
+        deliveryEtaMs?: number;
+        distToPickupKm?: number;
+        totalKm?: number;
+      }
+    >();
+
+    for (const stop of ordered) {
+      if (!stop.lat || !stop.lng) continue;
+      const segMeters = haversineDistanceMeters(prev, {
+        lat: stop.lat,
+        lng: stop.lng,
+      });
+      cumKm += segMeters / 1000;
+      const etaMs = nowMs + (cumKm / AVG_SPEED_KMH) * 3_600_000;
+
+      if (!etaMap.has(stop.id)) etaMap.set(stop.id, {});
+      const entry = etaMap.get(stop.id)!;
+      if (stop.type === "pickup") {
+        entry.pickupEtaMs = etaMs;
+        entry.distToPickupKm = cumKm;
+      } else if (stop.type === "dropoff") {
+        entry.deliveryEtaMs = etaMs;
+        entry.totalKm = cumKm;
+      }
+      prev = { lat: stop.lat, lng: stop.lng };
+    }
+
+    if (!etaMap.size) return;
+
+    const etaBatch = writeBatch(db);
+    etaMap.forEach(
+      ({ pickupEtaMs, deliveryEtaMs, distToPickupKm, totalKm }, deliveryId) => {
+        etaBatch.set(
+          doc(db, "deliveries", deliveryId),
+          {
+            eta: {
+              pickupEtaMs: pickupEtaMs ?? null,
+              deliveryEtaMs: deliveryEtaMs ?? null,
+              computedAtMs: nowMs,
+              source,
+              distanceToPickupKm: distToPickupKm ?? null,
+              totalDistanceKm: totalKm ?? null,
+              avgSpeedKmh: AVG_SPEED_KMH,
+            },
+          },
+          { merge: true },
+        );
+      },
+    );
+    await etaBatch.commit();
+  }
+
   static async saveRouteStops(stops: any[]): Promise<void> {
     const user = auth.currentUser;
     if (!user) throw new Error("Not authenticated");
@@ -278,6 +364,10 @@ export class CarrierService {
       if (!keepKeys.has(docSnap.id)) batch.delete(docSnap.ref);
     });
     await batch.commit();
+    // Recompute ETAs from carrier's current GPS through all route stops
+    CarrierService.refreshRouteEtas(stops, "reoptimized").catch((e) =>
+      console.warn("ETA refresh failed:", e),
+    );
     await CarrierService.syncDeliveryTrackingRouteSummaries(
       stops,
       previousStops,

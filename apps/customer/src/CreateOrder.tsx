@@ -1104,7 +1104,11 @@ export default function CreateOrder({ user }: Props) {
         const activeByCarrier = activeDeliveriesSnap.docs.reduce<
           Record<
             string,
-            { count: number; carryingWeightKg: number; incomingWeightKg: number }
+            {
+              count: number;
+              carryingWeightKg: number;
+              incomingWeightKg: number;
+            }
           >
         >((acc, deliveryDoc) => {
           const data = deliveryDoc.data() as any;
@@ -1142,9 +1146,7 @@ export default function CreateOrder({ user }: Props) {
                   rtdbLocationMap[uid] = {
                     lat: d.lat,
                     lng: d.lng,
-                    timestamp: d.timestamp
-                      ? new Date(d.timestamp)
-                      : new Date(),
+                    timestamp: d.timestamp ? new Date(d.timestamp) : new Date(),
                   };
                 }
               }
@@ -1225,8 +1227,7 @@ export default function CreateOrder({ user }: Props) {
               rules.recommendation.activeDeliveryCapacityKgImpact;
             const remainingCapacityKg = Math.max(
               0,
-              capacityKg -
-                Math.max(activeLoadWeightKg, countBasedLoadProxy),
+              capacityKg - Math.max(activeLoadWeightKg, countBasedLoadProxy),
             );
             const overloadKg = Math.max(
               0,
@@ -1284,8 +1285,7 @@ export default function CreateOrder({ user }: Props) {
             const estimatedPrice = Math.round(
               calculateEarnings(packageValue, routeDistanceKm) *
                 (1 +
-                  activeDeliveries *
-                    rules.pricing.activeDeliverySurchargeRate),
+                  activeDeliveries * rules.pricing.activeDeliverySurchargeRate),
             );
 
             const reasonBits = [
@@ -1550,6 +1550,27 @@ export default function CreateOrder({ user }: Props) {
         distance: distance > 0 ? Math.round(distance * 100) / 100 : null,
         estimatedDeliveryTime,
         estimatedEarnings,
+        eta: (() => {
+          const carrier = assignedCarrier || preferredCarrier;
+          if (!carrier) return null;
+          const nowMs = Date.now();
+          const SPEED = 30; // km/h
+          const pickupEtaMs =
+            nowMs + (carrier.distanceToPickupKm / SPEED) * 3_600_000;
+          const totalKm =
+            carrier.estimatedDeliveryHours != null
+              ? carrier.estimatedDeliveryHours * SPEED
+              : carrier.distanceToPickupKm;
+          return {
+            pickupEtaMs,
+            deliveryEtaMs: nowMs + (totalKm / SPEED) * 3_600_000,
+            computedAtMs: nowMs,
+            source: "assigned" as const,
+            distanceToPickupKm: carrier.distanceToPickupKm,
+            totalDistanceKm: totalKm,
+            avgSpeedKmh: SPEED,
+          };
+        })(),
         locationConfirmation: {
           pickupConfirmed,
           deliveryConfirmed,

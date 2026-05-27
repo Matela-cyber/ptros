@@ -63,6 +63,15 @@ export interface Delivery {
   deliveryTime?: Timestamp;
   assignedAt?: Timestamp;
   acceptedAt?: Timestamp;
+  eta?: {
+    pickupEtaMs: number | null;
+    deliveryEtaMs: number | null;
+    computedAtMs: number;
+    distanceToPickupKm: number | null;
+    totalDistanceKm: number | null;
+    avgSpeedKmh: number;
+    source: "assigned" | "accepted" | "reoptimized";
+  };
   pickupLocation?: {
     lat: number;
     lng: number;

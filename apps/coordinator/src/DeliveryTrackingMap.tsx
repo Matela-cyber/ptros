@@ -8,6 +8,7 @@ import {
 import {
   db,
   realtimeDb,
+  formatEtaCountdown,
   formatTrackingEta,
   formatRouteNetworkSegmentType,
   getTrackingEtaLabel,
@@ -111,6 +112,13 @@ interface DeliveryData {
       note?: string;
     };
   }>;
+  eta?: {
+    pickupEtaMs: number | null;
+    deliveryEtaMs: number | null;
+    computedAtMs: number;
+    avgSpeedKmh: number;
+    source: string;
+  } | null;
 }
 
 interface CarrierLocation {
@@ -331,6 +339,7 @@ export default function DeliveryTrackingMap() {
         priority: data.priority,
         routeReviews: data.routeReviews || [],
         routeFeedback: data.routeFeedback || [],
+        eta: data.eta ?? null,
       });
       setLoading(false);
     });
@@ -1514,7 +1523,16 @@ export default function DeliveryTrackingMap() {
               {etaInfo?.label || "ESTIMATED TIME"}
             </p>
             <p className="text-sm text-gray-800">
-              {etaInfo?.text || "Waiting for live route data"}
+              {etaInfo?.text ||
+                (() => {
+                  const eta = delivery.eta;
+                  if (!eta) return "Waiting for live route data";
+                  const prePickup = isTrackingBeforePickup(delivery.status);
+                  const etaMs = prePickup ? eta.pickupEtaMs : eta.deliveryEtaMs;
+                  if (!etaMs) return "Waiting for live route data";
+                  const rem = Math.max(0, etaMs - Date.now());
+                  return rem <= 0 ? "Arriving now" : formatEtaCountdown(rem);
+                })()}
             </p>
             {etaInfo?.detail && (
               <p className="text-xs text-gray-500 mt-1">{etaInfo.detail}</p>
