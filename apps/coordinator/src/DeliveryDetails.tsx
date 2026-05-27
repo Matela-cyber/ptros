@@ -334,11 +334,15 @@ export default function DeliveryDetails() {
     { key: "assigned", label: "Assigned" },
     { key: "picked_up", label: "Picked Up" },
     { key: "in_transit", label: "In Transit" },
+    { key: "out_for_delivery", label: "Out for Delivery" },
     { key: "delivered", label: "Delivered" },
   ];
 
+  // stuck is a side-state — treat it as the same step as in_transit for stepper progress
+  const stepperStatus =
+    delivery.status === "stuck" ? "in_transit" : delivery.status;
   const currentStepIndex = statusSteps.findIndex(
-    (step) => step.key === delivery.status,
+    (step) => step.key === stepperStatus,
   );
 
   return (
@@ -391,7 +395,15 @@ export default function DeliveryDetails() {
 
         {/* Status Progress Bar */}
         <div className="mb-8 bg-white rounded-xl shadow p-6">
-          <h2 className="text-xl font-bold mb-4">Delivery Status</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold">Delivery Status</h2>
+            {delivery.status === "stuck" && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm font-semibold">
+                <i className="fa-solid fa-triangle-exclamation" />
+                Carrier Stuck
+              </span>
+            )}
+          </div>
           <div className="flex items-center justify-between mb-6">
             {statusSteps.map((step, index) => (
               <div
@@ -448,13 +460,22 @@ export default function DeliveryDetails() {
             )}
             {delivery.status === "picked_up" && (
               <button
-                onClick={() => updateStatus("in_transit")}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                onClick={() => updateStatus("out_for_delivery")}
+                className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600"
               >
-                Start Transit
+                Out for Delivery
               </button>
             )}
-            {delivery.status === "in_transit" && (
+            {(delivery.status === "in_transit" ||
+              delivery.status === "stuck") && (
+              <button
+                onClick={() => updateStatus("out_for_delivery")}
+                className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600"
+              >
+                Out for Delivery
+              </button>
+            )}
+            {delivery.status === "out_for_delivery" && (
               <button
                 onClick={() => updateStatus("delivered")}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
@@ -468,14 +489,22 @@ export default function DeliveryDetails() {
                   ? "bg-yellow-100 text-yellow-800"
                   : delivery.status === "assigned"
                     ? "bg-blue-100 text-blue-800"
-                    : delivery.status === "picked_up"
-                      ? "bg-purple-100 text-purple-800"
-                      : delivery.status === "in_transit"
-                        ? "bg-indigo-100 text-indigo-800"
-                        : "bg-green-100 text-green-800"
+                    : delivery.status === "accepted"
+                      ? "bg-indigo-100 text-indigo-800"
+                      : delivery.status === "picked_up"
+                        ? "bg-purple-100 text-purple-800"
+                        : delivery.status === "in_transit"
+                          ? "bg-violet-100 text-violet-800"
+                          : delivery.status === "out_for_delivery"
+                            ? "bg-orange-100 text-orange-800"
+                            : delivery.status === "stuck"
+                              ? "bg-red-100 text-red-800"
+                              : delivery.status === "delivered"
+                                ? "bg-green-100 text-green-800"
+                                : "bg-gray-100 text-gray-800"
               }`}
             >
-              {delivery.status.replace("_", " ").toUpperCase()}
+              {delivery.status.replace(/_/g, " ").toUpperCase()}
             </span>
           </div>
         </div>
@@ -979,14 +1008,22 @@ export default function DeliveryDetails() {
                         ? "bg-yellow-100 text-yellow-800"
                         : delivery.status === "assigned"
                           ? "bg-blue-100 text-blue-800"
-                          : delivery.status === "picked_up"
-                            ? "bg-purple-100 text-purple-800"
-                            : delivery.status === "in_transit"
-                              ? "bg-indigo-100 text-indigo-800"
-                              : "bg-green-100 text-green-800"
+                          : delivery.status === "accepted"
+                            ? "bg-indigo-100 text-indigo-800"
+                            : delivery.status === "picked_up"
+                              ? "bg-purple-100 text-purple-800"
+                              : delivery.status === "in_transit"
+                                ? "bg-violet-100 text-violet-800"
+                                : delivery.status === "out_for_delivery"
+                                  ? "bg-orange-100 text-orange-800"
+                                  : delivery.status === "stuck"
+                                    ? "bg-red-100 text-red-800"
+                                    : delivery.status === "delivered"
+                                      ? "bg-green-100 text-green-800"
+                                      : "bg-gray-100 text-gray-800"
                     }`}
                   >
-                    {delivery.status.replace("_", " ").toUpperCase()}
+                    {delivery.status.replace(/_/g, " ").toUpperCase()}
                   </span>
                 </p>
               </div>

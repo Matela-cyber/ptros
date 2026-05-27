@@ -5,6 +5,18 @@ import { toast, Toaster } from "react-hot-toast";
 import { useGPSLocation } from "./hooks";
 import { getCarrierLiveTrackUrl } from "./liveTrackUrl";
 import { formatNumber, formatCurrency } from "./format";
+import { defaultBusinessRules } from "@config";
+import {
+  RouteStop,
+  bundleFitRoute,
+  toDoublyLinkedList,
+  buildStopsFromDeliveries,
+  annotateWithCumulativeLoad,
+  computePeakLoad,
+  capacityConstrainedRoute,
+  estimateRouteDistanceKm,
+} from "./routeOptimization";
+import OverloadChoiceDialog from "./components/OverloadChoiceDialog";
 
 export default function AvailableTasks() {
   const [tab, setTab] = useState<"assigned" | "available">("assigned");
@@ -14,7 +26,24 @@ export default function AvailableTasks() {
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState<string | null>(null);
   const [showLocationModal, setShowLocationModal] = useState(false);
-  const { isSharing, startSharing } = useGPSLocation();
+  const { isSharing, startSharing, lastLocation } = useGPSLocation();
+
+  interface OverloadState {
+    jobId: string;
+    source: "assigned" | "available";
+    capacityKg: number;
+    optimizedRoute: RouteStop[];
+    saferRoute: RouteStop[];
+    optimizedPeakKg: number;
+    saferPeakKg: number;
+    optimizedDistanceKm: number;
+    saferDistanceKm: number;
+    packageWeight: number;
+  }
+  const [overloadState, setOverloadState] = useState<OverloadState | null>(
+    null,
+  );
+  const [resolvingOverload, setResolvingOverload] = useState(false);
 
   const openTaskDetails = (task: Delivery) => {
     setSelectedTask(task);
@@ -83,24 +112,27 @@ export default function AvailableTasks() {
     };
   }, []);
 
-  const handleAcceptAssignedJob = async (jobId: string) => {
-    if (!isSharing) {
-      setShowLocationModal(true);
-      return;
-    }
+  // ── Re-optimization on accept ────────────────────────────────────────────
 
-    setAccepting(jobId);
+  const proceedWithAccept = async (
+    jobId: string,
+    source: "assigned" | "available",
+    chosenRoute: RouteStop[],
+  ) => {
     try {
-      const success = await CarrierService.acceptAssignedDelivery(
-        jobId,
-        isSharing,
-      );
+      let success: boolean;
+      if (source === "assigned") {
+        success = await CarrierService.acceptAssignedDelivery(jobId, true);
+      } else {
+        success = await CarrierService.acceptTask(jobId);
+      }
       if (success) {
-        toast.success("Job accepted. Check dashboard for details.");
-        setAssignedTasks((prev) => prev.filter((t) => t.id !== jobId));
-        if (selectedTask?.id === jobId) {
-          setSelectedTask(null);
-        }
+        await CarrierService.saveRouteStops(chosenRoute);
+        toast.success("Job accepted! Route updated.");
+        if (source === "assigned")
+          setAssignedTasks((prev) => prev.filter((t) => t.id !== jobId));
+        else setAvailableTasks((prev) => prev.filter((t) => t.id !== jobId));
+        if (selectedTask?.id === jobId) setSelectedTask(null);
       } else {
         toast.error("Failed to accept job");
       }
@@ -109,7 +141,93 @@ export default function AvailableTasks() {
       toast.error("Error accepting job");
     } finally {
       setAccepting(null);
+      setOverloadState(null);
+      setResolvingOverload(false);
     }
+  };
+
+  const initiateAccept = async (
+    delivery: Delivery,
+    source: "assigned" | "available",
+  ) => {
+    setAccepting(delivery.id);
+    try {
+      const [currentStops, profile] = await Promise.all([
+        CarrierService.getRouteStops() as Promise<RouteStop[]>,
+        CarrierService.getCarrierProfile(),
+      ]);
+      const vType = (
+        (profile?.vehicleType ?? "unknown") as string
+      ).toLowerCase();
+      const vProfiles = defaultBusinessRules.vehicleProfiles as Record<
+        string,
+        { capacityKg: number }
+      >;
+      const capacityKg =
+        (profile as any)?.capacityWeight ??
+        vProfiles[vType]?.capacityKg ??
+        vProfiles["unknown"]?.capacityKg ??
+        80;
+      const newStops = buildStopsFromDeliveries([delivery]).map((s) => ({
+        ...s,
+        loadKg: delivery.packageWeight ?? 0,
+      }));
+      const allStops = [...currentStops.filter((s) => !s.visited), ...newStops];
+      const carrierPos = lastLocation
+        ? { lat: lastLocation.lat, lng: lastLocation.lng }
+        : undefined;
+      const optimizedOrdered = annotateWithCumulativeLoad(
+        bundleFitRoute(allStops, carrierPos),
+      );
+      const optimizedPeak = computePeakLoad(optimizedOrdered);
+      if (optimizedPeak <= capacityKg) {
+        await proceedWithAccept(
+          delivery.id,
+          source,
+          toDoublyLinkedList(optimizedOrdered),
+        );
+        return;
+      }
+      // Overload — let carrier choose
+      setAccepting(null);
+      const saferOrdered = annotateWithCumulativeLoad(
+        capacityConstrainedRoute(allStops, carrierPos, capacityKg),
+      );
+      setOverloadState({
+        jobId: delivery.id,
+        source,
+        capacityKg,
+        optimizedRoute: toDoublyLinkedList(optimizedOrdered),
+        saferRoute: toDoublyLinkedList(saferOrdered),
+        optimizedPeakKg: optimizedPeak,
+        saferPeakKg: computePeakLoad(saferOrdered),
+        optimizedDistanceKm: estimateRouteDistanceKm(optimizedOrdered),
+        saferDistanceKm: estimateRouteDistanceKm(saferOrdered),
+        packageWeight: delivery.packageWeight ?? 0,
+      });
+    } catch (error) {
+      console.error("Error during route pre-computation:", error);
+      toast.error("Error checking route capacity");
+      setAccepting(null);
+    }
+  };
+
+  const handleOverloadChoice = async (choice: "optimized" | "safer") => {
+    if (!overloadState) return;
+    setResolvingOverload(true);
+    const route =
+      choice === "optimized"
+        ? overloadState.optimizedRoute
+        : overloadState.saferRoute;
+    await proceedWithAccept(overloadState.jobId, overloadState.source, route);
+  };
+
+  const handleAcceptAssignedJob = async (job: Delivery) => {
+    if (!isSharing) {
+      setShowLocationModal(true);
+      return;
+    }
+    await initiateAccept(job, "assigned");
   };
 
   const handleRejectAssignedJob = async (jobId: string) => {
@@ -133,25 +251,8 @@ export default function AvailableTasks() {
     }
   };
 
-  const handleAcceptAvailableTask = async (taskId: string) => {
-    setAccepting(taskId);
-    try {
-      const success = await CarrierService.acceptTask(taskId);
-      if (success) {
-        toast.success("Task accepted. You are now on this delivery.");
-        setAvailableTasks((prev) => prev.filter((t) => t.id !== taskId));
-        if (selectedTask?.id === taskId) {
-          setSelectedTask(null);
-        }
-      } else {
-        toast.error("Failed to accept task");
-      }
-    } catch (error) {
-      console.error("Error accepting task:", error);
-      toast.error("Error accepting task");
-    } finally {
-      setAccepting(null);
-    }
+  const handleAcceptAvailableTask = async (task: Delivery) => {
+    await initiateAccept(task, "available");
   };
 
   if (loading) {
@@ -273,7 +374,9 @@ export default function AvailableTasks() {
                         </div>
                         <div className="text-right">
                           <div className="text-xl font-bold text-green-600">
-                            {formatCurrency(job.earnings || job.estimatedEarnings || 0)}
+                            {formatCurrency(
+                              job.earnings || job.estimatedEarnings || 0,
+                            )}
                           </div>
                           <p className="text-xs text-gray-500">Payment</p>
                         </div>
@@ -399,7 +502,7 @@ export default function AvailableTasks() {
                           <button
                             onClick={(event) =>
                               withStop(event, () =>
-                                handleAcceptAssignedJob(job.id),
+                                handleAcceptAssignedJob(job),
                               )
                             }
                             disabled={accepting === job.id || !isSharing}
@@ -584,7 +687,7 @@ export default function AvailableTasks() {
                         <button
                           onClick={(event) =>
                             withStop(event, () =>
-                              handleAcceptAvailableTask(task.id),
+                              handleAcceptAvailableTask(task),
                             )
                           }
                           disabled={accepting === task.id}
@@ -709,7 +812,11 @@ export default function AvailableTasks() {
                     Earnings
                   </p>
                   <p className="text-2xl font-bold text-emerald-700">
-                    {formatCurrency(selectedTask.earnings || selectedTask.estimatedEarnings || 0)}
+                    {formatCurrency(
+                      selectedTask.earnings ||
+                        selectedTask.estimatedEarnings ||
+                        0,
+                    )}
                   </p>
                 </div>
 
@@ -783,7 +890,7 @@ export default function AvailableTasks() {
                       Decline
                     </button>
                     <button
-                      onClick={() => handleAcceptAssignedJob(selectedTask.id)}
+                      onClick={() => handleAcceptAssignedJob(selectedTask)}
                       disabled={accepting === selectedTask.id || !isSharing}
                       className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition disabled:bg-gray-400"
                     >
@@ -798,7 +905,7 @@ export default function AvailableTasks() {
 
                 {isSelectedFromAvailable && (
                   <button
-                    onClick={() => handleAcceptAvailableTask(selectedTask.id)}
+                    onClick={() => handleAcceptAvailableTask(selectedTask)}
                     disabled={accepting === selectedTask.id}
                     className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition disabled:bg-gray-400"
                   >
@@ -812,6 +919,24 @@ export default function AvailableTasks() {
           </div>
         )}
       </div>
+
+      {/* Overload choice dialog — shown when accepting would exceed vehicle capacity */}
+      {overloadState && (
+        <OverloadChoiceDialog
+          capacityKg={overloadState.capacityKg}
+          packageWeight={overloadState.packageWeight}
+          optimizedPeakKg={overloadState.optimizedPeakKg}
+          optimizedDistanceKm={overloadState.optimizedDistanceKm}
+          saferPeakKg={overloadState.saferPeakKg}
+          saferDistanceKm={overloadState.saferDistanceKm}
+          choosing={resolvingOverload}
+          onChoose={handleOverloadChoice}
+          onCancel={() => {
+            setOverloadState(null);
+            setResolvingOverload(false);
+          }}
+        />
+      )}
     </div>
   );
 }

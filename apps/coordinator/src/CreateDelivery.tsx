@@ -1,7 +1,7 @@
 // apps/coordinator/src/CreateDelivery.tsx
 import AddressAutocomplete from "./AddressAutocomplete";
 import { useState, useEffect, useRef } from "react";
-import { db, auth } from "@config";
+import { db, auth, defaultBusinessRules, loadBusinessRulesConfig, type BusinessRulesConfig } from "@config";
 import {
   collection,
   addDoc,
@@ -83,23 +83,6 @@ const getLocationOfficialLevel = (usageCount: number) => {
   if (usageCount >= 5) return "core_official";
   if (usageCount >= 2) return "official";
   return "candidate";
-};
-
-const getVehicleAverageSpeedKmh = (vehicleType?: string) => {
-  const value = (vehicleType || "").toLowerCase();
-  if (value.includes("bicycle")) return 15;
-  if (
-    value.includes("motor") ||
-    value.includes("scooter") ||
-    value.includes("bike")
-  ) {
-    return 35;
-  }
-  if (value.includes("pickup")) return 45;
-  if (value.includes("van")) return 42;
-  if (value.includes("truck")) return 38;
-  if (value.includes("car") || value.includes("sedan")) return 50;
-  return 40;
 };
 
 interface CarrierRecommendation extends Carrier {
@@ -570,6 +553,9 @@ export default function CreateDelivery() {
   const [carrierSelectionMode, setCarrierSelectionMode] =
     useState<CarrierSelectionMode>("auto");
 
+  const [businessRules, setBusinessRules] =
+    useState<BusinessRulesConfig>(defaultBusinessRules);
+
   const formatPinnedAddress = (lat: number, lng: number) =>
     `Pinned location (${lat.toFixed(6)}, ${lng.toFixed(6)})`;
 
@@ -632,8 +618,12 @@ export default function CreateDelivery() {
       setCarriers(carriersList);
 
       // Load custom known locations from knownLocations collection
-      const customLocations = await loadKnownLocations();
+      const [customLocations, rules] = await Promise.all([
+        loadKnownLocations(),
+        loadBusinessRulesConfig(),
+      ]);
       setKnownLocations(customLocations);
+      setBusinessRules(rules);
     } catch (error) {
       console.error("Error loading data:", error);
       toast.error("Failed to load customers and carriers");
@@ -1110,10 +1100,10 @@ export default function CreateDelivery() {
     packageValue: number,
     distance: number,
   ): number => {
-    const baseValue = packageValue || 100;
-    const distanceFee = distance * 10; // M10 per km
-    const valueFee = Math.round(baseValue * 0.15);
-    return Math.max(50, valueFee + distanceFee);
+    const baseValue = packageValue || businessRules.pricing.baseValueFallback;
+    const distanceFee = distance * businessRules.pricing.distanceRatePerKm;
+    const valueFee = Math.round(baseValue * businessRules.pricing.packageValueRate);
+    return Math.max(businessRules.pricing.minimumCharge, valueFee + distanceFee);
   };
 
   const generateCarrierRecommendations = async (
@@ -1133,31 +1123,8 @@ export default function CreateDelivery() {
         priority: formData.priority,
       });
 
-      const routeDistanceKm = formData.deliveryCoordinates
-        ? calculateDistance(
-            pickup.lat,
-            pickup.lng,
-            formData.deliveryCoordinates.lat,
-            formData.deliveryCoordinates.lng,
-          )
-        : 0;
-      const packageValue = formData.packageValue
-        ? Number(formData.packageValue)
-        : 0;
-
       setRecommendedCarriers(
         weighted.map((carrier) => {
-          const speedKmh = getVehicleAverageSpeedKmh(carrier.vehicleType);
-          const fallbackEtaHours = Math.max(
-            0.5,
-            (carrier.distanceToPickupKm + routeDistanceKm) / speedKmh +
-              carrier.activeDeliveries * 0.35,
-          );
-          const fallbackPrice = Math.round(
-            calculateEarnings(packageValue, routeDistanceKm) *
-              (1 + carrier.activeDeliveries * 0.05),
-          );
-
           return {
             id: carrier.id,
             email: carriers.find((item) => item.id === carrier.id)?.email || "",
@@ -1174,12 +1141,8 @@ export default function CreateDelivery() {
             recommendationScore: carrier.recommendationScore,
             distanceToPickupKm: carrier.distanceToPickupKm,
             estimatedDetourKm: carrier.estimatedDetourKm,
-            estimatedDeliveryHours: Number(
-              (
-                (carrier as any).estimatedDeliveryHours ?? fallbackEtaHours
-              ).toFixed(1),
-            ),
-            estimatedPrice: (carrier as any).estimatedPrice ?? fallbackPrice,
+            estimatedDeliveryHours: carrier.estimatedDeliveryHours,
+            estimatedPrice: carrier.estimatedPrice,
             activeDeliveries: carrier.activeDeliveries,
             recommendationReason: carrier.recommendationReason,
             autoAssignable: carrier.autoAssignable,

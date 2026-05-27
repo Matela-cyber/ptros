@@ -3,6 +3,7 @@ import AddressAutocomplete from "./AddressAutocomplete";
 import { useState, useEffect, useRef } from "react";
 import {
   db,
+  realtimeDb,
   defaultBusinessRules,
   loadBusinessRulesConfig,
   type BusinessRulesConfig,
@@ -18,6 +19,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
+import { get as rtdbGet, ref as rtdbRef } from "firebase/database";
 import { toast, Toaster } from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import { useGeocoder } from "./hooks/useGeocoder";
@@ -448,6 +450,14 @@ const ACTIVE_DELIVERY_STATUSES = [
   "out_for_delivery",
   "stuck",
 ];
+
+// Statuses where carrier is already physically carrying the package
+const CARRYING_STATUSES = new Set([
+  "picked_up",
+  "in_transit",
+  "out_for_delivery",
+  "stuck",
+]);
 
 const normalizeVehicleType = (vehicleType?: string) => {
   const value = (vehicleType || "").toLowerCase();
@@ -1090,14 +1100,59 @@ export default function CreateOrder({ user }: Props) {
           ),
         ]);
 
+        // Build per-carrier load map: split carrying (in hand) vs incoming (assigned not yet picked up)
         const activeByCarrier = activeDeliveriesSnap.docs.reduce<
-          Record<string, number>
+          Record<
+            string,
+            { count: number; carryingWeightKg: number; incomingWeightKg: number }
+          >
         >((acc, deliveryDoc) => {
           const data = deliveryDoc.data() as any;
           if (!data?.carrierId) return acc;
-          acc[data.carrierId] = (acc[data.carrierId] || 0) + 1;
+          if (!acc[data.carrierId]) {
+            acc[data.carrierId] = {
+              count: 0,
+              carryingWeightKg: 0,
+              incomingWeightKg: 0,
+            };
+          }
+          acc[data.carrierId].count += 1;
+          const wt = Number(data.packageWeight || 0);
+          if (CARRYING_STATUSES.has(data.status)) {
+            acc[data.carrierId].carryingWeightKg += wt;
+          } else {
+            acc[data.carrierId].incomingWeightKg += wt;
+          }
           return acc;
         }, {});
+
+        // Batch-fetch live GPS from RTDB /tracks/{uid} (updated every ~5s by carrier app)
+        const carrierIds = carriersSnap.docs.map((d) => d.id);
+        const rtdbLocationMap: Record<
+          string,
+          { lat: number; lng: number; timestamp: Date }
+        > = {};
+        await Promise.all(
+          carrierIds.map(async (uid) => {
+            try {
+              const snap = await rtdbGet(rtdbRef(realtimeDb, `tracks/${uid}`));
+              if (snap.exists()) {
+                const d = snap.val();
+                if (typeof d.lat === "number" && typeof d.lng === "number") {
+                  rtdbLocationMap[uid] = {
+                    lat: d.lat,
+                    lng: d.lng,
+                    timestamp: d.timestamp
+                      ? new Date(d.timestamp)
+                      : new Date(),
+                  };
+                }
+              }
+            } catch {
+              // fall back to Firestore cached location
+            }
+          }),
+        );
 
         const packageWeightKg = Number(formData.packageWeight || 0);
         const packageValue = Number(formData.packageValue || 0);
@@ -1112,14 +1167,20 @@ export default function CreateOrder({ user }: Props) {
         const recommendations = carriersSnap.docs
           .reduce<CarrierCandidate[]>((acc, carrierDoc) => {
             const data = carrierDoc.data() as any;
-            const currentLocation =
+
+            // Prefer RTDB live GPS; fall back to Firestore cached location
+            const rtdbLoc = rtdbLocationMap[carrierDoc.id];
+            const firestoreLoc =
               data.currentLocation &&
               Number.isFinite(data.currentLocation.lat) &&
               Number.isFinite(data.currentLocation.lng)
-                ? {
-                    lat: data.currentLocation.lat,
-                    lng: data.currentLocation.lng,
-                  }
+                ? data.currentLocation
+                : undefined;
+            const locationSource = rtdbLoc ? "rtdb" : "firestore";
+            const currentLocation = rtdbLoc
+              ? { lat: rtdbLoc.lat, lng: rtdbLoc.lng }
+              : firestoreLoc
+                ? { lat: firestoreLoc.lat, lng: firestoreLoc.lng }
                 : undefined;
 
             if (!currentLocation) return acc;
@@ -1127,13 +1188,26 @@ export default function CreateOrder({ user }: Props) {
             const status = data.status || "inactive";
             if (status === "inactive") return acc;
 
+            // Staleness: RTDB threshold 5 min; Firestore threshold 20 min
+            const locationTs: Date | undefined = rtdbLoc?.timestamp;
+            const staleLocationMinutes = locationTs
+              ? Math.max(0, (Date.now() - locationTs.getTime()) / 60000)
+              : 999;
+            const freshThresholdMinutes = locationSource === "rtdb" ? 5 : 20;
+            const freshLocation = staleLocationMinutes <= freshThresholdMinutes;
+
             const normalizedVehicle = normalizeVehicleType(data.vehicleType);
             const vehicleProfile =
               rules.vehicleProfiles[
                 normalizedVehicle as keyof BusinessRulesConfig["vehicleProfiles"]
               ] || rules.vehicleProfiles.unknown;
 
-            const activeDeliveries = activeByCarrier[carrierDoc.id] || 0;
+            const activeInfo = activeByCarrier[carrierDoc.id] || {
+              count: 0,
+              carryingWeightKg: 0,
+              incomingWeightKg: 0,
+            };
+            const activeDeliveries = activeInfo.count;
             const distanceToPickupKm = calculateDistance(
               currentLocation.lat,
               currentLocation.lng,
@@ -1142,11 +1216,17 @@ export default function CreateOrder({ user }: Props) {
             );
             const rating = Number(data.rating || 0);
             const capacityKg = vehicleProfile.capacityKg;
+
+            // Use actual carrying+incoming weight; fall back to count-based proxy
+            const activeLoadWeightKg =
+              activeInfo.carryingWeightKg + activeInfo.incomingWeightKg;
+            const countBasedLoadProxy =
+              activeDeliveries *
+              rules.recommendation.activeDeliveryCapacityKgImpact;
             const remainingCapacityKg = Math.max(
               0,
               capacityKg -
-                activeDeliveries *
-                  rules.recommendation.activeDeliveryCapacityKgImpact,
+                Math.max(activeLoadWeightKg, countBasedLoadProxy),
             );
             const overloadKg = Math.max(
               0,
@@ -1178,13 +1258,18 @@ export default function CreateOrder({ user }: Props) {
               distanceToPickupKm < rules.recommendation.bundlePickupMaxKm
                 ? rules.recommendation.bundleBoost
                 : 0;
+            // Stale location penalty (identical weights to coordinator service)
+            const stalePenalty = freshLocation
+              ? 0
+              : Math.min(45, staleLocationMinutes * 1.25);
 
             const recommendationScore =
               distancePenalty +
               routePenalty +
               workloadPenalty +
               statusPenalty +
-              capacityPenalty -
+              capacityPenalty +
+              stalePenalty -
               ratingBoost -
               bundleBoost;
 
@@ -1199,7 +1284,8 @@ export default function CreateOrder({ user }: Props) {
             const estimatedPrice = Math.round(
               calculateEarnings(packageValue, routeDistanceKm) *
                 (1 +
-                  activeDeliveries * rules.pricing.activeDeliverySurchargeRate),
+                  activeDeliveries *
+                    rules.pricing.activeDeliverySurchargeRate),
             );
 
             const reasonBits = [
@@ -1207,10 +1293,21 @@ export default function CreateOrder({ user }: Props) {
               `${activeDeliveries} active deliveries`,
               `rating ${parseFloat(Math.max(0, rating).toFixed(2))}`,
               `${parseFloat(remainingCapacityKg.toFixed(2))}kg capacity left`,
+              locationSource === "rtdb" ? "live GPS" : "cached location",
             ];
 
             if (bundleBoost > 0) {
               reasonBits.push("good bundle fit");
+            }
+            if (!freshLocation) {
+              reasonBits.push(
+                `stale location ${staleLocationMinutes.toFixed(0)}min ago`,
+              );
+            }
+            if (activeInfo.carryingWeightKg > 0) {
+              reasonBits.push(
+                `carrying ${activeInfo.carryingWeightKg.toFixed(1)}kg now`,
+              );
             }
 
             acc.push({

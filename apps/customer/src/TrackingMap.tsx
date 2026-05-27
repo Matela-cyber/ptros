@@ -5,8 +5,12 @@ import {
   realtimeDb,
   formatRouteNetworkSegmentType,
   getDisplayRouteNetworkSegments,
+  getTrackingEtaLabel,
   getRouteNetworkSegmentStyle,
+  isTrackingBeforePickup,
   subscribeRouteNetworkSegments,
+  toDeliveryTrackingRouteSummary,
+  type DeliveryTrackingRouteSummary,
   type RouteNetworkSegment,
 } from "@config";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
@@ -89,6 +93,7 @@ interface Delivery {
     start?: { lat: number; lng: number };
     end?: { lat: number; lng: number };
   }>;
+  trackingRouteSummary?: DeliveryTrackingRouteSummary | null;
 }
 
 interface MarkerData {
@@ -100,6 +105,77 @@ interface MarkerData {
   content: string;
   deliveryId: string;
 }
+
+const clampGradientProgress = (p: number) => Math.min(1, Math.max(0, p));
+
+const getGradientRouteColor = (progress: number) => {
+  const hue = Math.round(4 + clampGradientProgress(progress) * 116);
+  return `hsl(${hue}, 78%, 45%)`;
+};
+
+const buildGradientPathSegments = (
+  points: Array<{ lat: number; lng: number }>,
+  prefix: string,
+  maxSegments = 16,
+): Array<{
+  id: string;
+  path: Array<{ lat: number; lng: number }>;
+  color: string;
+}> => {
+  if (points.length < 2) return [];
+  const lastIdx = points.length - 1;
+  const count = Math.min(maxSegments, lastIdx);
+  return Array.from({ length: count }, (_, i) => {
+    const startIdx = Math.floor((i * lastIdx) / count);
+    const endIdx = Math.min(
+      points.length,
+      Math.max(startIdx + 2, Math.floor(((i + 1) * lastIdx) / count) + 1),
+    );
+    return {
+      id: `${prefix}-${i}`,
+      path: points.slice(startIdx, endIdx),
+      color: getGradientRouteColor(count === 1 ? 1 : i / (count - 1)),
+    };
+  }).filter((s) => s.path.length > 1);
+};
+
+const createGradientPolylines = ({
+  map,
+  path,
+  prefix,
+  strokeOpacity,
+  strokeWeight,
+}: {
+  map: any;
+  path: Array<{ lat: number; lng: number }>;
+  prefix: string;
+  strokeOpacity: number;
+  strokeWeight: number;
+}): any[] =>
+  buildGradientPathSegments(path, prefix).map(
+    (seg) =>
+      new window.google.maps.Polyline({
+        path: seg.path,
+        geodesic: true,
+        strokeColor: seg.color,
+        strokeOpacity,
+        strokeWeight,
+        clickable: false,
+        zIndex: Math.round(strokeWeight * 10),
+        icons: [
+          {
+            icon: {
+              path: window.google.maps.SymbolPath.FORWARD_OPEN_ARROW,
+              scale: Math.max(2.1, Math.min(3.1, strokeWeight / 2.25)),
+              strokeColor: seg.color,
+              strokeOpacity: Math.min(1, strokeOpacity + 0.12),
+            },
+            offset: "84%",
+          },
+        ],
+        map,
+      }),
+  );
 
 type Props = { user: any };
 type DeliveryFilter = "all" | "active" | "in_transit" | "delivered";
@@ -127,13 +203,24 @@ export default function TrackingMap({ user }: Props) {
   const markersRef = useRef<Map<string, any>>(new Map());
   const markersUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const sharedInfoWindowRef = useRef<any>(null);
-  const carrierToPickupPolylineRef = useRef<any>(null);
-  const pickupToDropoffPolylineRef = useRef<any>(null);
-  const activePolylineRef = useRef<any>(null);
-  const plannedPolylineRef = useRef<any>(null);
+  const carrierToPickupPolylineRef = useRef<any[]>([]);
+  const pickupToDropoffPolylineRef = useRef<any[]>([]);
+  const activePolylineRef = useRef<any[]>([]);
+  const plannedPolylineRef = useRef<any[]>([]);
   const routeOverlayPolylinesRef = useRef<any[]>([]);
   const consumedRouteTargetRef = useRef(false);
   const mapTilesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Road paths from DirectionsService — stored in state so updateMarkers
+  // automatically re-executes (via useCallback deps) when paths arrive.
+  const [roadPaths, setRoadPaths] = useState<{
+    approachToPickup: Array<{ lat: number; lng: number }> | null;
+    activeToDelivery: Array<{ lat: number; lng: number }> | null;
+    linkedRoute: Array<{ lat: number; lng: number }> | null;
+    etaLabel: string;
+    etaText: string | null;
+    stopsAheadCount: number;
+    remainingRouteStopCount: number;
+  } | null>(null);
 
   // Default center (Maseru, Lesotho)
   const defaultCenter = { lat: -29.31, lng: 27.48 };
@@ -336,6 +423,9 @@ export default function TrackingMap({ user }: Props) {
             proofOfDelivery: data.proofOfDelivery,
             routeReviews: data.routeReviews || [],
             routeFeedback: data.routeFeedback || [],
+            trackingRouteSummary: toDeliveryTrackingRouteSummary(
+              data.trackingRouteSummary,
+            ),
           });
         });
 
@@ -496,6 +586,190 @@ export default function TrackingMap({ user }: Props) {
     }
   }, [googleMapsLoaded, loading, deliveries.length, mapTilesLoaded]);
 
+  // Reset road paths immediately when the selected delivery changes so stale
+  // paths from the previous delivery are not briefly shown.
+  useEffect(() => {
+    setRoadPaths(null);
+  }, [selectedDelivery]);
+
+  // Compute road paths + ETA for the selected delivery via DirectionsService.
+  // Setting state (not a ref) triggers updateMarkers re-creation when paths arrive.
+  useEffect(() => {
+    if (!googleMapsLoaded || !selectedDelivery) {
+      setRoadPaths(null);
+      return;
+    }
+    const delivery = visibleDeliveries.find((d) => d.id === selectedDelivery);
+    if (!delivery?.pickupLocation || !delivery?.deliveryLocation) {
+      setRoadPaths(null);
+      return;
+    }
+    if (!window.google?.maps) return;
+
+    const liveTrack = deliveryTracksMap[delivery.id];
+    const currentPt =
+      liveTrack && typeof liveTrack.lat === "number"
+        ? { lat: liveTrack.lat, lng: liveTrack.lng }
+        : delivery.currentLocation
+          ? {
+              lat: delivery.currentLocation.lat,
+              lng: delivery.currentLocation.lng,
+            }
+          : null;
+    const pickupPt = {
+      lat: delivery.pickupLocation.lat,
+      lng: delivery.pickupLocation.lng,
+    };
+    const dropoffPt = {
+      lat: delivery.deliveryLocation.lat,
+      lng: delivery.deliveryLocation.lng,
+    };
+    const isBeforePickup = isTrackingBeforePickup(delivery.status);
+
+    if (!currentPt) {
+      setRoadPaths(null);
+      return;
+    }
+
+    let cancelled = false;
+    const svc = new window.google.maps.DirectionsService();
+
+    const getRoute = (origin: any, dest: any): Promise<any | null> =>
+      new Promise((resolve) => {
+        svc.route(
+          {
+            origin,
+            destination: dest,
+            travelMode: window.google.maps.TravelMode.DRIVING,
+          },
+          (result: any, status: any) =>
+            resolve(status === "OK" ? result : null),
+        );
+      });
+
+    const getRouteWithWaypoints = (
+      origin: any,
+      dest: any,
+      waypoints: Array<{
+        location: { lat: number; lng: number };
+        stopover: true;
+      }>,
+    ): Promise<any | null> =>
+      new Promise((resolve) => {
+        svc.route(
+          {
+            origin,
+            destination: dest,
+            waypoints,
+            optimizeWaypoints: false,
+            travelMode: window.google.maps.TravelMode.DRIVING,
+          },
+          (result: any, status: any) =>
+            resolve(status === "OK" ? result : null),
+        );
+      });
+
+    const extractPath = (
+      result: any,
+    ): Array<{ lat: number; lng: number }> | null => {
+      const pts = result?.routes?.[0]?.overview_path;
+      if (!pts) return null;
+      return pts.map((p: any) => ({ lat: p.lat(), lng: p.lng() }));
+    };
+
+    const totalDuration = (result: any): number =>
+      (result?.routes?.[0]?.legs ?? []).reduce(
+        (s: number, l: any) => s + (l.duration?.value || 0),
+        0,
+      );
+
+    const formatMins = (secs: number): string => {
+      const m = Math.max(1, Math.round(secs / 60));
+      return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h ${m % 60}m`;
+    };
+
+    (async () => {
+      const summaryChain = (delivery.trackingRouteSummary?.routeChain || [])
+        .filter(
+          (stop) => Number.isFinite(stop.lat) && Number.isFinite(stop.lng),
+        )
+        .slice(0, 24);
+      const linkedDestination = summaryChain.length
+        ? {
+            lat: summaryChain[summaryChain.length - 1].lat,
+            lng: summaryChain[summaryChain.length - 1].lng,
+          }
+        : null;
+      const linkedWaypoints = summaryChain.slice(0, -1).map((stop) => ({
+        location: { lat: stop.lat, lng: stop.lng },
+        stopover: true as const,
+      }));
+
+      if (isBeforePickup) {
+        // Pre-pickup: approach path (carrier→pickup) + planned road path (pickup→delivery)
+        const [toPickupResult, toDropoffResult, linkedResult] =
+          await Promise.all([
+            getRoute(currentPt, pickupPt),
+            getRoute(pickupPt, dropoffPt),
+            linkedDestination
+              ? getRouteWithWaypoints(
+                  currentPt,
+                  linkedDestination,
+                  linkedWaypoints,
+                )
+              : Promise.resolve(null),
+          ]);
+        if (cancelled) return;
+        const effectiveRoute = linkedResult ?? toPickupResult;
+        const etaSecs = totalDuration(effectiveRoute);
+        setRoadPaths({
+          approachToPickup: extractPath(effectiveRoute),
+          activeToDelivery: extractPath(toDropoffResult),
+          linkedRoute: extractPath(linkedResult),
+          etaLabel: getTrackingEtaLabel(delivery.status),
+          etaText: etaSecs > 0 ? formatMins(etaSecs) : null,
+          stopsAheadCount: delivery.trackingRouteSummary?.stopsAheadCount || 0,
+          remainingRouteStopCount:
+            delivery.trackingRouteSummary?.remainingRouteStopCount || 0,
+        });
+      } else {
+        // Post-pickup: active path (carrier→delivery)
+        const [toDropoffResult, linkedResult] = await Promise.all([
+          getRoute(currentPt, dropoffPt),
+          linkedDestination
+            ? getRouteWithWaypoints(
+                currentPt,
+                linkedDestination,
+                linkedWaypoints,
+              )
+            : Promise.resolve(null),
+        ]);
+        if (cancelled) return;
+        const effectiveRoute = linkedResult ?? toDropoffResult;
+        const etaSecs = totalDuration(effectiveRoute);
+        setRoadPaths({
+          approachToPickup: null,
+          activeToDelivery: extractPath(effectiveRoute),
+          linkedRoute: extractPath(linkedResult),
+          etaLabel: getTrackingEtaLabel(delivery.status),
+          etaText: etaSecs > 0 ? formatMins(etaSecs) : null,
+          stopsAheadCount: delivery.trackingRouteSummary?.stopsAheadCount || 0,
+          remainingRouteStopCount:
+            delivery.trackingRouteSummary?.remainingRouteStopCount || 0,
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    selectedDelivery,
+    googleMapsLoaded,
+    visibleDeliveries,
+    deliveryTracksMap,
+  ]);
+
   // Update markers and route line
   const updateMarkers = useCallback(() => {
     if (
@@ -549,8 +823,11 @@ export default function TrackingMap({ user }: Props) {
       });
     }
 
-    // Add current location marker
-    if (effectiveCurrentLocation) {
+    // Add current location marker — hidden before pickup so customer doesn't see carrier prematurely
+    const isBeforePickupStatus = ["pending", "assigned", "accepted"].includes(
+      delivery.status,
+    );
+    if (effectiveCurrentLocation && !isBeforePickupStatus) {
       newMarkerData.push({
         id: `current-${delivery.id}`,
         type: "current",
@@ -679,18 +956,14 @@ export default function TrackingMap({ user }: Props) {
     });
 
     // Draw route line if we have all locations
-    if (carrierToPickupPolylineRef.current) {
-      carrierToPickupPolylineRef.current.setMap(null);
-    }
-    if (pickupToDropoffPolylineRef.current) {
-      pickupToDropoffPolylineRef.current.setMap(null);
-    }
-    if (activePolylineRef.current) {
-      activePolylineRef.current.setMap(null);
-    }
-    if (plannedPolylineRef.current) {
-      plannedPolylineRef.current.setMap(null);
-    }
+    carrierToPickupPolylineRef.current.forEach((p) => p.setMap(null));
+    carrierToPickupPolylineRef.current = [];
+    pickupToDropoffPolylineRef.current.forEach((p) => p.setMap(null));
+    pickupToDropoffPolylineRef.current = [];
+    activePolylineRef.current.forEach((p) => p.setMap(null));
+    activePolylineRef.current = [];
+    plannedPolylineRef.current.forEach((p) => p.setMap(null));
+    plannedPolylineRef.current = [];
     routeOverlayPolylinesRef.current.forEach((polyline) =>
       polyline.setMap(null),
     );
@@ -714,72 +987,62 @@ export default function TrackingMap({ user }: Props) {
 
       const plannedPath = decodePolyline(delivery.route?.polyline);
       const activePath = decodePolyline(delivery.routeHistory?.activePolyline);
-      const routePalette = getRoutePalette(delivery.status);
 
-      plannedPolylineRef.current = new window.google.maps.Polyline({
+      plannedPolylineRef.current = createGradientPolylines({
+        map: mapInstance.current,
         path:
           plannedPath.length > 1 ? plannedPath : [pickupPoint, dropoffPoint],
-        geodesic: true,
-        strokeColor: routePalette.planned,
-        strokeOpacity: 0.75,
-        strokeWeight: 3,
-        icons: [
-          {
-            icon: {
-              path: "M 0,-1 0,1",
-              strokeOpacity: 1,
-              scale: 2,
-            },
-            offset: "0",
-            repeat: "14px",
-          },
-        ],
-        map: mapInstance.current,
+        prefix: `planned-${delivery.id}`,
+        strokeOpacity: 0.34,
+        strokeWeight: 4,
       });
 
-      pickupToDropoffPolylineRef.current = new window.google.maps.Polyline({
-        path: [pickupPoint, dropoffPoint],
-        geodesic: true,
-        strokeColor: routePalette.primary,
-        strokeOpacity: 0.4,
+      // Baseline: pickup→delivery ghost line.
+      // Pre-pickup: use DirectionsService road path (pickup→delivery from roadPaths.activeToDelivery).
+      // Post-pickup: use static decoded planned route to avoid double-drawing with activePolylineRef.
+      pickupToDropoffPolylineRef.current = createGradientPolylines({
+        map: mapInstance.current,
+        path: isBeforePickupStatus
+          ? (roadPaths?.activeToDelivery ?? [pickupPoint, dropoffPoint])
+          : plannedPath.length > 1
+            ? plannedPath
+            : [pickupPoint, dropoffPoint],
+        prefix: `pickup-dropoff-${delivery.id}`,
+        strokeOpacity: 0.5,
         strokeWeight: 5,
-        map: mapInstance.current,
       });
 
-      if (delivery.status === "assigned" && currentPoint) {
-        carrierToPickupPolylineRef.current = new window.google.maps.Polyline({
-          path: [currentPoint, pickupPoint],
-          geodesic: true,
-          strokeColor: "#fbbf24",
-          strokeOpacity: 0.4,
-          strokeWeight: 5,
+      if (isBeforePickupStatus && currentPoint) {
+        // Pre-pickup: carrier approaching pickup (road path or straight line fallback)
+        carrierToPickupPolylineRef.current = createGradientPolylines({
           map: mapInstance.current,
+          path: roadPaths?.approachToPickup ?? [currentPoint, pickupPoint],
+          prefix: `carrier-pickup-${delivery.id}`,
+          strokeOpacity: 0.94,
+          strokeWeight: 6,
         });
-      } else {
-        activePolylineRef.current = new window.google.maps.Polyline({
+      } else if (!isBeforePickupStatus && currentPoint) {
+        // Post-pickup: active carrier→delivery road path (no double-draw with baseline above)
+        activePolylineRef.current = createGradientPolylines({
+          map: mapInstance.current,
           path:
-            activePath.length > 1
-              ? activePath
-              : currentPoint
-                ? [pickupPoint, currentPoint]
-                : [pickupPoint, dropoffPoint],
-          geodesic: true,
-          strokeColor: routePalette.active,
+            roadPaths?.activeToDelivery ??
+            (activePath.length > 1 ? activePath : [currentPoint, dropoffPoint]),
+          prefix: `active-${delivery.id}`,
           strokeOpacity: 0.95,
-          strokeWeight: 5,
-          icons: [
-            {
-              icon: {
-                path: window.google.maps.SymbolPath.FORWARD_OPEN_ARROW,
-                scale: 2.2,
-                strokeOpacity: 0.9,
-              },
-              offset: "12px",
-              repeat: "40px",
-            },
-          ],
-          map: mapInstance.current,
+          strokeWeight: 6,
         });
+      }
+
+      if ((roadPaths?.linkedRoute?.length || 0) > 1) {
+        const linkedPolylines = createGradientPolylines({
+          map: mapInstance.current,
+          path: roadPaths?.linkedRoute!,
+          prefix: `linked-${delivery.id}`,
+          strokeOpacity: 0.62,
+          strokeWeight: 5,
+        });
+        routeOverlayPolylinesRef.current.push(...linkedPolylines);
       }
 
       const relevantManagedSegments = getDisplayRouteNetworkSegments(
@@ -866,6 +1129,7 @@ export default function TrackingMap({ user }: Props) {
     managedSegments,
     selectedDelivery,
     googleMapsLoaded,
+    roadPaths,
   ]);
 
   // Debounced marker updates
@@ -906,47 +1170,6 @@ export default function TrackingMap({ user }: Props) {
     if (!point || !mapInstance.current) return;
     mapInstance.current.setCenter(point);
     mapInstance.current.setZoom(16);
-  };
-
-  const getRoutePalette = (status: string) => {
-    switch (status) {
-      case "picked_up":
-        return {
-          active: "#8b5cf6",
-          primary: "#a78bfa",
-          planned: "#c4b5fd",
-        };
-      case "in_transit":
-        return {
-          active: "#f59e0b",
-          primary: "#fb923c",
-          planned: "#fbbf24",
-        };
-      case "out_for_delivery":
-        return {
-          active: "#0ea5e9",
-          primary: "#38bdf8",
-          planned: "#7dd3fc",
-        };
-      case "delivered":
-        return {
-          active: "#16a34a",
-          primary: "#22c55e",
-          planned: "#86efac",
-        };
-      case "assigned":
-        return {
-          active: "#f59e0b",
-          primary: "#fb923c",
-          planned: "#fbbf24",
-        };
-      default:
-        return {
-          active: "#14b8a6",
-          primary: "#2dd4bf",
-          planned: "#5eead4",
-        };
-    }
   };
 
   const formatStatusLabel = (status: string) =>
@@ -1001,9 +1224,6 @@ export default function TrackingMap({ user }: Props) {
   const selectedFreshnessMinutes = selectedLastUpdateMs
     ? Math.max(0, Math.round((Date.now() - selectedLastUpdateMs) / 60000))
     : null;
-  const selectedRoutePalette = getRoutePalette(
-    selectedDeliveryData?.status || "in_transit",
-  );
   const selectedStatusLabel = selectedDeliveryData
     ? formatStatusLabel(selectedDeliveryData.status)
     : "Current";
@@ -1246,29 +1466,32 @@ export default function TrackingMap({ user }: Props) {
                   title="Route key"
                   items={[
                     {
-                      color: "#fbbf24",
-                      opacity: 0.4,
-                      label: "Carrier → Pickup",
-                      description: "Expected first leg before pickup",
-                    },
-                    {
-                      color: selectedRoutePalette.primary,
-                      opacity: 0.4,
-                      label: "Pickup → Dropoff",
-                      description: "Expected delivery path",
-                    },
-                    {
-                      color: selectedRoutePalette.active,
-                      opacity: 0.95,
-                      label: `${selectedStatusLabel} route`,
+                      color: "#dc2626",
+                      gradient:
+                        "linear-gradient(90deg, #dc2626 0%, #f59e0b 38%, #84cc16 70%, #16a34a 100%)",
+                      opacity: 1,
+                      label: "All routes: red → green",
                       description:
-                        "Color changes by package status (picked up, in transit, out for delivery, delivered)",
+                        "Red = route start, green = route finish — helps tell overlapping roads apart",
                     },
                     {
-                      color: selectedRoutePalette.planned,
-                      opacity: 0.75,
-                      label: "Planned route",
-                      description: "Original optimized route",
+                      color: "#222",
+                      opacity: 1,
+                      label: "Thick line (weight 6)",
+                      description: `Active ${selectedStatusLabel} route — the road to follow now`,
+                    },
+                    {
+                      color: "#555",
+                      opacity: 0.62,
+                      label: "Medium line (weight 5)",
+                      description:
+                        "Carrier linked route or pickup → dropoff baseline",
+                    },
+                    {
+                      color: "#888",
+                      opacity: 0.34,
+                      label: "Thin line (weight 4)",
+                      description: "Original planned route overlay",
                     },
                     {
                       color: "#16a34a",
@@ -1410,6 +1633,35 @@ export default function TrackingMap({ user }: Props) {
                                 </div>
                               </div>
                             )}
+                            {selectedDelivery === delivery.id &&
+                              roadPaths?.etaText && (
+                                <div>
+                                  <div className="text-sm text-gray-600">
+                                    {roadPaths.etaLabel}
+                                  </div>
+                                  <div className="font-medium text-emerald-600">
+                                    ⏱ {roadPaths.etaText}
+                                  </div>
+                                </div>
+                              )}
+                            {selectedDelivery === delivery.id &&
+                              !!roadPaths?.remainingRouteStopCount && (
+                                <div>
+                                  <div className="text-sm text-gray-600">
+                                    Linked route
+                                  </div>
+                                  <div className="font-medium text-slate-800">
+                                    {roadPaths.remainingRouteStopCount}{" "}
+                                    remaining stop
+                                    {roadPaths.remainingRouteStopCount === 1
+                                      ? ""
+                                      : "s"}
+                                    {roadPaths.stopsAheadCount > 0
+                                      ? ` • ${roadPaths.stopsAheadCount} stop${roadPaths.stopsAheadCount === 1 ? "" : "s"} ahead`
+                                      : ""}
+                                  </div>
+                                </div>
+                              )}
                             <div>
                               <div className="text-sm text-gray-600">
                                 Tracking freshness

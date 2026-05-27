@@ -258,9 +258,11 @@ export default function ActiveDeliveries() {
       case "picked_up":
         return "bg-purple-100 text-purple-800";
       case "in_transit":
-        return "bg-indigo-100 text-indigo-800";
+        return "bg-violet-100 text-violet-800";
       case "out_for_delivery":
         return "bg-orange-100 text-orange-800";
+      case "stuck":
+        return "bg-red-100 text-red-800";
       case "delivered":
         return "bg-green-100 text-green-800";
       case "cancelled":

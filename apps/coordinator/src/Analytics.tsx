@@ -78,7 +78,10 @@ export default function Analytics() {
           (d) => d.status === "pending" || d.status === "created",
         ).length;
         const transitCount = deliveries.filter(
-          (d) => d.status === "in_transit" || d.status === "out_for_delivery",
+          (d) =>
+            d.status === "in_transit" ||
+            d.status === "out_for_delivery" ||
+            d.status === "stuck",
         ).length;
 
         const base = new Date();

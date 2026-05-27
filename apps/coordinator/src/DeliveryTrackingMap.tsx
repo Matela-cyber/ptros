@@ -1,19 +1,26 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
+  DirectionsRenderer,
   GoogleMap,
-  InfoWindow,
-  Marker,
   Polyline,
 } from "@react-google-maps/api";
 import {
   db,
   realtimeDb,
+  formatTrackingEta,
   formatRouteNetworkSegmentType,
+  getTrackingEtaLabel,
+  getTrackingStopChain,
+  orderTrackingRouteStops,
   getDisplayRouteNetworkSegments,
   getRouteNetworkSegmentStyle,
+  isTrackingBeforePickup,
+  shouldShowTrackingCarrierMarker,
   subscribeRouteNetworkSegments,
+  toTrackingRouteStop,
   type RouteNetworkSegment,
+  type TrackingRouteStop,
 } from "@config";
 import {
   arrayUnion,
@@ -29,7 +36,6 @@ import {
 import { ref as rtdbRef, onValue } from "firebase/database";
 import { toast, Toaster } from "react-hot-toast";
 import { decodePolyline } from "./routeHistory";
-import MapLegend from "./components/MapLegend";
 import OptimizationReasonDisplay, {
   OptimizationReason,
 } from "./components/OptimizationReasonDisplay";
@@ -145,48 +151,100 @@ const ROUTE_COLORS = [
   "#84cc16",
 ];
 
-const toLatLngLiteral = (
-  point: google.maps.LatLng | { lat: number; lng: number },
-) => {
-  const anyPoint: any = point;
-  if (typeof anyPoint.lat === "function") {
-    return { lat: anyPoint.lat(), lng: anyPoint.lng() };
-  }
-  return { lat: anyPoint.lat, lng: anyPoint.lng };
+const getCircleMarkerIcon = (
+  fillColor: string,
+  scale: number,
+): google.maps.Icon | google.maps.Symbol => {
+  return {
+    path: google.maps.SymbolPath.CIRCLE,
+    scale,
+    fillColor,
+    fillOpacity: 1,
+    strokeColor: "#ffffff",
+    strokeWeight: 2,
+  };
 };
 
-const offsetPathMeters = (
-  path: Array<google.maps.LatLng | { lat: number; lng: number }> | null,
-  offsetMeters: number,
-): Array<{ lat: number; lng: number }> | null => {
-  if (!path || path.length < 2 || offsetMeters === 0) return path as any;
+type RoutePathPoint = { lat: number; lng: number };
 
-  const source = path.map(toLatLngLiteral);
-  const shifted: Array<{ lat: number; lng: number }> = [];
+type GradientRouteSegment = {
+  id: string;
+  path: RoutePathPoint[];
+  color: string;
+};
 
-  for (let i = 0; i < source.length; i += 1) {
-    const prev = source[Math.max(0, i - 1)];
-    const next = source[Math.min(source.length - 1, i + 1)];
-    const dx = next.lng - prev.lng;
-    const dy = next.lat - prev.lat;
-    const length = Math.sqrt(dx * dx + dy * dy) || 1;
-    const nx = -dy / length;
-    const ny = dx / length;
+const clampGradientProgress = (progress: number) =>
+  Math.min(1, Math.max(0, progress));
 
-    const latScale = 111320;
-    const lngScale = Math.max(
-      1,
-      111320 * Math.cos((source[i].lat * Math.PI) / 180),
+const getGradientRouteColor = (progress: number) => {
+  const hue = Math.round(4 + clampGradientProgress(progress) * 116);
+  return `hsl(${hue}, 78%, 45%)`;
+};
+
+const toDirectionPath = (directions: any): RoutePathPoint[] => {
+  const overview = directions?.routes?.[0]?.overview_path ?? [];
+  return overview
+    .map((point: any) => ({
+      lat: typeof point.lat === "function" ? point.lat() : point.lat,
+      lng: typeof point.lng === "function" ? point.lng() : point.lng,
+    }))
+    .filter(
+      (point: RoutePathPoint) =>
+        Number.isFinite(point.lat) && Number.isFinite(point.lng),
+    );
+};
+
+const buildGradientRouteSegments = (
+  points: RoutePathPoint[],
+  prefix: string,
+  maxSegments = 14,
+): GradientRouteSegment[] => {
+  if (points.length < 2) return [];
+
+  const lastPointIndex = points.length - 1;
+  const segmentCount = Math.min(maxSegments, lastPointIndex);
+
+  return Array.from({ length: segmentCount }, (_, index) => {
+    const startIndex = Math.floor((index * lastPointIndex) / segmentCount);
+    const rawEndIndex =
+      Math.floor(((index + 1) * lastPointIndex) / segmentCount) + 1;
+    const endIndex = Math.min(
+      points.length,
+      Math.max(startIndex + 2, rawEndIndex),
     );
 
-    shifted.push({
-      lat: source[i].lat + (ny * offsetMeters) / latScale,
-      lng: source[i].lng + (nx * offsetMeters) / lngScale,
-    });
-  }
-
-  return shifted;
+    return {
+      id: `${prefix}-${index}`,
+      path: points.slice(startIndex, endIndex),
+      color: getGradientRouteColor(
+        segmentCount === 1 ? 1 : index / (segmentCount - 1),
+      ),
+    };
+  }).filter((segment) => segment.path.length > 1);
 };
+
+const getGradientSegmentOptions = (
+  strokeColor: string,
+  strokeOpacity: number,
+  strokeWeight: number,
+): google.maps.PolylineOptions => ({
+  strokeColor,
+  strokeOpacity,
+  strokeWeight,
+  clickable: false,
+  zIndex: Math.round(strokeWeight * 10),
+  icons: [
+    {
+      icon: {
+        path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
+        scale: Math.max(2.1, Math.min(3.1, strokeWeight / 2.25)),
+        strokeColor,
+        strokeOpacity: Math.min(1, strokeOpacity + 0.12),
+      },
+      offset: "84%",
+    },
+  ],
+});
 
 export default function DeliveryTrackingMap() {
   const navigate = useNavigate();
@@ -214,19 +272,18 @@ export default function DeliveryTrackingMap() {
   const [recommendedCarrier, setRecommendedCarrier] =
     useState<CarrierCandidate | null>(null);
   const [learnedSegments, setLearnedSegments] = useState<LearnedSegment[]>([]);
-  const [carrierToPickupPath, setCarrierToPickupPath] = useState<Array<{
-    lat: number;
-    lng: number;
-  }> | null>(null);
-  const [pickupToDeliveryPath, setPickupToDeliveryPath] = useState<Array<{
-    lat: number;
-    lng: number;
-  }> | null>(null);
-  const [selectedMapInfo, setSelectedMapInfo] = useState<{
-    position: { lat: number; lng: number };
-    title: string;
-    details: string[];
+  const [routeStops, setRouteStops] = useState<TrackingRouteStop[]>([]);
+  const [fullPlanDirections, setFullPlanDirections] = useState<any>(null);
+  const [carrierRouteDirections, setCarrierRouteDirections] =
+    useState<any>(null);
+  const [activeRouteDirections, setActiveRouteDirections] = useState<any>(null);
+  const [etaInfo, setEtaInfo] = useState<{
+    label: string;
+    text: string;
+    detail?: string;
   } | null>(null);
+  const markerRefs = useRef<Record<string, google.maps.Marker | null>>({});
+  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -310,6 +367,25 @@ export default function DeliveryTrackingMap() {
   }, [id]);
 
   useEffect(() => {
+    if (!delivery?.carrierId) {
+      setRouteStops([]);
+      return;
+    }
+
+    return onSnapshot(
+      collection(db, "users", delivery.carrierId, "routeStops"),
+      (snapshot) => {
+        setRouteStops(
+          snapshot.docs
+            .map((docSnap) => toTrackingRouteStop(docSnap.id, docSnap.data()))
+            .filter((stop): stop is TrackingRouteStop => !!stop),
+        );
+      },
+      () => setRouteStops([]),
+    );
+  }, [delivery?.carrierId]);
+
+  useEffect(() => {
     if (!id) return;
 
     const q = query(
@@ -365,62 +441,28 @@ export default function DeliveryTrackingMap() {
     }
   }, [delivery?.carrierId, delivery?.currentLocation, delivery?.status]);
 
-  // Calculate carrier-to-pickup and pickup-to-delivery paths for visualization
-  useEffect(() => {
-    if (
-      !delivery ||
-      !carrierLocation ||
-      !delivery.pickupLocation ||
-      !delivery.deliveryLocation
-    ) {
-      return;
-    }
+  const isBeforePickupStatus = isTrackingBeforePickup(delivery?.status);
+  const showCarrierMarker = shouldShowTrackingCarrierMarker(delivery?.status);
 
-    // Only show expected paths for active deliveries (not yet picked up)
-    if (
-      delivery.status !== "assigned" &&
-      delivery.status !== "accepted" &&
-      delivery.status !== "picked_up"
-    ) {
-      setCarrierToPickupPath(null);
-      setPickupToDeliveryPath(null);
-      return;
-    }
-
-    // Carrier to Pickup path (Yellow) - only if not picked up
-    // Lightweight segment path avoids legacy DirectionsService dependency.
-    if (delivery.status === "assigned" || delivery.status === "accepted") {
-      setCarrierToPickupPath([
-        { lat: carrierLocation.lat, lng: carrierLocation.lng },
-        {
-          lat: delivery.pickupLocation.lat,
-          lng: delivery.pickupLocation.lng,
-        },
-      ]);
-    } else {
-      setCarrierToPickupPath(null);
-    }
-
-    // Pickup to Delivery path (Orange) - always show for active deliveries
-    setPickupToDeliveryPath([
-      { lat: delivery.pickupLocation.lat, lng: delivery.pickupLocation.lng },
-      {
-        lat: delivery.deliveryLocation.lat,
-        lng: delivery.deliveryLocation.lng,
-      },
-    ]);
-  }, [
-    delivery?.id,
-    delivery?.status,
-    delivery?.pickupLocation,
-    delivery?.deliveryLocation,
-    carrierLocation,
-  ]);
-
-  const mapCenter = carrierLocation || {
-    lat: parseFloat(delivery?.currentLocation?.lat?.toString() || "-29.6100"),
-    lng: parseFloat(delivery?.currentLocation?.lng?.toString() || "28.2336"),
-  };
+  const mapCenter = useMemo(
+    () =>
+      isBeforePickupStatus && delivery?.pickupLocation
+        ? { lat: delivery.pickupLocation.lat, lng: delivery.pickupLocation.lng }
+        : carrierLocation
+          ? { lat: carrierLocation.lat, lng: carrierLocation.lng }
+          : delivery?.currentLocation
+            ? {
+                lat: delivery.currentLocation.lat,
+                lng: delivery.currentLocation.lng,
+              }
+            : { lat: -29.61, lng: 28.2336 },
+    [
+      isBeforePickupStatus,
+      delivery?.pickupLocation,
+      carrierLocation,
+      delivery?.currentLocation,
+    ],
+  );
 
   const routeSegments = useMemo(() => {
     const planned = delivery?.route?.polyline
@@ -491,14 +533,19 @@ export default function DeliveryTrackingMap() {
     visibleSegmentCount,
   );
 
-  const carrierToPickupDisplayPath = useMemo(
-    () => offsetPathMeters(carrierToPickupPath, -7),
-    [carrierToPickupPath],
-  );
+  const activeRouteStopsAhead = useMemo(() => {
+    if (!delivery) return 0;
+    const chain = getTrackingStopChain(
+      delivery.id,
+      delivery.status,
+      routeStops,
+    );
+    return Math.max(0, chain.length - 1);
+  }, [delivery, routeStops]);
 
-  const pickupToDeliveryDisplayPath = useMemo(
-    () => offsetPathMeters(pickupToDeliveryPath, 7),
-    [pickupToDeliveryPath],
+  const orderedCarrierRouteStops = useMemo(
+    () => orderTrackingRouteStops(routeStops),
+    [routeStops],
   );
 
   const visibleManagedSegments = useMemo(
@@ -521,6 +568,392 @@ export default function DeliveryTrackingMap() {
       managedSegments,
     ],
   );
+
+  const fullPlanGradientSegments = useMemo(
+    () =>
+      buildGradientRouteSegments(
+        toDirectionPath(fullPlanDirections),
+        "full-plan",
+      ),
+    [fullPlanDirections],
+  );
+
+  const carrierRouteGradientSegments = useMemo(
+    () =>
+      buildGradientRouteSegments(
+        toDirectionPath(carrierRouteDirections),
+        "carrier-chain",
+      ),
+    [carrierRouteDirections],
+  );
+
+  const activeRouteGradientSegments = useMemo(
+    () =>
+      buildGradientRouteSegments(
+        toDirectionPath(activeRouteDirections),
+        "active",
+      ),
+    [activeRouteDirections],
+  );
+
+  useEffect(() => {
+    if (!window.google?.maps || !delivery?.deliveryLocation) {
+      setFullPlanDirections(null);
+      return;
+    }
+
+    const deliveryPoint = {
+      lat: delivery.deliveryLocation.lat,
+      lng: delivery.deliveryLocation.lng,
+    };
+
+    const pickupPoint = delivery.pickupLocation
+      ? {
+          lat: delivery.pickupLocation.lat,
+          lng: delivery.pickupLocation.lng,
+        }
+      : null;
+
+    if (!pickupPoint) {
+      setFullPlanDirections(null);
+      return;
+    }
+
+    const service = new window.google.maps.DirectionsService();
+    let cancelled = false;
+
+    service.route(
+      {
+        origin: pickupPoint,
+        destination: deliveryPoint,
+        travelMode: window.google.maps.TravelMode.DRIVING,
+      },
+      (result: any, status: any) => {
+        if (cancelled) return;
+        if (status === "OK" && result) {
+          setFullPlanDirections(result);
+          return;
+        }
+        setFullPlanDirections(null);
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [delivery?.deliveryLocation, delivery?.pickupLocation]);
+
+  useEffect(() => {
+    if (
+      !window.google?.maps ||
+      delivery?.status === "delivered" ||
+      delivery?.status === "cancelled"
+    ) {
+      setCarrierRouteDirections(null);
+      return;
+    }
+
+    const carrierPoint = carrierLocation
+      ? { lat: carrierLocation.lat, lng: carrierLocation.lng }
+      : delivery?.currentLocation
+        ? {
+            lat: delivery.currentLocation.lat,
+            lng: delivery.currentLocation.lng,
+          }
+        : null;
+
+    if (!carrierPoint || orderedCarrierRouteStops.length === 0) {
+      setCarrierRouteDirections(null);
+      return;
+    }
+
+    const limitedRouteStops = orderedCarrierRouteStops.slice(0, 24);
+    const destination = limitedRouteStops[limitedRouteStops.length - 1];
+    const waypoints = limitedRouteStops.slice(0, -1).map((stop) => ({
+      location: { lat: stop.lat, lng: stop.lng },
+      stopover: true,
+    }));
+
+    let cancelled = false;
+    const service = new window.google.maps.DirectionsService();
+
+    service.route(
+      {
+        origin: carrierPoint,
+        destination: { lat: destination.lat, lng: destination.lng },
+        waypoints,
+        optimizeWaypoints: false,
+        travelMode: window.google.maps.TravelMode.DRIVING,
+      },
+      (result: any, status: any) => {
+        if (cancelled) return;
+        setCarrierRouteDirections(status === "OK" && result ? result : null);
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    carrierLocation,
+    delivery?.currentLocation,
+    delivery?.status,
+    orderedCarrierRouteStops,
+  ]);
+
+  useEffect(() => {
+    if (
+      !window.google?.maps ||
+      !delivery?.pickupLocation ||
+      !delivery?.deliveryLocation ||
+      delivery.status === "delivered" ||
+      delivery.status === "cancelled"
+    ) {
+      setActiveRouteDirections(null);
+      setEtaInfo(null);
+      return;
+    }
+
+    const carrierPoint = carrierLocation
+      ? { lat: carrierLocation.lat, lng: carrierLocation.lng }
+      : delivery.currentLocation
+        ? {
+            lat: delivery.currentLocation.lat,
+            lng: delivery.currentLocation.lng,
+          }
+        : null;
+
+    if (!carrierPoint) {
+      setActiveRouteDirections(null);
+      setEtaInfo(null);
+      return;
+    }
+
+    const pickupPoint = {
+      lat: delivery.pickupLocation.lat,
+      lng: delivery.pickupLocation.lng,
+    };
+    const deliveryPoint = {
+      lat: delivery.deliveryLocation.lat,
+      lng: delivery.deliveryLocation.lng,
+    };
+
+    const routeChain = getTrackingStopChain(
+      delivery.id,
+      delivery.status,
+      routeStops,
+    );
+    const targetPoint = isBeforePickupStatus ? pickupPoint : deliveryPoint;
+    const destination = routeChain.length
+      ? routeChain[routeChain.length - 1]
+      : targetPoint;
+    const waypoints = routeChain.slice(0, -1).map((stop) => ({
+      location: { lat: stop.lat, lng: stop.lng },
+      stopover: true,
+    }));
+
+    let cancelled = false;
+    const service = new window.google.maps.DirectionsService();
+
+    service.route(
+      {
+        origin: carrierPoint,
+        destination: { lat: destination.lat, lng: destination.lng },
+        waypoints,
+        optimizeWaypoints: false,
+        travelMode: window.google.maps.TravelMode.DRIVING,
+      },
+      (result: any, status: any) => {
+        if (cancelled) return;
+
+        if (status === "OK" && result?.routes?.[0]?.legs?.length) {
+          const seconds = result.routes[0].legs.reduce(
+            (sum: number, leg: any) => sum + (leg.duration?.value || 0),
+            0,
+          );
+
+          setActiveRouteDirections(result);
+          setEtaInfo({
+            label: getTrackingEtaLabel(delivery.status),
+            text: formatTrackingEta(seconds),
+            detail:
+              activeRouteStopsAhead > 0
+                ? `${activeRouteStopsAhead} stop${activeRouteStopsAhead === 1 ? "" : "s"} ahead in the re-optimized route`
+                : undefined,
+          });
+          return;
+        }
+
+        setActiveRouteDirections(null);
+        setEtaInfo(null);
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeRouteStopsAhead,
+    carrierLocation,
+    delivery?.currentLocation,
+    delivery?.deliveryLocation,
+    delivery?.id,
+    delivery?.pickupLocation,
+    delivery?.status,
+    isBeforePickupStatus,
+    routeStops,
+  ]);
+
+  useEffect(() => {
+    if (!mapInstance || !window.google?.maps) return;
+    const currentDelivery = delivery;
+    if (
+      !currentDelivery?.pickupLocation &&
+      !currentDelivery?.deliveryLocation &&
+      !carrierLocation &&
+      !currentDelivery?.currentLocation
+    )
+      return;
+
+    const bounds = new window.google.maps.LatLngBounds();
+    if (currentDelivery?.pickupLocation)
+      bounds.extend(currentDelivery.pickupLocation);
+    if (currentDelivery?.deliveryLocation)
+      bounds.extend(currentDelivery.deliveryLocation);
+    const visibleCarrierPoint =
+      showCarrierMarker &&
+      (carrierLocation || currentDelivery?.currentLocation);
+    if (visibleCarrierPoint) bounds.extend(visibleCarrierPoint);
+    mapInstance.fitBounds(bounds, 60);
+  }, [
+    carrierLocation,
+    delivery?.currentLocation,
+    delivery?.deliveryLocation,
+    mapInstance,
+    delivery?.pickupLocation,
+    showCarrierMarker,
+  ]);
+
+  useEffect(() => {
+    Object.values(markerRefs.current).forEach((marker) => marker?.setMap(null));
+    markerRefs.current = {};
+    infoWindowRef.current?.close();
+  }, [mapInstance]);
+
+  useEffect(() => {
+    if (!mapInstance || !window.google?.maps || !delivery) return;
+
+    if (!infoWindowRef.current) {
+      infoWindowRef.current = new window.google.maps.InfoWindow();
+    }
+
+    const syncMarker = (
+      key: string,
+      position: { lat: number; lng: number } | null | undefined,
+      title: string,
+      icon: google.maps.Icon | google.maps.Symbol,
+      zIndex: number,
+      details: string[],
+    ) => {
+      const existing = markerRefs.current[key];
+
+      if (!position) {
+        existing?.setMap(null);
+        markerRefs.current[key] = null;
+        return;
+      }
+
+      const html = `<div style="font-family:system-ui;padding:4px 2px;min-width:180px"><strong style="display:block;margin-bottom:4px;color:#0f172a">${title}</strong>${details
+        .map(
+          (line) =>
+            `<p style="margin:2px 0;font-size:12px;color:#475569">${line}</p>`,
+        )
+        .join("")}</div>`;
+
+      if (existing) {
+        existing.setPosition(position);
+        existing.setTitle(title);
+        existing.setIcon(icon);
+        existing.setZIndex(zIndex);
+        existing.setMap(mapInstance);
+      } else {
+        const marker = new window.google.maps.Marker({
+          position,
+          map: mapInstance,
+          icon,
+          zIndex,
+          title,
+        });
+        marker.addListener("click", () => {
+          infoWindowRef.current?.setContent(html);
+          infoWindowRef.current?.open(mapInstance, marker);
+        });
+        markerRefs.current[key] = marker;
+      }
+    };
+
+    syncMarker(
+      "carrier",
+      showCarrierMarker
+        ? carrierLocation
+          ? { lat: carrierLocation.lat, lng: carrierLocation.lng }
+          : delivery.currentLocation
+            ? {
+                lat: delivery.currentLocation.lat,
+                lng: delivery.currentLocation.lng,
+              }
+            : null
+        : null,
+      delivery.carrierName || "Carrier location",
+      getCircleMarkerIcon("#3B82F6", 12),
+      120,
+      [
+        `Status: ${getStatusLabel(delivery.status)}`,
+        delivery.carrierPhone
+          ? `Phone: ${delivery.carrierPhone}`
+          : "Phone unavailable",
+      ],
+    );
+
+    syncMarker(
+      "pickup",
+      delivery.pickupLocation
+        ? {
+            lat: delivery.pickupLocation.lat,
+            lng: delivery.pickupLocation.lng,
+          }
+        : null,
+      "Pickup location",
+      getCircleMarkerIcon("#059669", 9),
+      110,
+      [delivery.pickupAddress],
+    );
+
+    syncMarker(
+      "dropoff",
+      delivery.deliveryLocation
+        ? {
+            lat: delivery.deliveryLocation.lat,
+            lng: delivery.deliveryLocation.lng,
+          }
+        : null,
+      "Dropoff location",
+      getCircleMarkerIcon("#DC2626", 9),
+      110,
+      [delivery.deliveryAddress],
+    );
+  }, [carrierLocation, delivery, mapInstance]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(markerRefs.current).forEach((marker) =>
+        marker?.setMap(null),
+      );
+      markerRefs.current = {};
+      infoWindowRef.current?.close();
+      infoWindowRef.current = null;
+    };
+  }, []);
 
   const focusPoint = (point?: { lat: number; lng: number } | null) => {
     if (!mapInstance || !point) return;
@@ -606,22 +1039,6 @@ export default function DeliveryTrackingMap() {
       toast.error("Failed to save route review.");
     }
   };
-
-  const activeRouteColor = useMemo(() => {
-    switch (delivery?.status) {
-      case "assigned":
-      case "accepted":
-        return "#7c3aed";
-      case "picked_up":
-      case "in_transit":
-      case "out_for_delivery":
-        return "#14b8a6";
-      case "delivered":
-        return "#64748b";
-      default:
-        return "#0ea5e9";
-    }
-  }, [delivery?.status]);
 
   const recommendNextCarrier = async () => {
     if (!delivery || !carrierLocation) return;
@@ -733,6 +1150,18 @@ export default function DeliveryTrackingMap() {
             <p className="text-sm text-gray-600">
               {getStatusLabel(delivery.status)}
             </p>
+            {etaInfo && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 font-semibold text-emerald-700">
+                  ⏱ {etaInfo.label}: {etaInfo.text}
+                </span>
+                {etaInfo.detail && (
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 font-semibold text-slate-600">
+                    {etaInfo.detail}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           <button
             onClick={() => navigate(-1)}
@@ -860,429 +1289,112 @@ export default function DeliveryTrackingMap() {
                 onLoad={(map) => setMapInstance(map)}
                 onClick={onMapClick}
                 mapContainerStyle={{ height: "100%", width: "100%" }}
-                options={{ disableDefaultUI: false }}
+                options={{
+                  disableDefaultUI: false,
+                  styles: [
+                    {
+                      featureType: "poi",
+                      elementType: "labels",
+                      stylers: [{ visibility: "off" }],
+                    },
+                  ],
+                }}
               >
-                {visibleManagedSegments.map((segment) => {
-                  const style = getRouteNetworkSegmentStyle(segment);
-                  return (
-                    <Polyline
-                      key={`managed-${segment.id}`}
-                      path={[segment.start, segment.end]}
-                      onClick={() => focusSegment(segment)}
-                      options={{
-                        strokeColor: style.strokeColor,
-                        strokeOpacity: style.strokeOpacity,
-                        strokeWeight: style.strokeWeight,
-                        zIndex: 18,
-                      }}
-                    />
-                  );
-                })}
-
-                {/* Carrier to Pickup Path (Yellow with low opacity) */}
-                {carrierToPickupDisplayPath &&
-                  carrierToPickupDisplayPath.length > 1 && (
-                    <Polyline
-                      path={carrierToPickupDisplayPath}
-                      options={{
-                        strokeColor: "#a855f7",
-                        strokeOpacity: 0.72,
-                        strokeWeight: 5,
-                        icons: [
-                          {
-                            icon: {
-                              path: "M 0,-1 0,1",
-                              strokeOpacity: 0.9,
-                              scale: 3,
-                            },
-                            offset: "0",
-                            repeat: "16px",
-                          },
-                        ],
-                      }}
-                    />
-                  )}
-
-                {/* Pickup to Delivery Path (Orange with low opacity) */}
-                {pickupToDeliveryDisplayPath &&
-                  pickupToDeliveryDisplayPath.length > 1 && (
-                    <Polyline
-                      path={pickupToDeliveryDisplayPath}
-                      options={{
-                        strokeColor: "#f97316",
-                        strokeOpacity: 0.74,
-                        strokeWeight: 5,
-                        icons: [
-                          {
-                            icon: {
-                              path: "M 0,-1 0,1",
-                              strokeOpacity: 0.95,
-                              scale: 3,
-                            },
-                            offset: "0",
-                            repeat: "18px",
-                          },
-                        ],
-                      }}
-                    />
-                  )}
-
-                {/* Planned Route (Dotted Amber) */}
-                {routeSegments.planned.length > 1 && (
-                  <Polyline
-                    path={routeSegments.planned}
-                    options={{
-                      strokeColor: "#f59e0b",
-                      strokeOpacity: 0.9,
-                      strokeWeight: 4,
-                      icons: [
-                        {
-                          icon: {
-                            path: "M 0,-1 0,1",
-                            strokeOpacity: 1,
-                            scale: 3,
-                          },
-                          offset: "0",
-                          repeat: "16px",
-                        },
-                      ],
-                    }}
+                {fullPlanDirections && (
+                  <DirectionsRenderer
+                    directions={fullPlanDirections}
+                    options={
+                      {
+                        suppressMarkers: true,
+                        suppressBoundsUpdate: true,
+                        suppressPolylines: true,
+                      } as any
+                    }
                   />
                 )}
-
-                {/* Historical Route Snapshots */}
-                {visibleSnapshotSegments.map((segment) => (
+                {fullPlanGradientSegments.map((segment) => (
                   <Polyline
                     key={segment.id}
-                    path={segment.points}
-                    options={{
-                      strokeColor: segment.color,
-                      strokeOpacity: 0.95,
-                      strokeWeight: 5,
-                    }}
+                    path={segment.path}
+                    options={getGradientSegmentOptions(segment.color, 0.36, 4)}
                   />
                 ))}
-
-                {routeSegments.active.length > 1 && (
-                  <Polyline
-                    path={routeSegments.active}
-                    options={{
-                      strokeColor: activeRouteColor,
-                      strokeOpacity: 1,
-                      strokeWeight: 6,
-                      icons: [
-                        {
-                          icon: {
-                            path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
-                            scale: 2.5,
-                            strokeOpacity: 0.9,
-                          },
-                          offset: "12px",
-                          repeat: "44px",
-                        },
-                      ],
-                    }}
+                {carrierRouteDirections && (
+                  <DirectionsRenderer
+                    directions={carrierRouteDirections}
+                    options={
+                      {
+                        suppressMarkers: true,
+                        suppressBoundsUpdate: true,
+                        suppressPolylines: true,
+                      } as any
+                    }
                   />
                 )}
-
-                {routeSegments.learnedShortcutSegments.map((segment) => (
-                  <Polyline
-                    key={`learned-${segment.id}`}
-                    path={segment.points}
-                    options={{
-                      strokeColor: "#ef4444",
-                      strokeOpacity: 0.9,
-                      strokeWeight: 4,
-                      icons: [
-                        {
-                          icon: {
-                            path: "M 0,-1 0,1",
-                            strokeOpacity: 1,
-                            scale: 3,
-                          },
-                          offset: "0",
-                          repeat: "10px",
-                        },
-                      ],
-                    }}
-                  />
-                ))}
-
-                {routeSegments.blockedSegments.map((segment) => (
+                {carrierRouteGradientSegments.map((segment) => (
                   <Polyline
                     key={segment.id}
-                    path={segment.points}
-                    options={{
-                      strokeColor: segment.temporary ? "#eab308" : "#dc2626",
-                      strokeOpacity: 1,
-                      strokeWeight: 5,
-                      icons: [
-                        {
-                          icon: {
-                            path: "M -2,-2 2,2 M 2,-2 -2,2",
-                            strokeOpacity: 1,
-                            scale: 2,
-                          },
-                          offset: "0",
-                          repeat: "14px",
-                        },
-                      ],
-                    }}
+                    path={segment.path}
+                    options={getGradientSegmentOptions(segment.color, 0.58, 5)}
                   />
                 ))}
-
-                {reviewPoints.map((point, index) => (
-                  <Marker
-                    key={`${point.lat}-${point.lng}-${index}`}
-                    position={point}
-                    title={`Review point ${index + 1}`}
-                    icon={{
-                      path: google.maps.SymbolPath.CIRCLE,
-                      scale: 8,
-                      fillColor: "#dc2626",
-                      fillOpacity: 1,
-                      strokeColor: "#fff",
-                      strokeWeight: 2,
-                    }}
+                {activeRouteDirections && (
+                  <DirectionsRenderer
+                    directions={activeRouteDirections}
+                    options={
+                      {
+                        suppressMarkers: true,
+                        suppressBoundsUpdate: true,
+                        suppressPolylines: true,
+                      } as any
+                    }
                   />
-                ))}
-
-                {reviewPoints.length === 2 && (
+                )}
+                {activeRouteGradientSegments.map((segment) => (
                   <Polyline
-                    path={reviewPoints}
-                    options={{
-                      strokeColor: "#dc2626",
-                      strokeOpacity: 1,
-                      strokeWeight: 4,
-                    }}
+                    key={segment.id}
+                    path={segment.path}
+                    options={getGradientSegmentOptions(segment.color, 0.94, 6)}
                   />
-                )}
-
-                {delivery.currentLocation && (
-                  <Marker
-                    position={{
-                      lat: delivery.currentLocation.lat,
-                      lng: delivery.currentLocation.lng,
-                    }}
-                    title="Delivery Location"
-                    zIndex={10}
-                    onClick={() =>
-                      setSelectedMapInfo({
-                        position: {
-                          lat: delivery.currentLocation!.lat,
-                          lng: delivery.currentLocation!.lng,
-                        },
-                        title: "Package location",
-                        details: [
-                          `Tracking: ${delivery.trackingCode}`,
-                          `Status: ${getStatusLabel(delivery.status)}`,
-                        ],
-                      })
-                    }
-                    icon={{
-                      path: google.maps.SymbolPath.CIRCLE,
-                      scale: 16,
-                      fillColor: "#ef4444",
-                      fillOpacity: 1,
-                      strokeColor: "#fff",
-                      strokeWeight: 2,
-                    }}
-                  />
-                )}
-
-                {carrierLocation && delivery.status !== "delivered" && (
-                  <Marker
-                    position={{
-                      lat: carrierLocation.lat,
-                      lng: carrierLocation.lng,
-                    }}
-                    title={delivery.carrierName || "Carrier"}
-                    zIndex={20}
-                    onClick={() =>
-                      setSelectedMapInfo({
-                        position: {
-                          lat: carrierLocation.lat,
-                          lng: carrierLocation.lng,
-                        },
-                        title: delivery.carrierName || "Carrier location",
-                        details: [
-                          `Status: ${getStatusLabel(delivery.status)}`,
-                          delivery.carrierPhone
-                            ? `Phone: ${delivery.carrierPhone}`
-                            : "Phone unavailable",
-                        ],
-                      })
-                    }
-                    icon={{
-                      path: google.maps.SymbolPath.CIRCLE,
-                      scale: 12,
-                      fillColor: "#22c55e",
-                      fillOpacity: 1,
-                      strokeColor: "#fff",
-                      strokeWeight: 2,
-                    }}
-                  />
-                )}
-
-                {/* Pickup Location Marker */}
-                {delivery.pickupLocation && (
-                  <Marker
-                    position={{
-                      lat: delivery.pickupLocation.lat,
-                      lng: delivery.pickupLocation.lng,
-                    }}
-                    title="Pickup Location"
-                    zIndex={30}
-                    onClick={() =>
-                      setSelectedMapInfo({
-                        position: {
-                          lat: delivery.pickupLocation!.lat,
-                          lng: delivery.pickupLocation!.lng,
-                        },
-                        title: "Pickup location",
-                        details: [
-                          delivery.pickupAddress,
-                          `Customer: ${delivery.customerName}`,
-                        ],
-                      })
-                    }
-                    icon={{
-                      path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
-                      scale: 6,
-                      fillColor: "#fbbf24",
-                      fillOpacity: 1,
-                      strokeColor: "#fff",
-                      strokeWeight: 2,
-                    }}
-                  />
-                )}
-
-                {/* Delivery Location Marker */}
-                {delivery.deliveryLocation && (
-                  <Marker
-                    position={{
-                      lat: delivery.deliveryLocation.lat,
-                      lng: delivery.deliveryLocation.lng,
-                    }}
-                    title="Delivery Destination"
-                    zIndex={30}
-                    onClick={() =>
-                      setSelectedMapInfo({
-                        position: {
-                          lat: delivery.deliveryLocation!.lat,
-                          lng: delivery.deliveryLocation!.lng,
-                        },
-                        title: "Dropoff location",
-                        details: [
-                          delivery.deliveryAddress,
-                          `Customer: ${delivery.customerName}`,
-                        ],
-                      })
-                    }
-                    icon={{
-                      path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                      scale: 6,
-                      fillColor: "#fb923c",
-                      fillOpacity: 1,
-                      strokeColor: "#fff",
-                      strokeWeight: 2,
-                    }}
-                  />
-                )}
-
-                {selectedMapInfo && (
-                  <InfoWindow
-                    position={selectedMapInfo.position}
-                    onCloseClick={() => setSelectedMapInfo(null)}
-                  >
-                    <div className="min-w-[180px] text-xs text-slate-700">
-                      <p className="text-sm font-semibold text-slate-900">
-                        {selectedMapInfo.title}
-                      </p>
-                      <div className="mt-1 space-y-0.5">
-                        {selectedMapInfo.details.map((line, index) => (
-                          <p key={`${line}-${index}`}>{line}</p>
-                        ))}
-                      </div>
-                    </div>
-                  </InfoWindow>
-                )}
+                ))}
               </GoogleMap>
             </>
           )}
         </div>
 
-        {/* Map Legend */}
-        <div className="mt-3">
-          <MapLegend
-            title="Route Legend"
-            className="w-full"
-            items={[
-              {
-                color: "#16a34a",
-                opacity: 0.92,
-                label: "Shortcut",
-                description: "Managed local shortcut",
-              },
-              {
-                color: "#dc2626",
-                opacity: 0.95,
-                label: "Blocked path",
-                description: "Managed road block",
-              },
-              {
-                color: "#7c3aed",
-                opacity: 0.9,
-                label: "Restricted path",
-                description: "Vehicle or road restriction",
-              },
-              {
-                color: "#a855f7",
-                opacity: 0.72,
-                label: "Carrier → Pickup",
-                description: "Approach leg",
-              },
-              {
-                color: "#f97316",
-                opacity: 0.74,
-                label: "Pickup → Delivery",
-                description: "Delivery leg",
-              },
-              {
-                color: activeRouteColor,
-                opacity: 1,
-                label: "Active Route",
-                description: "Current live route",
-              },
-              {
-                color: "#ef4444",
-                opacity: 0.9,
-                label: "Learned Shortcut",
-                description: "Shortcut candidates",
-              },
-              {
-                color: "#dc2626",
-                opacity: 1,
-                label: "Rejected/Blocked",
-                description: "Unavailable path",
-              },
-              ...ROUTE_COLORS.slice(
-                0,
-                Math.min(3, visibleSnapshotSegments.length),
-              ).map((color, i) => ({
-                color,
-                opacity: 0.95,
-                label: `Snapshot ${i + 1}`,
-                description: "Historical segment",
-              })),
-              {
-                color: "#f59e0b",
-                opacity: 0.9,
-                label: "Planned Route",
-                description: "Original route",
-              },
-            ]}
-          />
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs text-slate-600 font-semibold uppercase">
+            Map legend
+          </p>
+          <ul className="mt-1 space-y-1 text-sm text-slate-800">
+            <li>
+              <span style={{ color: "#059669" }}>⬤</span> Green: Pickup
+            </li>
+            <li>
+              <span style={{ color: "#DC2626" }}>⬤</span> Red: Dropoff
+            </li>
+            <li>
+              <span style={{ color: "#3B82F6" }}>⬤</span> Blue: Carrier
+            </li>
+            <li>
+              <span
+                className="inline-block h-2.5 w-10 rounded-full border border-slate-300 align-middle"
+                style={{
+                  background:
+                    "linear-gradient(90deg, #dc2626 0%, #f59e0b 38%, #84cc16 70%, #16a34a 100%)",
+                }}
+              />{" "}
+              Gradient routes: red = route start, green = route finish
+            </li>
+            <li>
+              <span className="font-semibold text-slate-700">Thicker line</span>
+              : current active route
+            </li>
+            <li>
+              <span className="font-semibold text-slate-700">Medium line</span>:
+              carrier linked route
+            </li>
+          </ul>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
@@ -1293,15 +1405,21 @@ export default function DeliveryTrackingMap() {
           >
             Locate pickup
           </button>
-          <button
-            type="button"
-            onClick={() =>
-              focusPoint(carrierLocation || delivery.currentLocation)
-            }
-            className="rounded-full bg-emerald-100 px-3 py-1.5 font-semibold text-emerald-800 hover:bg-emerald-200"
-          >
-            Locate carrier
-          </button>
+          {showCarrierMarker ? (
+            <button
+              type="button"
+              onClick={() =>
+                focusPoint(carrierLocation || delivery.currentLocation)
+              }
+              className="rounded-full bg-emerald-100 px-3 py-1.5 font-semibold text-emerald-800 hover:bg-emerald-200"
+            >
+              Locate carrier
+            </button>
+          ) : (
+            <span className="rounded-full bg-slate-100 px-3 py-1.5 font-semibold text-slate-600">
+              Carrier pin hidden until pickup
+            </span>
+          )}
           <button
             type="button"
             onClick={() => focusPoint(delivery.deliveryLocation)}
@@ -1390,6 +1508,24 @@ export default function DeliveryTrackingMap() {
             <p className="text-sm text-gray-800">
               {delivery.carrierName || "Not assigned"}
             </p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500 font-medium">
+              {etaInfo?.label || "ESTIMATED TIME"}
+            </p>
+            <p className="text-sm text-gray-800">
+              {etaInfo?.text || "Waiting for live route data"}
+            </p>
+            {etaInfo?.detail && (
+              <p className="text-xs text-gray-500 mt-1">{etaInfo.detail}</p>
+            )}
+            {!!orderedCarrierRouteStops.length && (
+              <p className="text-xs text-gray-500 mt-1">
+                Carrier linked route: {orderedCarrierRouteStops.length}{" "}
+                remaining stop
+                {orderedCarrierRouteStops.length === 1 ? "" : "s"}
+              </p>
+            )}
           </div>
           <div>
             <p className="text-sm text-gray-500 font-medium">PRIORITY</p>

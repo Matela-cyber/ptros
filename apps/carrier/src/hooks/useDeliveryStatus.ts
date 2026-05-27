@@ -19,9 +19,10 @@ export const useDeliveryStatus = () => {
   ): { valid: boolean; message?: string } => {
     const allowedTransitions: Record<string, string[]> = {
       accepted: ["picked_up"],
-      picked_up: ["in_transit", "stuck"],
-      in_transit: ["delivered", "stuck"],
-      stuck: ["in_transit"], // Can resume from stuck
+      picked_up: ["out_for_delivery", "stuck"],
+      in_transit: ["out_for_delivery", "stuck"],
+      out_for_delivery: ["delivered", "stuck"],
+      stuck: ["in_transit", "out_for_delivery"],
     };
 
     if (!allowedTransitions[current]) {
@@ -40,7 +41,12 @@ export const useDeliveryStatus = () => {
 
   const updateStatus = async (
     deliveryId: string,
-    status: "picked_up" | "in_transit" | "stuck" | "delivered",
+    status:
+      | "picked_up"
+      | "in_transit"
+      | "out_for_delivery"
+      | "stuck"
+      | "delivered",
     currentStatus?: string,
     routeContext?: {
       reason?: string;
@@ -93,16 +99,21 @@ export const useDeliveryStatus = () => {
   // Get next available statuses based on current status
   const getAvailableStatuses = (
     currentStatus: string,
-  ): Array<"picked_up" | "in_transit" | "stuck" | "delivered"> => {
+  ): Array<
+    "picked_up" | "in_transit" | "out_for_delivery" | "stuck" | "delivered"
+  > => {
     switch (currentStatus) {
       case "accepted":
         return ["picked_up"];
       case "picked_up":
-        return ["in_transit", "stuck"];
+        // in_transit is NOT a manual option from picked_up — only reachable from stuck
+        return ["out_for_delivery", "stuck"];
       case "in_transit":
+        return ["out_for_delivery", "stuck"];
+      case "out_for_delivery":
         return ["delivered", "stuck"];
       case "stuck":
-        return ["in_transit"]; // Can resume from stuck
+        return ["in_transit", "out_for_delivery"];
       default:
         return [];
     }
@@ -118,13 +129,19 @@ export const useDeliveryStatus = () => {
         description: "Package collected from pickup location",
       },
       in_transit: {
-        label: "In Transit",
+        label: "Resume Transit",
         icon: "fa-solid fa-truck",
         color: "bg-purple-600",
-        description: "Package is on the way",
+        description: "Resuming after being stuck",
+      },
+      out_for_delivery: {
+        label: "Out for Delivery",
+        icon: "fa-solid fa-route",
+        color: "bg-indigo-600",
+        description: "On the way to recipient",
       },
       stuck: {
-        label: "Stuck",
+        label: "Report Stuck",
         icon: "fa-solid fa-triangle-exclamation",
         color: "bg-orange-600",
         description: "Facing delays or issues",

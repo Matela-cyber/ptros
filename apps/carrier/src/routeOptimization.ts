@@ -218,3 +218,133 @@ export { haversineCoords as haversine };
 export function nearestNeighbor(stops: RouteStop[]): RouteStop[] {
   return bundleFitRoute(stops);
 }
+
+// ── Re-optimization utilities ─────────────────────────────────────────────
+
+/** Sum of straight-line distances between consecutive stops (km). */
+export function estimateRouteDistanceKm(stops: RouteStop[]): number {
+  let total = 0;
+  for (let i = 1; i < stops.length; i++) {
+    total += haversineCoords(stops[i - 1], stops[i]) / 1000;
+  }
+  return total;
+}
+
+/**
+ * Assign `cumulativeLoad` to every stop in an already-ordered sequence.
+ * `loadKg` must be set on each stop beforehand (pickup adds, dropoff subtracts).
+ */
+export function annotateWithCumulativeLoad(
+  orderedStops: RouteStop[],
+): RouteStop[] {
+  let running = 0;
+  return orderedStops.map((stop) => {
+    const w = stop.loadKg ?? 0;
+    if (stop.type === "pickup") running += w;
+    else running = Math.max(0, running - w);
+    return { ...stop, cumulativeLoad: Math.max(0, running) };
+  });
+}
+
+/** Highest cumulativeLoad value across all stops. Requires annotateWithCumulativeLoad first. */
+export function computePeakLoad(orderedStops: RouteStop[]): number {
+  return orderedStops.reduce(
+    (max, s) => Math.max(max, s.cumulativeLoad ?? 0),
+    0,
+  );
+}
+
+/**
+ * Capacity-respecting greedy route.
+ *
+ * At each step:
+ *  - When running load ≥ 90 % of capacity, prefers available dropoffs.
+ *  - Defers pickups that would push load over capacity until enough dropoffs done.
+ *  - Falls back to `bundleFitRoute` if capacityKg is falsy.
+ */
+export function capacityConstrainedRoute(
+  stops: RouteStop[],
+  carrierPosition?: CarrierPosition,
+  capacityKg?: number,
+): RouteStop[] {
+  if (!capacityKg || capacityKg <= 0)
+    return bundleFitRoute(stops, carrierPosition);
+  if (stops.length === 0) return [];
+
+  const seenKeys = new Set<string>();
+  const unique: RouteStop[] = [];
+  for (const s of stops) {
+    const key = `${s.id}_${s.type}`;
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      unique.push(s);
+    }
+  }
+
+  const result: RouteStop[] = [];
+  const remaining = [...unique];
+  const pickedUpIds = new Set<string>();
+  let runningLoad = 0;
+
+  let currentPos: { lat: number; lng: number };
+  if (
+    carrierPosition &&
+    (carrierPosition.lat !== 0 || carrierPosition.lng !== 0)
+  ) {
+    currentPos = carrierPosition;
+  } else {
+    const fp = remaining.find((s) => s.type === "pickup");
+    currentPos = fp
+      ? { lat: fp.lat, lng: fp.lng }
+      : { lat: remaining[0].lat, lng: remaining[0].lng };
+  }
+
+  while (remaining.length > 0) {
+    const deliverableDropoffs = remaining.filter(
+      (s) => s.type === "dropoff" && pickedUpIds.has(s.id),
+    );
+    const fittingPickups = remaining.filter(
+      (s) => s.type === "pickup" && runningLoad + (s.loadKg ?? 0) <= capacityKg,
+    );
+
+    let pool: RouteStop[];
+    if (runningLoad >= capacityKg * 0.9 && deliverableDropoffs.length > 0) {
+      pool = deliverableDropoffs;
+    } else if (fittingPickups.length > 0 || deliverableDropoffs.length > 0) {
+      pool = [...deliverableDropoffs, ...fittingPickups];
+    } else {
+      // Every remaining pickup exceeds capacity — take nearest available
+      const fallback = remaining.filter(
+        (s) =>
+          s.type === "pickup" ||
+          (s.type === "dropoff" && pickedUpIds.has(s.id)),
+      );
+      pool = fallback.length > 0 ? fallback : remaining;
+    }
+
+    let bi = 0;
+    let bd = haversineCoords(currentPos, pool[0]);
+    for (let i = 1; i < pool.length; i++) {
+      const d = haversineCoords(currentPos, pool[i]);
+      if (d < bd) {
+        bi = i;
+        bd = d;
+      }
+    }
+
+    const next = pool[bi];
+    const ri = remaining.findIndex((s) => s === next);
+    if (ri !== -1) remaining.splice(ri, 1);
+
+    const w = next.loadKg ?? 0;
+    if (next.type === "pickup") {
+      runningLoad += w;
+      pickedUpIds.add(next.id);
+    } else runningLoad = Math.max(0, runningLoad - w);
+
+    result.push(next);
+    currentPos = { lat: next.lat, lng: next.lng };
+  }
+
+  return result;
+}

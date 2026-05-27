@@ -2,7 +2,10 @@ import {
   db,
   auth,
   realtimeDb,
+  buildDeliveryTrackingRouteSummary,
+  orderTrackingRouteStops,
   syncDeliveryLocationGraphStructure,
+  toTrackingRouteStop,
 } from "@config";
 import {
   addDoc,
@@ -22,6 +25,7 @@ import {
   serverTimestamp,
   setDoc, // ensure setDoc is imported
   deleteDoc, // <-- add this import
+  writeBatch,
 } from "firebase/firestore";
 import {
   ref as rtdbRef,
@@ -205,10 +209,54 @@ export class CarrierService {
    * Save the optimized route stops (doubly linked list) for the current carrier.
    * Each stop is a document in subcollection `routeStops` under the carrier's user doc.
    */
+  private static async syncDeliveryTrackingRouteSummaries(
+    currentStops: any[],
+    previousStops: any[] = [],
+  ): Promise<void> {
+    const normalizedCurrentStops = orderTrackingRouteStops(
+      currentStops
+        .map((stop) => toTrackingRouteStop(`${stop.id}_${stop.type}`, stop))
+        .filter((stop): stop is NonNullable<typeof stop> => !!stop),
+    );
+
+    const currentDeliveryIds = new Set(
+      normalizedCurrentStops.map((stop) => stop.id),
+    );
+    const previousDeliveryIds = new Set(
+      previousStops
+        .map((stop) => String(stop?.id || "").trim())
+        .filter(Boolean),
+    );
+    const deliveryIds = new Set([
+      ...currentDeliveryIds,
+      ...previousDeliveryIds,
+    ]);
+
+    if (!deliveryIds.size) return;
+
+    const batch = writeBatch(db);
+
+    deliveryIds.forEach((deliveryId) => {
+      batch.set(
+        doc(db, "deliveries", deliveryId),
+        {
+          trackingRouteSummary:
+            buildDeliveryTrackingRouteSummary(
+              deliveryId,
+              normalizedCurrentStops,
+            ) || null,
+        },
+        { merge: true },
+      );
+    });
+
+    await batch.commit();
+  }
+
   static async saveRouteStops(stops: any[]): Promise<void> {
     const user = auth.currentUser;
     if (!user) throw new Error("Not authenticated");
-    const batch = (await import("firebase/firestore")).writeBatch(db);
+    const batch = writeBatch(db);
     const stopsCol = collection(db, "users", user.uid, "routeStops");
     // Write new stops with prevId/nextId
     stops.forEach((stop) => {
@@ -221,11 +269,19 @@ export class CarrierService {
     });
     // Remove any stops not in the new list
     const prev = await getDocs(stopsCol);
+    const previousStops = prev.docs.map((docSnap) => ({
+      id: docSnap.data()?.id,
+      type: docSnap.data()?.type,
+    }));
     const keepKeys = new Set(stops.map((s) => `${s.id}_${s.type}`));
     prev.forEach((docSnap) => {
       if (!keepKeys.has(docSnap.id)) batch.delete(docSnap.ref);
     });
     await batch.commit();
+    await CarrierService.syncDeliveryTrackingRouteSummaries(
+      stops,
+      previousStops,
+    );
   }
 
   /**
@@ -268,6 +324,14 @@ export class CarrierService {
 
     // Remove from active routeStops (no-op if doc does not exist).
     await deleteDoc(srcRef);
+
+    const remainingStops = await getDocs(
+      collection(db, "users", user.uid, "routeStops"),
+    );
+    await CarrierService.syncDeliveryTrackingRouteSummaries(
+      remainingStops.docs.map((docSnap) => docSnap.data()),
+      [{ id: stop?.id, type: stop?.type }],
+    );
   }
 
   /**
@@ -391,7 +455,7 @@ export class CarrierService {
       updates.deliveryTime = Timestamp.now();
     }
     // Use Firestore batch for atomicity
-    const batch = (await import("firebase/firestore")).writeBatch(db);
+    const batch = writeBatch(db);
     batch.update(stopRef, { visited: true });
     batch.update(deliveryRef, updates);
     await batch.commit();

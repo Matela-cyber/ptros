@@ -143,6 +143,7 @@ export default function MyDeliveries() {
         "accepted",
         "picked_up",
         "in_transit",
+        "out_for_delivery",
         "stuck",
       ].includes(delivery.status);
     if (filter === "completed") return delivery.status === "delivered";
@@ -151,7 +152,12 @@ export default function MyDeliveries() {
 
   const handleStatusUpdate = async (
     deliveryId: string,
-    newStatus: "picked_up" | "in_transit" | "stuck" | "delivered",
+    newStatus:
+      | "picked_up"
+      | "in_transit"
+      | "out_for_delivery"
+      | "stuck"
+      | "delivered",
   ) => {
     setUpdatingDeliveryId(deliveryId);
     try {
@@ -221,9 +227,14 @@ export default function MyDeliveries() {
       // Check if carrier has more active deliveries
       const activeCount = deliveries.filter(
         (d) =>
-          ["assigned", "accepted", "picked_up", "in_transit", "stuck"].includes(
-            d.status,
-          ) && d.id !== selectedDelivery.id,
+          [
+            "assigned",
+            "accepted",
+            "picked_up",
+            "in_transit",
+            "out_for_delivery",
+            "stuck",
+          ].includes(d.status) && d.id !== selectedDelivery.id,
       ).length;
 
       // If no more active deliveries, update carrier status to active
@@ -286,6 +297,15 @@ export default function MyDeliveries() {
           >
             <i className="fa-solid fa-truck" />
             In Transit
+          </span>
+        );
+      case "out_for_delivery":
+        return (
+          <span
+            className={`${baseClass} bg-indigo-100 text-indigo-800 inline-flex items-center gap-2`}
+          >
+            <i className="fa-solid fa-route" />
+            Out for Delivery
           </span>
         );
       case "stuck":
@@ -668,7 +688,7 @@ export default function MyDeliveries() {
                     )}
 
                     {/* Delivery Complete Button */}
-                    {delivery.status === "in_transit" &&
+                    {delivery.status === "out_for_delivery" &&
                       !availableStatuses.includes("delivered") && (
                         <button
                           onClick={() => {
