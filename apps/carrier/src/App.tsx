@@ -5,7 +5,6 @@ import { doc, getDoc } from "firebase/firestore";
 import Login from "./Login";
 import AppRouter from "./AppRouter";
 import { Toaster } from "react-hot-toast";
-import GoogleMapsLoader from "./GoogleMapsLoader";
 
 const REQUIRED_ROLE = "carrier"; // Change in each app: "carrier" or "customer"
 
@@ -66,9 +65,7 @@ function App() {
       )}
 
       {!loading && user && userRole === REQUIRED_ROLE && (
-        <GoogleMapsLoader>
-          <AppRouter user={user} />
-        </GoogleMapsLoader>
+        <AppRouter user={user} />
       )}
       <Toaster />
     </>

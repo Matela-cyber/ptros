@@ -39,6 +39,7 @@ export interface Delivery {
     | "picked_up"
     | "in_transit"
     | "out_for_delivery"
+    | "stuck"
     | "delivered"
     | "cancelled";
   customerEmail: string;

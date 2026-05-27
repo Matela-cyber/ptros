@@ -151,13 +151,17 @@ service cloud.firestore {
     // All user profiles with role, approval status, location, etc.
     match /users/{userId} {
             // Allow carriers to read/write their own routeStops subcollection (active/unvisited)
+            // Coordinators also need read access to compute route-aware ETA and load in recommendations
             match /routeStops/{stopId} {
               allow read, write: if isCarrier() && request.auth.uid == userId;
+              allow read: if isCoordinator();
             }
 
             // Allow carriers to read/write their own visitedRouteStops subcollection (history/analytics)
+            // Coordinators can read for analytics / route review
             match /visitedRouteStops/{stopId} {
               allow read, write: if isCarrier() && request.auth.uid == userId;
+              allow read: if isCoordinator();
             }
       // Everyone can read their own user document
       allow read: if isAuth() && request.auth.uid == userId;
@@ -214,7 +218,8 @@ service cloud.firestore {
           'updatedAt'
         ]);
 
-      // CARRIER: Update an already-assigned own delivery (status, timing, OTP verification, live location)
+      // CARRIER: Update an already-assigned own delivery (status, timing, OTP verification,
+      // live location, and customer-safe linked-route summary mirrored from routeStops)
       allow update: if isCarrier()
         && resource.data.carrierId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -227,6 +232,7 @@ service cloud.firestore {
           'pickupTime',
           'inTransitTime',
           'outForDeliveryTime',
+          'stuckTime',
           'deliveryTime',
           'acceptedAt',
           'updatedAt',
@@ -238,7 +244,8 @@ service cloud.firestore {
           'routeContext',
           'routeFeedback',
           'routeReviews',
-          'optimizationReasons'
+          'optimizationReasons',
+          'trackingRouteSummary'
         ]);
 
       // CARRIER: Decline/unassign their currently assigned delivery back to pending

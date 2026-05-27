@@ -3,6 +3,8 @@ import { FC } from "react";
 
 export interface LegendItem {
   color: string;
+  /** Optional CSS gradient string — overrides solid color for the swatch. */
+  gradient?: string;
   label: string;
   opacity?: number;
   description?: string;
@@ -33,8 +35,8 @@ export const MapLegend: FC<MapLegendProps> = ({
             <div
               className="w-8 h-3 rounded mt-0.5 flex-shrink-0 border border-gray-300"
               style={{
-                backgroundColor: item.color,
-                opacity: item.opacity || 1,
+                background: item.gradient ?? item.color,
+                opacity: item.opacity ?? 1,
               }}
             />
             <div className="flex-1 min-w-0">

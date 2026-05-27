@@ -187,7 +187,12 @@ export const completeDelivery = DeliveryService.completeDelivery;
 // Export standalone function for status updates with location tracking
 export const updateDeliveryStatus = async (
   deliveryId: string,
-  status: "picked_up" | "in_transit" | "stuck" | "delivered",
+  status:
+    | "picked_up"
+    | "in_transit"
+    | "out_for_delivery"
+    | "stuck"
+    | "delivered",
   location?: { latitude: number; longitude: number },
   routeContext?: {
     reason?: string;
@@ -221,6 +226,12 @@ export const updateDeliveryStatus = async (
       updateData["proofOfDelivery.otp"] = generatedOtp;
       updateData["proofOfDelivery.verified"] = false;
       updateData["proofOfDelivery.verifiedAt"] = null;
+    } else if (status === "in_transit") {
+      updateData.inTransitTime = serverTimestamp();
+    } else if (status === "out_for_delivery") {
+      updateData.outForDeliveryTime = serverTimestamp();
+    } else if (status === "stuck") {
+      updateData.stuckTime = serverTimestamp();
     } else if (status === "delivered") {
       updateData.deliveryTime = serverTimestamp();
       // Increment carrier stats on their user document
@@ -228,7 +239,10 @@ export const updateDeliveryStatus = async (
       if (carrierId) {
         try {
           const deliverySnap = await getDocs(
-            query(collection(db, "deliveries"), where("__name__", "==", deliveryId))
+            query(
+              collection(db, "deliveries"),
+              where("__name__", "==", deliveryId),
+            ),
           );
           const deliveryEarnings = deliverySnap.empty
             ? 0

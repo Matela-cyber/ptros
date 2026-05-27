@@ -26,7 +26,6 @@ export default function GoogleMapsLoader({ children }: GoogleMapsLoaderProps) {
     googleMapsApiKey: apiKey,
     libraries: GOOGLE_MAPS_LIBRARIES,
     id: "ptros-google-maps-script",
-    authReferrerPolicy: "origin",
   });
 
   useEffect(() => {

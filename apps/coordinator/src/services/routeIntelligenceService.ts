@@ -1,5 +1,7 @@
 import {
   db,
+  realtimeDb,
+  defaultBusinessRules,
   syncDeliveryLocationGraphStructure,
   type DeliveryGraphSyncResult,
 } from "@config";
@@ -16,6 +18,7 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
+import { get as rtdbGet, ref as rtdbRef } from "firebase/database";
 import { haversineKm, type LatLngPoint } from "../routeHistory";
 import { buildDeliveryGraphSnapshot } from "./locationGraphService.ts";
 import { getTimeServiceStatus, writeTimestamp } from "./timeService";
@@ -100,6 +103,8 @@ export interface CarrierRecommendation {
   freshLocation: boolean;
   canBundle: boolean;
   reasonFactors: string[];
+  estimatedDeliveryHours: number;
+  estimatedPrice: number;
 }
 
 export interface ManagedRouteSegment {
@@ -167,6 +172,14 @@ interface RouteReportInput {
   createdByName?: string;
 }
 
+// Statuses where the carrier is actively carrying the package
+const CARRYING_STATUSES = new Set([
+  "picked_up",
+  "in_transit",
+  "out_for_delivery",
+  "stuck",
+]);
+
 interface ActiveDeliveryLoad {
   carrierId: string;
   deliveryId: string;
@@ -175,6 +188,7 @@ interface ActiveDeliveryLoad {
   pickupLocation?: LatLngPoint;
   deliveryLocation?: LatLngPoint;
   priority?: string;
+  isCarrying: boolean; // true = already picked up; false = assigned/accepted only
 }
 
 const ACTIVE_DELIVERY_STATUSES = [
@@ -213,22 +227,11 @@ export const normalizeVehicleType = (
 };
 
 export const getVehicleCapacityKg = (vehicleType?: string): number => {
-  switch (normalizeVehicleType(vehicleType)) {
-    case "bicycle":
-      return 8;
-    case "motorcycle":
-      return 25;
-    case "car":
-      return 120;
-    case "pickup":
-      return 800;
-    case "van":
-      return 1200;
-    case "truck":
-      return 3500;
-    default:
-      return 80;
-  }
+  const normalized = normalizeVehicleType(vehicleType);
+  return (
+    defaultBusinessRules.vehicleProfiles[normalized] ??
+    defaultBusinessRules.vehicleProfiles.unknown
+  ).capacityKg;
 };
 
 const getVehicleParcelLimit = (vehicleType?: string): number => {
@@ -380,6 +383,7 @@ const buildActiveDeliveryLoads = async (): Promise<ActiveDeliveryLoad[]> => {
         pickupLocation: data.pickupLocation,
         deliveryLocation: data.deliveryLocation,
         priority: data.priority,
+        isCarrying: CARRYING_STATUSES.has(data.status),
       } as ActiveDeliveryLoad;
     })
     .filter(Boolean) as ActiveDeliveryLoad[];
@@ -423,6 +427,135 @@ const fetchCarrierProfiles = async (): Promise<
       maxParcels: data.maxParcels,
     } satisfies CarrierOptimizationProfile;
   });
+};
+
+// Vehicle speed — reads from shared businessRules so coordinator Settings changes take effect
+const getVehicleSpeedKmh = (vehicleType?: string): number => {
+  const normalized = normalizeVehicleType(vehicleType);
+  return (
+    defaultBusinessRules.vehicleProfiles[normalized] ??
+    defaultBusinessRules.vehicleProfiles.unknown
+  ).speedKmh;
+};
+
+// Fetch real-time carrier locations from RTDB /tracks/{uid}
+const fetchCarrierRtdbLocations = async (
+  carrierIds: string[],
+): Promise<Record<string, { lat: number; lng: number; timestamp: Date }>> => {
+  const results: Record<string, { lat: number; lng: number; timestamp: Date }> =
+    {};
+  await Promise.all(
+    carrierIds.map(async (uid) => {
+      try {
+        const snap = await rtdbGet(rtdbRef(realtimeDb, `tracks/${uid}`));
+        if (snap.exists()) {
+          const data = snap.val();
+          if (typeof data.lat === "number" && typeof data.lng === "number") {
+            results[uid] = {
+              lat: data.lat,
+              lng: data.lng,
+              timestamp: data.timestamp ? new Date(data.timestamp) : new Date(),
+            };
+          }
+        }
+      } catch {
+        // ignore — fall back to Firestore cached location
+      }
+    }),
+  );
+  return results;
+};
+
+// Fetch each carrier's active routeStops subcollection for true pending
+// stop count, peak planned load, and remaining chained distance (for ETA).
+// Traverses the prevId/nextId linked list to compute the actual km remaining
+// in the carrier's planned route rather than a flat per-stop proxy.
+const fetchCarrierRouteStates = async (
+  carrierIds: string[],
+): Promise<
+  Record<
+    string,
+    {
+      activeStopCount: number;
+      peakPlannedLoadKg: number;
+      remainingRouteDistanceKm: number;
+    }
+  >
+> => {
+  const results: Record<
+    string,
+    {
+      activeStopCount: number;
+      peakPlannedLoadKg: number;
+      remainingRouteDistanceKm: number;
+    }
+  > = {};
+  await Promise.all(
+    carrierIds.map(async (uid) => {
+      try {
+        const stopsSnap = await getDocs(
+          collection(db, "users", uid, "routeStops"),
+        );
+        let peakLoad = 0;
+
+        // Build a map of all stops for linked-list traversal
+        const stopMap: Record<
+          string,
+          {
+            lat: number;
+            lng: number;
+            nextId?: string | null;
+            prevId?: string | null;
+          }
+        > = {};
+        stopsSnap.forEach((d) => {
+          const s = d.data();
+          const cl = Number(s.cumulativeLoad || 0);
+          if (cl > peakLoad) peakLoad = cl;
+          if (typeof s.lat === "number" && typeof s.lng === "number") {
+            stopMap[d.id] = {
+              lat: s.lat,
+              lng: s.lng,
+              nextId: s.nextId ?? null,
+              prevId: s.prevId ?? null,
+            };
+          }
+        });
+
+        // Walk the linked list from head (prevId == null) to tail, summing inter-stop haversine distances
+        let remainingRouteDistanceKm = 0;
+        let headId: string | undefined;
+        for (const [id, stop] of Object.entries(stopMap)) {
+          if (!stop.prevId) {
+            headId = id;
+            break;
+          }
+        }
+        if (headId) {
+          let cur = headId;
+          while (cur && stopMap[cur]?.nextId) {
+            const nxt = stopMap[cur].nextId as string;
+            if (stopMap[nxt]) {
+              remainingRouteDistanceKm += haversineKm(
+                { lat: stopMap[cur].lat, lng: stopMap[cur].lng },
+                { lat: stopMap[nxt].lat, lng: stopMap[nxt].lng },
+              );
+            }
+            cur = nxt;
+          }
+        }
+
+        results[uid] = {
+          activeStopCount: stopsSnap.size,
+          peakPlannedLoadKg: peakLoad,
+          remainingRouteDistanceKm,
+        };
+      } catch {
+        // ignore — scoring falls back to delivery counts and flat per-stop estimate
+      }
+    }),
+  );
+  return results;
 };
 
 export const subscribeManagedRouteSegments = (
@@ -588,18 +721,32 @@ export const getCarrierRecommendationsForDraft = async (
 ): Promise<CarrierRecommendation[]> => {
   if (!delivery.pickupLocation) return [];
 
+  // Pre-compute route distance once (pickup → dropoff)
+  const routeDistanceKm = delivery.deliveryLocation
+    ? haversineKm(delivery.pickupLocation, delivery.deliveryLocation)
+    : 0;
+
   const [carriers, activeLoads, managedSegments] = await Promise.all([
     fetchCarrierProfiles(),
     buildActiveDeliveryLoads(),
     fetchManagedSegments(),
   ]);
 
+  // Fetch RTDB live locations + routeStops state for all carriers in parallel
+  const carrierIds = carriers.map((c) => c.id);
+  const [rtdbLocations, routeStates] = await Promise.all([
+    fetchCarrierRtdbLocations(carrierIds),
+    fetchCarrierRouteStates(carrierIds),
+  ]);
+
+  // Split active loads into already-carrying vs incoming (assigned/accepted)
   const activeByCarrier = activeLoads.reduce<
     Record<
       string,
       {
         count: number;
-        totalWeightKg: number;
+        carryingWeightKg: number;
+        incomingWeightKg: number;
         destinations: LatLngPoint[];
         priorities: string[];
       }
@@ -608,13 +755,18 @@ export const getCarrierRecommendationsForDraft = async (
     if (!acc[active.carrierId]) {
       acc[active.carrierId] = {
         count: 0,
-        totalWeightKg: 0,
+        carryingWeightKg: 0,
+        incomingWeightKg: 0,
         destinations: [],
         priorities: [],
       };
     }
     acc[active.carrierId].count += 1;
-    acc[active.carrierId].totalWeightKg += active.weightKg || 0;
+    if (active.isCarrying) {
+      acc[active.carrierId].carryingWeightKg += active.weightKg || 0;
+    } else {
+      acc[active.carrierId].incomingWeightKg += active.weightKg || 0;
+    }
     if (active.deliveryLocation)
       acc[active.carrierId].destinations.push(active.deliveryLocation);
     if (active.priority) acc[active.carrierId].priorities.push(active.priority);
@@ -622,48 +774,80 @@ export const getCarrierRecommendationsForDraft = async (
   }, {});
 
   return carriers
-    .filter(
-      (carrier) => carrier.currentLocation?.lat && carrier.currentLocation?.lng,
-    )
+    .filter((carrier) => {
+      const rtdbLoc = rtdbLocations[carrier.id];
+      const firestoreLoc = carrier.currentLocation;
+      return (
+        (rtdbLoc && typeof rtdbLoc.lat === "number") ||
+        (firestoreLoc?.lat && firestoreLoc?.lng)
+      );
+    })
     .map((carrier) => {
-      const currentLocation = carrier.currentLocation!;
+      // Prefer RTDB live GPS; fall back to Firestore cached location
+      const rtdbLoc = rtdbLocations[carrier.id];
+      const firestoreLoc = carrier.currentLocation;
+      const locationSource = rtdbLoc ? "rtdb" : "firestore";
+      const currentLocation = {
+        lat: rtdbLoc?.lat ?? firestoreLoc!.lat,
+        lng: rtdbLoc?.lng ?? firestoreLoc!.lng,
+        timestamp: rtdbLoc?.timestamp ?? firestoreLoc?.timestamp,
+      };
+
       const activeInfo = activeByCarrier[carrier.id] || {
         count: 0,
-        totalWeightKg: 0,
+        carryingWeightKg: 0,
+        incomingWeightKg: 0,
         destinations: [],
         priorities: [],
       };
+      const routeState = routeStates[carrier.id];
+
       const normalizedVehicleType = normalizeVehicleType(carrier.vehicleType);
       const maxWeightKg =
         carrier.maxWeightKg || getVehicleCapacityKg(carrier.vehicleType);
       const maxParcels =
         carrier.maxParcels || getVehicleParcelLimit(carrier.vehicleType);
+      const speedKmh = getVehicleSpeedKmh(carrier.vehicleType);
       const distanceToPickupKm = haversineKm(
         currentLocation,
         delivery.pickupLocation!,
       );
       const packageWeightKg = Number(delivery.packageWeightKg || 0);
-      const activeLoadWeightKg = activeInfo.totalWeightKg;
+
+      // Load: prefer routeStops peak (actual planned load) over simple delivery weight sum
+      const deliveryBasedLoad =
+        activeInfo.carryingWeightKg + activeInfo.incomingWeightKg;
+      const activeLoadWeightKg = Math.max(
+        deliveryBasedLoad,
+        routeState?.peakPlannedLoadKg ?? 0,
+      );
       const remainingCapacityKg = Math.max(0, maxWeightKg - activeLoadWeightKg);
       const overloadKg = Math.max(0, packageWeightKg - remainingCapacityKg);
+
+      // Pending stop count: prefer routeStops count over delivery count
+      const pendingStopCount = routeState?.activeStopCount ?? activeInfo.count;
+
+      // Staleness: RTDB is updated every 5s — use tighter freshness threshold
       const staleLocationMinutes = currentLocation.timestamp
         ? Math.max(
             0,
             (Date.now() - currentLocation.timestamp.getTime()) / 60000,
           )
         : 999;
-      const freshLocation = staleLocationMinutes <= 20;
+      const freshThresholdMinutes = locationSource === "rtdb" ? 5 : 20;
+      const freshLocation = staleLocationMinutes <= freshThresholdMinutes;
+
       const volumeFactor = parseDimensionsVolumeFactor(
         delivery.packageDimensions,
       );
       const workloadPenalty =
-        activeInfo.count * 7 + activeLoadWeightKg * 0.18 + volumeFactor * 2;
+        pendingStopCount * 7 + activeLoadWeightKg * 0.18 + volumeFactor * 2;
       const availabilityPenalty =
         carrier.status === "active" ? 0 : carrier.status === "busy" ? 8 : 120;
       const stalePenalty = freshLocation
         ? 0
         : Math.min(45, staleLocationMinutes * 1.25);
-      const parcelPenalty = activeInfo.count >= maxParcels ? 80 : 0;
+      const parcelPenalty = pendingStopCount >= maxParcels ? 80 : 0;
 
       const firstDestination = activeInfo.destinations[0];
       let estimatedDetourKm = 0;
@@ -704,16 +888,16 @@ export const getCarrierRecommendationsForDraft = async (
         18 - estimatedDetourKm * 2.4 - distanceToPickupKm * 0.6,
       );
       const canBundle =
-        activeInfo.count > 0 &&
+        pendingStopCount > 0 &&
         overloadKg === 0 &&
-        activeInfo.count < maxParcels &&
+        pendingStopCount < maxParcels &&
         estimatedDetourKm <= 8 &&
         freshLocation;
       const bundleSuitabilityScore = Math.max(
         0,
         100 -
           estimatedDetourKm * 8 -
-          activeInfo.count * 14 -
+          pendingStopCount * 14 -
           stalePenalty -
           strictPriorityPenalty,
       );
@@ -731,13 +915,39 @@ export const getCarrierRecommendationsForDraft = async (
         shortcutContributionScore * 0.7 -
         costEfficiencyScore * 0.4;
 
+      // ETA and price — both computed in service so coordinator/customer use same values.
+      // Use actual linked-list chained distance when available (routeStops subcollection read);
+      // fall back to pendingStopCount * 2.5 km per stop if routeStops data is missing.
+      const chainedDistanceKm =
+        routeState !== undefined
+          ? routeState.remainingRouteDistanceKm
+          : pendingStopCount * 2.5;
+      const estimatedDeliveryHours = Math.max(
+        0.5,
+        (distanceToPickupKm + routeDistanceKm + chainedDistanceKm) / speedKmh,
+      );
+      const pv = Number(
+        delivery.packageValue || defaultBusinessRules.pricing.baseValueFallback,
+      );
+      const estimatedPrice = Math.round(
+        Math.max(
+          defaultBusinessRules.pricing.minimumCharge,
+          pv * defaultBusinessRules.pricing.packageValueRate +
+            routeDistanceKm * defaultBusinessRules.pricing.distanceRatePerKm,
+        ) *
+          (1 +
+            activeInfo.count *
+              defaultBusinessRules.pricing.activeDeliverySurchargeRate),
+      );
+
       const reasonFactors = [
         `${distanceToPickupKm.toFixed(1)}km from pickup`,
         carrier.status === "active"
           ? "available now"
           : `status: ${carrier.status}`,
-        `${activeInfo.count} active deliveries`,
+        `${pendingStopCount} pending stops`,
         `${remainingCapacityKg.toFixed(0)}kg capacity left`,
+        locationSource === "rtdb" ? "live GPS" : "cached location",
       ];
 
       if (estimatedDetourKm > 0.5) {
@@ -745,7 +955,7 @@ export const getCarrierRecommendationsForDraft = async (
       }
       if (!freshLocation) {
         reasonFactors.push(
-          `stale location ${staleLocationMinutes.toFixed(0)}m`,
+          `stale location ${staleLocationMinutes.toFixed(0)}min ago`,
         );
       }
       if (routeGovernancePenalty > 0) {
@@ -753,7 +963,7 @@ export const getCarrierRecommendationsForDraft = async (
       }
       if (shortcutContributionScore > 0) {
         reasonFactors.push(
-          `${shortcutContributionScore} shortcut learning contributions`,
+          `${shortcutContributionScore} shortcut contributions`,
         );
       }
       if (canBundle) {
@@ -763,6 +973,11 @@ export const getCarrierRecommendationsForDraft = async (
       }
       if (overloadKg > 0) {
         reasonFactors.push(`over capacity by ${overloadKg.toFixed(1)}kg`);
+      }
+      if (activeInfo.carryingWeightKg > 0) {
+        reasonFactors.push(
+          `carrying ${activeInfo.carryingWeightKg.toFixed(1)}kg now`,
+        );
       }
 
       return {
@@ -798,6 +1013,8 @@ export const getCarrierRecommendationsForDraft = async (
         freshLocation,
         canBundle,
         reasonFactors,
+        estimatedDeliveryHours: Number(estimatedDeliveryHours.toFixed(1)),
+        estimatedPrice,
       } satisfies CarrierRecommendation;
     })
     .filter((carrier) => carrier.status !== "inactive")

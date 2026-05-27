@@ -10,10 +10,15 @@ import {
 import {
   db,
   realtimeDb,
+  getTrackingEtaLabel,
   formatRouteNetworkSegmentType,
   getDisplayRouteNetworkSegments,
   getRouteNetworkSegmentStyle,
+  isTrackingBeforePickup,
+  shouldShowTrackingCarrierMarker,
   subscribeRouteNetworkSegments,
+  toDeliveryTrackingRouteSummary,
+  type DeliveryTrackingRouteSummary,
   type RouteNetworkSegment,
 } from "@config";
 import { doc, onSnapshot } from "firebase/firestore";
@@ -21,6 +26,115 @@ import { ref as rtdbRef, onValue } from "firebase/database";
 import { toast, Toaster } from "react-hot-toast";
 import { format } from "date-fns";
 import DeliveryTimeline from "./DeliveryTimeline";
+
+const formatMinutes = (secs: number): string => {
+  const mins = Math.round(secs / 60);
+  if (mins === 0) return "< 1 min";
+  return mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+};
+
+// Handles plain objects { lat, lng }, Firestore GeoPoints (lat is a function),
+// and alternative spellings (latitude/longitude).
+const asLatLng = (value: any): { lat: number; lng: number } | null => {
+  if (!value) return null;
+  const latRaw =
+    typeof value.lat === "function"
+      ? value.lat()
+      : (value.lat ?? value.latitude ?? value._lat);
+  const lngRaw =
+    typeof value.lng === "function"
+      ? value.lng()
+      : (value.lng ??
+        value.lon ??
+        value.long ??
+        value.longitude ??
+        value._long);
+  const lat = Number(latRaw);
+  const lng = Number(lngRaw);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng };
+};
+
+type GradientRouteSegment = {
+  id: string;
+  path: { lat: number; lng: number }[];
+  color: string;
+};
+
+const clampGradientProgress = (progress: number) =>
+  Math.min(1, Math.max(0, progress));
+
+const getGradientRouteColor = (progress: number) => {
+  const hue = Math.round(4 + clampGradientProgress(progress) * 116);
+  return `hsl(${hue}, 78%, 45%)`;
+};
+
+const toDirectionPath = (
+  directions: any,
+): Array<{ lat: number; lng: number }> => {
+  const overview = directions?.routes?.[0]?.overview_path ?? [];
+  return overview
+    .map((point: any) => ({
+      lat: typeof point.lat === "function" ? point.lat() : point.lat,
+      lng: typeof point.lng === "function" ? point.lng() : point.lng,
+    }))
+    .filter(
+      (point: { lat: number; lng: number }) =>
+        Number.isFinite(point.lat) && Number.isFinite(point.lng),
+    );
+};
+
+const buildGradientRouteSegments = (
+  points: Array<{ lat: number; lng: number }>,
+  prefix: string,
+  maxSegments = 14,
+): GradientRouteSegment[] => {
+  if (points.length < 2) return [];
+
+  const lastPointIndex = points.length - 1;
+  const segmentCount = Math.min(maxSegments, lastPointIndex);
+
+  return Array.from({ length: segmentCount }, (_, index) => {
+    const startIndex = Math.floor((index * lastPointIndex) / segmentCount);
+    const rawEndIndex =
+      Math.floor(((index + 1) * lastPointIndex) / segmentCount) + 1;
+    const endIndex = Math.min(
+      points.length,
+      Math.max(startIndex + 2, rawEndIndex),
+    );
+
+    return {
+      id: `${prefix}-${index}`,
+      path: points.slice(startIndex, endIndex),
+      color: getGradientRouteColor(
+        segmentCount === 1 ? 1 : index / (segmentCount - 1),
+      ),
+    };
+  }).filter((segment) => segment.path.length > 1);
+};
+
+const getGradientSegmentOptions = (
+  strokeColor: string,
+  strokeOpacity: number,
+  strokeWeight: number,
+): google.maps.PolylineOptions => ({
+  strokeColor,
+  strokeOpacity,
+  strokeWeight,
+  clickable: false,
+  zIndex: Math.round(strokeWeight * 10),
+  icons: [
+    {
+      icon: {
+        path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
+        scale: Math.max(2.1, Math.min(3.1, strokeWeight / 2.25)),
+        strokeColor,
+        strokeOpacity: Math.min(1, strokeOpacity + 0.12),
+      },
+      offset: "84%",
+    },
+  ],
+});
 
 interface DeliveryData {
   id: string;
@@ -79,6 +193,7 @@ interface DeliveryData {
     start?: { lat: number; lng: number };
     end?: { lat: number; lng: number };
   }>;
+  trackingRouteSummary?: DeliveryTrackingRouteSummary | null;
 }
 
 interface CarrierLocation {
@@ -107,6 +222,7 @@ export default function PackageTrackingPage({
   const [toPickupDirections, setToPickupDirections] = useState<any>(null);
   const [toDropoffDirections, setToDropoffDirections] = useState<any>(null);
   const [fullPlanDirections, setFullPlanDirections] = useState<any>(null);
+  const [linkedRouteDirections, setLinkedRouteDirections] = useState<any>(null);
   const [routeMeta, setRouteMeta] = useState<{
     distanceText?: string;
     durationText?: string;
@@ -117,9 +233,8 @@ export default function PackageTrackingPage({
     details: string[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
-  // Fixed zoom level for the tracking map - could be made dynamic in future
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const mapZoom = 15;
+  // Tracks whether carrierLocation came from the live RTDB feed (vs a stale Firestore seed).
+  const [carrierLocationIsLive, setCarrierLocationIsLive] = useState(false);
 
   useEffect(() => {
     if (!id) {
@@ -151,9 +266,9 @@ export default function PackageTrackingPage({
           createdAt: data.createdAt?.toDate() || new Date(),
           acceptedAt: data.acceptedAt?.toDate(),
           assignedAt: data.assignedAt?.toDate(),
-          currentLocation: data.currentLocation,
-          pickupLocation: data.pickupLocation,
-          deliveryLocation: data.deliveryLocation,
+          currentLocation: asLatLng(data.currentLocation) ?? undefined,
+          pickupLocation: asLatLng(data.pickupLocation) ?? undefined,
+          deliveryLocation: asLatLng(data.deliveryLocation) ?? undefined,
           packageValue: data.packageValue,
           paymentMethod: data.paymentMethod,
           otpCode: data.otpCode,
@@ -161,6 +276,9 @@ export default function PackageTrackingPage({
           proofOfDelivery: data.proofOfDelivery,
           routeReviews: data.routeReviews || [],
           routeFeedback: data.routeFeedback || [],
+          trackingRouteSummary: toDeliveryTrackingRouteSummary(
+            data.trackingRouteSummary,
+          ),
         });
         setLoading(false);
       } else {
@@ -176,44 +294,55 @@ export default function PackageTrackingPage({
     return subscribeRouteNetworkSegments(setManagedSegments);
   }, []);
 
-  // Subscribe to real-time carrier location
+  // Subscribe to real-time carrier location via deliveryTracks (public read — works for
+  // unauthenticated guest customers). tracks/{uid} requires auth so we never use it here.
   useEffect(() => {
-    if (!delivery?.carrierId && delivery?.status === "pending") {
-      return; // No carrier assigned yet
+    // Always reset the live-GPS flag when the delivery or its status changes.
+    setCarrierLocationIsLive(false);
+
+    if (!delivery?.id || delivery.status === "pending") {
+      return; // No delivery loaded or no carrier assigned yet
     }
 
-    // Try to get location from delivery's currentLocation first
-    if (delivery?.currentLocation?.lat) {
+    // Seed from Firestore snapshot immediately while RTDB subscription loads.
+    // This does NOT set carrierLocationIsLive — the Firestore currentLocation may be
+    // stale (e.g. same as pickup address) and must not drive ETA calculations.
+    if (delivery.currentLocation?.lat) {
       setCarrierLocation({
         lat: delivery.currentLocation.lat,
         lng: delivery.currentLocation.lng,
       });
     }
 
-    // Also subscribe to real-time updates if carrier is assigned
-    if (delivery?.carrierId) {
-      const trackRef = rtdbRef(realtimeDb, `tracks/${delivery.carrierId}`);
-      const unsubscribe = onValue(trackRef, (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.val();
-          setCarrierLocation({
-            lat: data.lat,
-            lng: data.lng,
-            timestamp: data.timestamp || data.timestampMs,
-            accuracy: data.accuracy,
-          });
-        }
-      });
+    // deliveryTracks/{deliveryId} has .read: true — accessible to guest customers
+    const trackRef = rtdbRef(realtimeDb, `deliveryTracks/${delivery.id}`);
+    const unsubscribe = onValue(trackRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const ts = data.timestamp || data.timestampMs;
+        setCarrierLocation({
+          lat: data.lat,
+          lng: data.lng,
+          timestamp: ts,
+          accuracy: data.accuracy,
+        });
+        // Only treat as live if the GPS ping has a timestamp AND is recent (< 30 min).
+        // No timestamp → treat as stale; old data from a previous session can give
+        // a false "1 min" ETA if the carrier was parked at the pickup address.
+        const isRecent = Boolean(ts) && Date.now() - ts < 30 * 60 * 1000;
+        setCarrierLocationIsLive(isRecent);
+      }
+    });
 
-      return () => unsubscribe();
-    }
-  }, [delivery?.carrierId, delivery?.currentLocation, delivery?.status]);
+    return () => unsubscribe();
+  }, [delivery?.id, delivery?.currentLocation, delivery?.status]);
 
   useEffect(() => {
     if (!window.google?.maps || !delivery?.deliveryLocation) {
       setToPickupDirections(null);
       setToDropoffDirections(null);
       setFullPlanDirections(null);
+      setLinkedRouteDirections(null);
       setRouteMeta(null);
       return;
     }
@@ -230,7 +359,15 @@ export default function PackageTrackingPage({
         }
       : null;
 
-    const livePoint = carrierLocation
+    // For pre-pickup approach: only use confirmed live RTDB GPS to avoid routing from a
+    // stale Firestore seed that may equal the pickup address (causing a false "1 min" ETA).
+    const approachPoint =
+      carrierLocationIsLive && carrierLocation
+        ? { lat: carrierLocation.lat, lng: carrierLocation.lng }
+        : null;
+
+    // For post-pickup active route: any carrier location (live or Firestore seed) is useful.
+    const activePoint = carrierLocation
       ? { lat: carrierLocation.lat, lng: carrierLocation.lng }
       : delivery.currentLocation
         ? {
@@ -245,12 +382,18 @@ export default function PackageTrackingPage({
     const getRoute = (
       origin: { lat: number; lng: number },
       destination: { lat: number; lng: number },
+      waypoints: Array<{
+        location: { lat: number; lng: number };
+        stopover: true;
+      }> = [],
     ) =>
       new Promise<any | null>((resolve) => {
         service.route(
           {
             origin,
             destination,
+            waypoints,
+            optimizeWaypoints: false,
             travelMode: window.google.maps.TravelMode.DRIVING,
           },
           (result: any, status: any) => {
@@ -268,31 +411,63 @@ export default function PackageTrackingPage({
         delivery.status,
       );
 
-      const [pickupResult, dropoffResult, fullPlanResult] = await Promise.all([
-        isBeforePickup && livePoint && pickupPoint
-          ? getRoute(livePoint, pickupPoint)
-          : Promise.resolve(null),
-        isBeforePickup
-          ? pickupPoint
+      const summaryChain = (delivery.trackingRouteSummary?.routeChain || [])
+        .filter(
+          (stop) => Number.isFinite(stop.lat) && Number.isFinite(stop.lng),
+        )
+        .slice(0, 24);
+      const linkedOrigin = isBeforePickup ? approachPoint : activePoint;
+      const linkedDestination = summaryChain.length
+        ? {
+            lat: summaryChain[summaryChain.length - 1].lat,
+            lng: summaryChain[summaryChain.length - 1].lng,
+          }
+        : null;
+      const linkedWaypoints = summaryChain.slice(0, -1).map((stop) => ({
+        location: { lat: stop.lat, lng: stop.lng },
+        stopover: true as const,
+      }));
+
+      const [pickupResult, dropoffResult, fullPlanResult, linkedResult] =
+        await Promise.all([
+          // Approach route (carrier → pickup): only pre-pickup AND live RTDB GPS.
+          isBeforePickup && approachPoint && pickupPoint
+            ? getRoute(approachPoint, pickupPoint)
+            : Promise.resolve(null),
+          // Active delivery route (carrier → dropoff): only post-pickup.
+          // Pre-pickup this is null so fullPlanResult alone draws the ghost route,
+          // preventing double-drawing of the same pickup→delivery segment.
+          !isBeforePickup && activePoint
+            ? getRoute(activePoint, deliveryPoint)
+            : Promise.resolve(null),
+          // Ghost plan (pickup → delivery): always computed as baseline reference.
+          pickupPoint
             ? getRoute(pickupPoint, deliveryPoint)
-            : Promise.resolve(null)
-          : livePoint
-            ? getRoute(livePoint, deliveryPoint)
-            : pickupPoint
-              ? getRoute(pickupPoint, deliveryPoint)
-              : Promise.resolve(null),
-        pickupPoint
-          ? getRoute(pickupPoint, deliveryPoint)
-          : Promise.resolve(null),
-      ]);
+            : Promise.resolve(null),
+          linkedOrigin && linkedDestination
+            ? getRoute(linkedOrigin, linkedDestination, linkedWaypoints)
+            : Promise.resolve(null),
+        ]);
 
       if (cancelled) return;
 
-      setToPickupDirections(pickupResult);
-      setToDropoffDirections(dropoffResult);
+      setToPickupDirections(
+        isBeforePickup ? linkedResult || pickupResult : null,
+      );
+      setToDropoffDirections(
+        !isBeforePickup ? linkedResult || dropoffResult : null,
+      );
       setFullPlanDirections(fullPlanResult);
+      setLinkedRouteDirections(linkedResult);
 
-      const route = dropoffResult?.routes?.[0];
+      // Post-pickup: use the active carrier→delivery leg for distance/duration.
+      // Pre-pickup: dropoffResult is null; fall back to ghost plan for distance display.
+      const route = (
+        linkedResult ??
+        dropoffResult ??
+        pickupResult ??
+        fullPlanResult
+      )?.routes?.[0];
       if (route?.legs?.length) {
         const totalMeters = route.legs.reduce(
           (sum: number, leg: any) => sum + (leg.distance?.value || 0),
@@ -304,7 +479,7 @@ export default function PackageTrackingPage({
         );
         setRouteMeta({
           distanceText: `${parseFloat((totalMeters / 1000).toFixed(2))} km`,
-          durationText: `${Math.max(1, Math.round(totalSeconds / 60))} min`,
+          durationText: formatMinutes(totalSeconds),
         });
       } else {
         setRouteMeta(null);
@@ -320,12 +495,56 @@ export default function PackageTrackingPage({
     delivery?.deliveryLocation,
     delivery?.currentLocation,
     carrierLocation,
+    carrierLocationIsLive,
   ]);
 
-  const mapCenter = carrierLocation || {
-    lat: parseFloat(delivery?.currentLocation?.lat?.toString() || "-29.6100"),
-    lng: parseFloat(delivery?.currentLocation?.lng?.toString() || "28.2336"),
-  };
+  const isBeforePickupStatus = isTrackingBeforePickup(delivery?.status);
+  const showCarrierMarker = shouldShowTrackingCarrierMarker(delivery?.status);
+  const etaLabel = getTrackingEtaLabel(delivery?.status);
+
+  const etaToPickupText: string | null = (() => {
+    const legs = toPickupDirections?.routes?.[0]?.legs;
+    if (!legs) return null;
+    const secs = legs.reduce(
+      (s: number, l: any) => s + (l.duration?.value || 0),
+      0,
+    );
+    return formatMinutes(secs);
+  })();
+
+  const etaToDeliveryText: string | null = (() => {
+    const legs = toDropoffDirections?.routes?.[0]?.legs;
+    if (!legs) return null;
+    const secs = legs.reduce(
+      (s: number, l: any) => s + (l.duration?.value || 0),
+      0,
+    );
+    return formatMinutes(secs);
+  })();
+
+  // Center on pickup pre-pickup (carrier pin is hidden from customer);
+  // center on live carrier or Firestore snapshot post-pickup.
+  // Memoized so the object reference is stable — prevents @react-google-maps/api from
+  // calling map.panTo() on every render and fighting with our fitBounds call.
+  const mapCenter = useMemo(
+    () =>
+      isBeforePickupStatus && delivery?.pickupLocation
+        ? { lat: delivery.pickupLocation.lat, lng: delivery.pickupLocation.lng }
+        : carrierLocation
+          ? { lat: carrierLocation.lat, lng: carrierLocation.lng }
+          : delivery?.currentLocation
+            ? {
+                lat: delivery.currentLocation.lat,
+                lng: delivery.currentLocation.lng,
+              }
+            : { lat: -29.61, lng: 28.2336 },
+    [
+      isBeforePickupStatus,
+      delivery?.pickupLocation,
+      carrierLocation,
+      delivery?.currentLocation,
+    ],
+  );
 
   const getStatusBadgeColor = (status: string) => {
     const colors: { [key: string]: string } = {
@@ -383,6 +602,66 @@ export default function PackageTrackingPage({
       managedSegments,
     ],
   );
+
+  const fullPlanGradientSegments = useMemo(
+    () =>
+      buildGradientRouteSegments(
+        toDirectionPath(fullPlanDirections),
+        "full-plan",
+      ),
+    [fullPlanDirections],
+  );
+
+  const linkedRouteGradientSegments = useMemo(
+    () =>
+      buildGradientRouteSegments(
+        toDirectionPath(linkedRouteDirections),
+        "linked-route",
+      ),
+    [linkedRouteDirections],
+  );
+
+  const activeRouteGradientSegments = useMemo(
+    () =>
+      buildGradientRouteSegments(
+        toDirectionPath(
+          isBeforePickupStatus ? toPickupDirections : toDropoffDirections,
+        ),
+        "active-route",
+      ),
+    [isBeforePickupStatus, toDropoffDirections, toPickupDirections],
+  );
+
+  // Keep pickup and dropoff visible throughout the trip, and add the carrier once the
+  // customer is allowed to see it.
+  useEffect(() => {
+    if (!mapInstance || !window.google?.maps) return;
+    const currentDelivery = delivery;
+    if (
+      !currentDelivery?.pickupLocation &&
+      !currentDelivery?.deliveryLocation &&
+      !carrierLocation &&
+      !currentDelivery?.currentLocation
+    )
+      return;
+    const bounds = new window.google.maps.LatLngBounds();
+    if (currentDelivery?.pickupLocation)
+      bounds.extend(currentDelivery.pickupLocation);
+    if (currentDelivery?.deliveryLocation)
+      bounds.extend(currentDelivery.deliveryLocation);
+    const visibleCarrierPoint =
+      showCarrierMarker &&
+      (carrierLocation || currentDelivery?.currentLocation);
+    if (visibleCarrierPoint) bounds.extend(visibleCarrierPoint);
+    mapInstance.fitBounds(bounds, 60);
+  }, [
+    carrierLocation,
+    delivery?.currentLocation,
+    delivery?.deliveryLocation,
+    mapInstance,
+    delivery?.pickupLocation,
+    showCarrierMarker,
+  ]);
 
   const focusPoint = (point?: { lat: number; lng: number } | null) => {
     if (!mapInstance || !point) return;
@@ -443,7 +722,7 @@ export default function PackageTrackingPage({
           </div>
 
           {/* Status Badge */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span
               className={`px-4 py-2 rounded-full font-medium ${getStatusBadgeColor(
                 delivery.status,
@@ -451,6 +730,18 @@ export default function PackageTrackingPage({
             >
               {getStatusLabel(delivery.status)}
             </span>
+            {isBeforePickupStatus && etaToPickupText && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-800 border border-emerald-200">
+                ⏱ {etaLabel}: {etaToPickupText}
+              </span>
+            )}
+            {!isBeforePickupStatus &&
+              delivery.status !== "delivered" &&
+              etaToDeliveryText && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-800 border border-emerald-200">
+                  ⏱ {etaLabel}: {etaToDeliveryText}
+                </span>
+              )}
             {delivery.estimatedDelivery && (
               <span className="text-gray-600">
                 Estimated: {format(delivery.estimatedDelivery, "MMM dd, yyyy")}
@@ -469,7 +760,6 @@ export default function PackageTrackingPage({
               <div className="h-96 bg-gray-100">
                 {typeof window !== "undefined" && (
                   <GoogleMap
-                    zoom={mapZoom}
                     center={mapCenter}
                     onLoad={(map) => setMapInstance(map)}
                     mapContainerStyle={{ height: "100%", width: "100%" }}
@@ -484,120 +774,86 @@ export default function PackageTrackingPage({
                       ],
                     }}
                   >
-                    {visibleManagedSegments.map((segment) => {
-                      const style = getRouteNetworkSegmentStyle(segment);
-                      return (
-                        <Polyline
-                          key={`managed-${segment.id}`}
-                          path={[segment.start, segment.end]}
-                          onClick={() => focusSegment(segment)}
-                          options={{
-                            strokeColor: style.strokeColor,
-                            strokeOpacity: style.strokeOpacity,
-                            strokeWeight: style.strokeWeight,
-                            zIndex: 5,
-                          }}
-                        />
-                      );
-                    })}
-
+                    {/* Road between P and D */}
                     {fullPlanDirections && (
                       <DirectionsRenderer
                         directions={fullPlanDirections}
-                        options={{
-                          suppressMarkers: true,
-                          polylineOptions: {
-                            strokeColor: "#94a3b8",
-                            strokeOpacity: 0.45,
-                            strokeWeight: 4,
-                            icons: [
-                              {
-                                icon: {
-                                  path: "M 0,-1 0,1",
-                                  strokeOpacity: 1,
-                                  scale: 2,
-                                },
-                                offset: "0",
-                                repeat: "14px",
-                              },
-                            ],
-                          },
-                        }}
+                        options={
+                          {
+                            suppressMarkers: true,
+                            suppressBoundsUpdate: true,
+                            suppressPolylines: true,
+                          } as any
+                        }
                       />
                     )}
+                    {fullPlanGradientSegments.map((segment) => (
+                      <Polyline
+                        key={segment.id}
+                        path={segment.path}
+                        options={getGradientSegmentOptions(
+                          segment.color,
+                          0.36,
+                          4,
+                        )}
+                      />
+                    ))}
 
-                    {toPickupDirections && (
+                    {linkedRouteDirections && (
                       <DirectionsRenderer
-                        directions={toPickupDirections}
-                        options={{
-                          suppressMarkers: true,
-                          polylineOptions: {
-                            strokeColor: "#8b5cf6",
-                            strokeOpacity: 0.95,
-                            strokeWeight: 6,
-                          },
-                        }}
+                        directions={linkedRouteDirections}
+                        options={
+                          {
+                            suppressMarkers: true,
+                            suppressBoundsUpdate: true,
+                            suppressPolylines: true,
+                          } as any
+                        }
                       />
                     )}
+                    {linkedRouteGradientSegments.map((segment) => (
+                      <Polyline
+                        key={segment.id}
+                        path={segment.path}
+                        options={getGradientSegmentOptions(
+                          segment.color,
+                          0.58,
+                          5,
+                        )}
+                      />
+                    ))}
 
-                    {!toPickupDirections &&
-                      delivery.pickupLocation &&
-                      carrierLocation && (
-                        <Polyline
-                          path={[
-                            {
-                              lat: carrierLocation.lat,
-                              lng: carrierLocation.lng,
-                            },
-                            {
-                              lat: delivery.pickupLocation.lat,
-                              lng: delivery.pickupLocation.lng,
-                            },
-                          ]}
-                          options={{
-                            strokeColor: "#8b5cf6",
-                            strokeOpacity: 0.85,
-                            strokeWeight: 5,
-                          }}
-                        />
-                      )}
-
-                    {toDropoffDirections && (
+                    {(isBeforePickupStatus
+                      ? toPickupDirections
+                      : toDropoffDirections) && (
                       <DirectionsRenderer
-                        directions={toDropoffDirections}
-                        options={{
-                          suppressMarkers: true,
-                          polylineOptions: {
-                            strokeColor: "#f59e0b",
-                            strokeOpacity: 0.95,
-                            strokeWeight: 6,
-                          },
-                        }}
+                        directions={
+                          isBeforePickupStatus
+                            ? toPickupDirections
+                            : toDropoffDirections
+                        }
+                        options={
+                          {
+                            suppressMarkers: true,
+                            suppressBoundsUpdate: true,
+                            suppressPolylines: true,
+                          } as any
+                        }
                       />
                     )}
+                    {activeRouteGradientSegments.map((segment) => (
+                      <Polyline
+                        key={segment.id}
+                        path={segment.path}
+                        options={getGradientSegmentOptions(
+                          segment.color,
+                          0.94,
+                          6,
+                        )}
+                      />
+                    ))}
 
-                    {!toDropoffDirections &&
-                      delivery.pickupLocation &&
-                      delivery.deliveryLocation && (
-                        <Polyline
-                          path={[
-                            {
-                              lat: delivery.pickupLocation.lat,
-                              lng: delivery.pickupLocation.lng,
-                            },
-                            {
-                              lat: delivery.deliveryLocation.lat,
-                              lng: delivery.deliveryLocation.lng,
-                            },
-                          ]}
-                          options={{
-                            strokeColor: "#f59e0b",
-                            strokeOpacity: 0.85,
-                            strokeWeight: 5,
-                          }}
-                        />
-                      )}
-
+                    {/* Pickup — green circle matching TrackingMap */}
                     {delivery.pickupLocation && (
                       <Marker
                         position={{
@@ -616,16 +872,17 @@ export default function PackageTrackingPage({
                           })
                         }
                         icon={{
-                          path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
-                          scale: 6,
-                          fillColor: "#fbbf24",
+                          path: google.maps.SymbolPath.CIRCLE,
+                          scale: 9,
+                          fillColor: "#059669",
                           fillOpacity: 1,
-                          strokeColor: "#fff",
+                          strokeColor: "#ffffff",
                           strokeWeight: 2,
                         }}
                       />
                     )}
 
+                    {/* Dropoff — red circle matching TrackingMap */}
                     {delivery.deliveryLocation && (
                       <Marker
                         position={{
@@ -644,50 +901,18 @@ export default function PackageTrackingPage({
                           })
                         }
                         icon={{
-                          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                          scale: 6,
-                          fillColor: "#fb923c",
-                          fillOpacity: 1,
-                          strokeColor: "#fff",
-                          strokeWeight: 2,
-                        }}
-                      />
-                    )}
-
-                    {/* Delivery Location */}
-                    {delivery.currentLocation && (
-                      <Marker
-                        position={{
-                          lat: delivery.currentLocation.lat,
-                          lng: delivery.currentLocation.lng,
-                        }}
-                        title="Current Location"
-                        onClick={() =>
-                          setSelectedMapInfo({
-                            position: {
-                              lat: delivery.currentLocation!.lat,
-                              lng: delivery.currentLocation!.lng,
-                            },
-                            title: "Package location",
-                            details: [
-                              `Tracking: ${delivery.trackingCode}`,
-                              `Status: ${getStatusLabel(delivery.status)}`,
-                            ],
-                          })
-                        }
-                        icon={{
                           path: google.maps.SymbolPath.CIRCLE,
-                          scale: 8,
-                          fillColor: "#ef4444",
+                          scale: 9,
+                          fillColor: "#DC2626",
                           fillOpacity: 1,
-                          strokeColor: "#fff",
+                          strokeColor: "#ffffff",
                           strokeWeight: 2,
                         }}
                       />
                     )}
 
-                    {/* Carrier Location */}
-                    {carrierLocation && delivery.status !== "delivered" && (
+                    {/* Carrier — blue circle, only shown post-pickup */}
+                    {carrierLocation && showCarrierMarker && (
                       <Marker
                         position={{
                           lat: carrierLocation.lat,
@@ -711,10 +936,10 @@ export default function PackageTrackingPage({
                         }
                         icon={{
                           path: google.maps.SymbolPath.CIRCLE,
-                          scale: 10,
-                          fillColor: "#3b82f6",
+                          scale: 12,
+                          fillColor: "#3B82F6",
                           fillOpacity: 1,
-                          strokeColor: "#fff",
+                          strokeColor: "#ffffff",
                           strokeWeight: 2,
                         }}
                       />
@@ -769,19 +994,76 @@ export default function PackageTrackingPage({
                     </p>
                     <p className="text-sm text-blue-900 mt-1">
                       {routeMeta?.distanceText
-                        ? `${routeMeta.distanceText} • ${routeMeta.durationText}`
+                        ? routeMeta.distanceText
                         : "Route unavailable (waiting for valid coordinates)"}
                     </p>
+                    {isBeforePickupStatus && etaToPickupText && (
+                      <p className="text-xs text-emerald-700 font-semibold mt-1">
+                        ⏱ {etaLabel}: {etaToPickupText}
+                      </p>
+                    )}
+                    {!isBeforePickupStatus &&
+                      delivery?.status !== "delivered" &&
+                      etaToDeliveryText && (
+                        <p className="text-xs text-emerald-700 font-semibold mt-1">
+                          ⏱ {etaLabel}: {etaToDeliveryText}
+                        </p>
+                      )}
+                    {!!delivery.trackingRouteSummary
+                      ?.remainingRouteStopCount && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        Linked route:{" "}
+                        {delivery.trackingRouteSummary.remainingRouteStopCount}{" "}
+                        remaining stop
+                        {delivery.trackingRouteSummary
+                          .remainingRouteStopCount === 1
+                          ? ""
+                          : "s"}
+                        {delivery.trackingRouteSummary.stopsAheadCount > 0
+                          ? ` • ${delivery.trackingRouteSummary.stopsAheadCount} stop${delivery.trackingRouteSummary.stopsAheadCount === 1 ? "" : "s"} ahead`
+                          : ""}
+                      </p>
+                    )}
                   </div>
 
                   <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
                     <p className="text-xs text-slate-600 font-semibold uppercase">
-                      Route colors
+                      Map legend
                     </p>
                     <ul className="text-sm text-slate-800 mt-1 space-y-1">
-                      <li>⬤ Purple: Current → Pickup</li>
-                      <li>⬤ Orange: Current/Pickup → Dropoff</li>
-                      <li>⬤ Gray dashed: Planned baseline</li>
+                      <li>
+                        <span style={{ color: "#059669" }}>⬤</span> Green:
+                        Pickup
+                      </li>
+                      <li>
+                        <span style={{ color: "#DC2626" }}>⬤</span> Red: Dropoff
+                      </li>
+                      <li>
+                        <span style={{ color: "#3B82F6" }}>⬤</span> Blue:
+                        Carrier
+                      </li>
+                      <li>
+                        <span
+                          className="inline-block h-2.5 w-10 rounded-full border border-slate-300 align-middle"
+                          style={{
+                            background:
+                              "linear-gradient(90deg, #dc2626 0%, #f59e0b 38%, #84cc16 70%, #16a34a 100%)",
+                          }}
+                        />{" "}
+                        Gradient routes: red = route start, green = route end
+                      </li>
+                      <li>
+                        <span className="font-semibold text-slate-700">
+                          Thick line
+                        </span>{" "}
+                        = active delivery route
+                      </li>
+                      <li>
+                        <span className="font-semibold text-slate-700">
+                          Medium line
+                        </span>{" "}
+                        = full carrier linked route
+                      </li>
                     </ul>
                   </div>
                 </div>
@@ -794,15 +1076,21 @@ export default function PackageTrackingPage({
                   >
                     Locate pickup
                   </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      focusPoint(carrierLocation || delivery.currentLocation)
-                    }
-                    className="rounded-full bg-blue-100 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-200"
-                  >
-                    Locate current
-                  </button>
+                  {showCarrierMarker ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        focusPoint(carrierLocation || delivery.currentLocation)
+                      }
+                      className="rounded-full bg-blue-100 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-200"
+                    >
+                      Locate carrier
+                    </button>
+                  ) : (
+                    <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">
+                      Carrier hidden until pickup
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => focusPoint(delivery.deliveryLocation)}

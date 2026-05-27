@@ -7,6 +7,7 @@ import Header from "./Header";
 import MapManagement from "./MapManagement";
 import RouteTab from "./RouteTab";
 import MyProfile from "./MyProfile";
+import GoogleMapsLoader from "./GoogleMapsLoader";
 
 interface AppRouterProps {
   user: User;
@@ -21,11 +22,32 @@ export default function AppRouter({ user }: AppRouterProps) {
         <main className="flex-1 overflow-x-hidden p-3 pb-24 sm:p-4 sm:pb-24 lg:p-6 lg:pb-24">
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<Dashboard user={user} />} />
+            <Route
+              path="/dashboard"
+              element={
+                <GoogleMapsLoader>
+                  <Dashboard user={user} />
+                </GoogleMapsLoader>
+              }
+            />
             <Route path="/tasks" element={<AvailableTasks />} />
             <Route path="/deliveries" element={<MyDeliveries />} />
-            <Route path="/map-management" element={<MapManagement />} />
-            <Route path="/route" element={<RouteTab />} />
+            <Route
+              path="/map-management"
+              element={
+                <GoogleMapsLoader>
+                  <MapManagement />
+                </GoogleMapsLoader>
+              }
+            />
+            <Route
+              path="/route"
+              element={
+                <GoogleMapsLoader>
+                  <RouteTab />
+                </GoogleMapsLoader>
+              }
+            />
             <Route path="/profile" element={<MyProfile user={user} />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

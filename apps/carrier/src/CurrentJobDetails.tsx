@@ -6,12 +6,7 @@ import {
   subscribeRouteNetworkSegments,
   type RouteNetworkSegment,
 } from "@config";
-import {
-  GoogleMap,
-  InfoWindow,
-  Marker,
-  Polyline,
-} from "@react-google-maps/api";
+import { GoogleMap, InfoWindow, Marker } from "@react-google-maps/api";
 import { Delivery } from "./types";
 import { formatCurrency, formatDate } from "./utils";
 import { useDeliveryStatus } from "./hooks/useDeliveryStatus";
@@ -74,7 +69,12 @@ export default function CurrentJobDetails({
   const isAssigned = delivery.status === "assigned";
 
   const handleStatusUpdate = async (
-    status: "picked_up" | "in_transit" | "stuck" | "delivered",
+    status:
+      | "picked_up"
+      | "in_transit"
+      | "out_for_delivery"
+      | "stuck"
+      | "delivered",
   ) => {
     try {
       if (status === "delivered") {
@@ -83,12 +83,13 @@ export default function CurrentJobDetails({
       }
 
       await updateStatus(delivery.id, status, delivery.status);
-      const statusLabels = {
+      const statusLabels: Record<string, string> = {
         picked_up: "Picked Up",
         in_transit: "In Transit",
+        out_for_delivery: "Out for Delivery",
         stuck: "Stuck",
         delivered: "Delivered",
-      } as const;
+      };
       setStatusMessage(`✅ Delivery marked as ${statusLabels[status]}`);
       setTimeout(() => setStatusMessage(null), 3000);
 
@@ -141,9 +142,7 @@ export default function CurrentJobDetails({
   };
 
   const routePath = decodePolyline(delivery.route?.polyline);
-  const activeRoutePath = decodePolyline(
-    (delivery as any)?.routeHistory?.activePolyline,
-  );
+  void decodePolyline((delivery as any)?.routeHistory?.activePolyline);
   const pickupPoint = (delivery as any)?.pickupLocation
     ? {
         lat: (delivery as any).pickupLocation.lat,
@@ -163,22 +162,12 @@ export default function CurrentJobDetails({
       }
     : undefined;
 
-  const carrierToPickupPath =
-    currentPoint &&
-    pickupPoint &&
-    (delivery.status === "assigned" || delivery.status === "accepted")
-      ? [currentPoint, pickupPoint]
-      : [];
-
-  const pickupToDropoffPath =
-    pickupPoint && deliveryPoint ? [pickupPoint, deliveryPoint] : [];
-
-  const activeProgressPath =
-    activeRoutePath.length > 1
-      ? activeRoutePath
-      : pickupPoint && currentPoint
-        ? [pickupPoint, currentPoint]
-        : [];
+  const carrierToPickupPath: never[] = [];
+  void carrierToPickupPath;
+  const pickupToDropoffPath: never[] = [];
+  void pickupToDropoffPath;
+  const activeProgressPath: never[] = [];
+  void activeProgressPath;
 
   const mapCenter =
     shortcutPoints[shortcutPoints.length - 1] ||
@@ -206,13 +195,10 @@ export default function CurrentJobDetails({
     modalMapInstance.setZoom(16);
   };
 
-  const onShortcutMapClick = (event: google.maps.MapMouseEvent) => {
-    if (!event.latLng) return;
-    const point = { lat: event.latLng.lat(), lng: event.latLng.lng() };
-    setShortcutPoints((prev) =>
-      prev.length >= 2 ? [point] : [...prev, point],
-    );
+  const _onShortcutMapClick = (_event: google.maps.MapMouseEvent) => {
+    void _event;
   };
+  void _onShortcutMapClick;
 
   const confirmDeliveredWithRouteContext = async () => {
     const start = shortcutPoints[0];
@@ -683,97 +669,24 @@ export default function CurrentJobDetails({
                       zoom={14}
                       center={mapCenter}
                       onLoad={(map) => setModalMapInstance(map)}
-                      onClick={onShortcutMapClick}
                       mapContainerStyle={{ width: "100%", height: "100%" }}
-                      options={{ disableDefaultUI: false }}
+                      options={{
+                        disableDefaultUI: false,
+                        styles: [
+                          {
+                            featureType: "poi",
+                            elementType: "labels",
+                            stylers: [{ visibility: "off" }],
+                          },
+                        ],
+                      }}
                     >
-                      {visibleManagedSegments.map((segment) => {
-                        const style = getRouteNetworkSegmentStyle(segment);
-                        return (
-                          <Polyline
-                            key={`managed-${segment.id}`}
-                            path={[segment.start, segment.end]}
-                            options={{
-                              strokeColor: style.strokeColor,
-                              strokeOpacity: style.strokeOpacity,
-                              strokeWeight: style.strokeWeight,
-                              zIndex: 12,
-                            }}
-                          />
-                        );
-                      })}
-
-                      {carrierToPickupPath.length > 1 && (
-                        <Polyline
-                          path={carrierToPickupPath}
-                          options={{
-                            strokeColor: "#fbbf24",
-                            strokeOpacity: 0.4,
-                            strokeWeight: 5,
-                          }}
-                        />
-                      )}
-
-                      {pickupToDropoffPath.length > 1 && (
-                        <Polyline
-                          path={pickupToDropoffPath}
-                          options={{
-                            strokeColor: "#fb923c",
-                            strokeOpacity: 0.4,
-                            strokeWeight: 5,
-                          }}
-                        />
-                      )}
-
-                      {routePath.length > 1 && (
-                        <Polyline
-                          path={routePath}
-                          options={{
-                            strokeColor: "#f59e0b",
-                            strokeOpacity: 0.85,
-                            strokeWeight: 3,
-                            icons: [
-                              {
-                                icon: {
-                                  path: "M 0,-1 0,1",
-                                  strokeOpacity: 1,
-                                  scale: 2,
-                                },
-                                offset: "0",
-                                repeat: "14px",
-                              },
-                            ],
-                          }}
-                        />
-                      )}
-
-                      {activeProgressPath.length > 1 && (
-                        <Polyline
-                          path={activeProgressPath}
-                          options={{
-                            strokeColor: "#14b8a6",
-                            strokeOpacity: 1,
-                            strokeWeight: 5,
-                            icons: [
-                              {
-                                icon: {
-                                  path: google.maps.SymbolPath
-                                    .FORWARD_OPEN_ARROW,
-                                  scale: 2.2,
-                                  strokeOpacity: 0.9,
-                                },
-                                offset: "12px",
-                                repeat: "40px",
-                              },
-                            ],
-                          }}
-                        />
-                      )}
-
+                      {/* Pickup — green circle */}
                       {pickupPoint && (
                         <Marker
                           position={pickupPoint}
                           title="Pickup"
+                          zIndex={30}
                           onClick={() =>
                             setSelectedMapInfo({
                               position: pickupPoint,
@@ -782,20 +695,22 @@ export default function CurrentJobDetails({
                             })
                           }
                           icon={{
-                            path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
-                            scale: 5,
-                            fillColor: "#fbbf24",
+                            path: google.maps.SymbolPath.CIRCLE,
+                            scale: 9,
+                            fillColor: "#059669",
                             fillOpacity: 1,
-                            strokeColor: "#fff",
+                            strokeColor: "#ffffff",
                             strokeWeight: 2,
                           }}
                         />
                       )}
 
+                      {/* Dropoff — red circle */}
                       {deliveryPoint && (
                         <Marker
                           position={deliveryPoint}
-                          title="Dropoff"
+                          title="Destination"
+                          zIndex={30}
                           onClick={() =>
                             setSelectedMapInfo({
                               position: deliveryPoint,
@@ -804,20 +719,22 @@ export default function CurrentJobDetails({
                             })
                           }
                           icon={{
-                            path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                            scale: 5,
-                            fillColor: "#fb923c",
+                            path: google.maps.SymbolPath.CIRCLE,
+                            scale: 9,
+                            fillColor: "#DC2626",
                             fillOpacity: 1,
-                            strokeColor: "#fff",
+                            strokeColor: "#ffffff",
                             strokeWeight: 2,
                           }}
                         />
                       )}
 
+                      {/* Current position — blue circle */}
                       {currentPoint && (
                         <Marker
                           position={currentPoint}
                           title="Current position"
+                          zIndex={20}
                           onClick={() =>
                             setSelectedMapInfo({
                               position: currentPoint,
@@ -830,23 +747,14 @@ export default function CurrentJobDetails({
                           }
                           icon={{
                             path: google.maps.SymbolPath.CIRCLE,
-                            scale: 7,
-                            fillColor: "#22c55e",
+                            scale: 12,
+                            fillColor: "#3B82F6",
                             fillOpacity: 1,
-                            strokeColor: "#fff",
+                            strokeColor: "#ffffff",
                             strokeWeight: 2,
                           }}
                         />
                       )}
-
-                      {shortcutPoints.map((point, index) => (
-                        <Marker
-                          key={`${point.lat}-${point.lng}-${index}`}
-                          position={point}
-                          title={`Shortcut point ${index + 1}`}
-                          label={`${index + 1}`}
-                        />
-                      ))}
 
                       {selectedMapInfo && (
                         <InfoWindow
@@ -864,17 +772,6 @@ export default function CurrentJobDetails({
                             </div>
                           </div>
                         </InfoWindow>
-                      )}
-
-                      {shortcutPoints.length === 2 && (
-                        <Polyline
-                          path={shortcutPoints}
-                          options={{
-                            strokeColor: "#ef4444",
-                            strokeOpacity: 1,
-                            strokeWeight: 4,
-                          }}
-                        />
                       )}
                     </GoogleMap>
 
