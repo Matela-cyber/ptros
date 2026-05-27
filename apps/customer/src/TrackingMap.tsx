@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   db,
   realtimeDb,
+  formatEtaCountdown,
   formatRouteNetworkSegmentType,
   getDisplayRouteNetworkSegments,
   getTrackingEtaLabel,
@@ -94,6 +95,12 @@ interface Delivery {
     end?: { lat: number; lng: number };
   }>;
   trackingRouteSummary?: DeliveryTrackingRouteSummary | null;
+  eta?: {
+    pickupEtaMs: number | null;
+    deliveryEtaMs: number | null;
+    computedAtMs: number;
+    source: string;
+  } | null;
 }
 
 interface MarkerData {
@@ -435,6 +442,7 @@ export default function TrackingMap({ user }: Props) {
             trackingRouteSummary: toDeliveryTrackingRouteSummary(
               data.trackingRouteSummary,
             ),
+            eta: data.eta ?? null,
           });
         });
 
@@ -1662,6 +1670,36 @@ export default function TrackingMap({ user }: Props) {
                                   </div>
                                 </div>
                               )}
+                            {selectedDelivery === delivery.id &&
+                              !roadPaths?.etaText &&
+                              delivery.eta &&
+                              (() => {
+                                const prePickup = isTrackingBeforePickup(
+                                  delivery.status,
+                                );
+                                const etaMs = prePickup
+                                  ? delivery.eta.pickupEtaMs
+                                  : delivery.eta.deliveryEtaMs;
+                                const remaining = etaMs
+                                  ? Math.max(0, etaMs - Date.now())
+                                  : null;
+                                const label = getTrackingEtaLabel(
+                                  delivery.status,
+                                );
+                                return remaining !== null ? (
+                                  <div>
+                                    <div className="text-sm text-gray-600">
+                                      {label}
+                                    </div>
+                                    <div className="font-medium text-emerald-600">
+                                      ⏱{" "}
+                                      {remaining <= 0
+                                        ? "arriving now"
+                                        : formatEtaCountdown(remaining)}
+                                    </div>
+                                  </div>
+                                ) : null;
+                              })()}
                             {selectedDelivery === delivery.id &&
                               !!roadPaths?.remainingRouteStopCount && (
                                 <div>

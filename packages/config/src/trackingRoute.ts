@@ -184,6 +184,72 @@ export const buildDeliveryTrackingRouteSummary = (
   };
 };
 
+// ── ETA System ──────────────────────────────────────────────────────────────
+
+/**
+ * Persisted ETA snapshot stored on each delivery document.
+ * Clients compute live countdowns as: etaMs - Date.now()
+ */
+export interface DeliveryEta {
+  /** Unix ms – when the carrier is expected at the pickup stop */
+  pickupEtaMs: number | null;
+  /** Unix ms – when the delivery is expected at the dropoff stop */
+  deliveryEtaMs: number | null;
+  /** Unix ms – when this estimate was last computed */
+  computedAtMs: number;
+  /** Carrier→pickup straight-line distance used at computation time (km) */
+  distanceToPickupKm: number | null;
+  /** Total route distance through all stops at computation time (km) */
+  totalDistanceKm: number | null;
+  /** Average speed assumption used (km/h) */
+  avgSpeedKmh: number;
+  /** What triggered this recalculation */
+  source: "assigned" | "accepted" | "reoptimized";
+}
+
+/** Default average delivery speed (km/h) for straight-line ETA estimates */
+export const ETA_AVG_SPEED_KMH = 30;
+
+/**
+ * Convert a haversine distance (km) to an absolute ETA timestamp in ms.
+ */
+export const computeEtaAbsoluteMs = (
+  distanceKm: number,
+  nowMs: number = Date.now(),
+  avgSpeedKmh: number = ETA_AVG_SPEED_KMH,
+): number => nowMs + (distanceKm / avgSpeedKmh) * 3_600_000;
+
+/**
+ * Get remaining milliseconds until an absolute ETA. Returns 0 if past.
+ */
+export const getRemainingEtaMs = (etaMs: number | null): number =>
+  etaMs === null ? 0 : Math.max(0, etaMs - Date.now());
+
+/**
+ * Format remaining ms as a human-readable countdown string.
+ * Examples: "2h 15m", "45 min", "arriving now"
+ */
+export const formatEtaCountdown = (remainingMs: number): string => {
+  if (remainingMs <= 0) return "arriving now";
+  const totalMinutes = Math.ceil(remainingMs / 60_000);
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+};
+
+/**
+ * Pick the relevant ETA ms for a delivery based on its current status.
+ * Pre-pickup → pickupEtaMs; post-pickup → deliveryEtaMs.
+ */
+export const getActiveEtaMs = (
+  eta: DeliveryEta | null | undefined,
+  status: string | null | undefined,
+): number | null => {
+  if (!eta) return null;
+  return isTrackingBeforePickup(status) ? eta.pickupEtaMs : eta.deliveryEtaMs;
+};
+
 export const toDeliveryTrackingRouteSummary = (
   raw: any,
 ): DeliveryTrackingRouteSummary | null => {

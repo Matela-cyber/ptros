@@ -10,6 +10,7 @@ import {
 import {
   db,
   realtimeDb,
+  formatEtaCountdown,
   getTrackingEtaLabel,
   formatRouteNetworkSegmentType,
   getDisplayRouteNetworkSegments,
@@ -194,6 +195,12 @@ interface DeliveryData {
     end?: { lat: number; lng: number };
   }>;
   trackingRouteSummary?: DeliveryTrackingRouteSummary | null;
+  eta?: {
+    pickupEtaMs: number | null;
+    deliveryEtaMs: number | null;
+    computedAtMs: number;
+    source: string;
+  } | null;
 }
 
 interface CarrierLocation {
@@ -235,6 +242,28 @@ export default function PackageTrackingPage({
   const [loading, setLoading] = useState(true);
   // Tracks whether carrierLocation came from the live RTDB feed (vs a stale Firestore seed).
   const [carrierLocationIsLive, setCarrierLocationIsLive] = useState(false);
+  // Persisted ETA countdown (from delivery.eta stored in Firestore)
+  const [persistedEtaRemainingMs, setPersistedEtaRemainingMs] = useState<
+    number | null
+  >(null);
+  useEffect(() => {
+    const eta = delivery?.eta;
+    if (!eta) {
+      setPersistedEtaRemainingMs(null);
+      return;
+    }
+    const prePickup = isTrackingBeforePickup(delivery?.status);
+    const etaMs = prePickup ? eta.pickupEtaMs : eta.deliveryEtaMs;
+    if (!etaMs) {
+      setPersistedEtaRemainingMs(null);
+      return;
+    }
+    const tick = () =>
+      setPersistedEtaRemainingMs(Math.max(0, etaMs - Date.now()));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [delivery?.eta, delivery?.status]);
 
   useEffect(() => {
     if (!id) {
@@ -279,6 +308,7 @@ export default function PackageTrackingPage({
           trackingRouteSummary: toDeliveryTrackingRouteSummary(
             data.trackingRouteSummary,
           ),
+          eta: data.eta ?? null,
         });
         setLoading(false);
       } else {
@@ -735,11 +765,32 @@ export default function PackageTrackingPage({
                 ⏱ {etaLabel}: {etaToPickupText}
               </span>
             )}
+            {isBeforePickupStatus &&
+              !etaToPickupText &&
+              persistedEtaRemainingMs !== null && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-800 border border-emerald-200">
+                  ⏱ {etaLabel}:{" "}
+                  {persistedEtaRemainingMs <= 0
+                    ? "arriving now"
+                    : formatEtaCountdown(persistedEtaRemainingMs)}
+                </span>
+              )}
             {!isBeforePickupStatus &&
               delivery.status !== "delivered" &&
               etaToDeliveryText && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-800 border border-emerald-200">
                   ⏱ {etaLabel}: {etaToDeliveryText}
+                </span>
+              )}
+            {!isBeforePickupStatus &&
+              delivery.status !== "delivered" &&
+              !etaToDeliveryText &&
+              persistedEtaRemainingMs !== null && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-800 border border-emerald-200">
+                  ⏱ {etaLabel}:{" "}
+                  {persistedEtaRemainingMs <= 0
+                    ? "arriving now"
+                    : formatEtaCountdown(persistedEtaRemainingMs)}
                 </span>
               )}
             {delivery.estimatedDelivery && (
