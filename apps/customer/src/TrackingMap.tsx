@@ -106,6 +106,15 @@ interface MarkerData {
   deliveryId: string;
 }
 
+const getCircleMarkerIcon = (fillColor: string, scale: number) => ({
+  path: window.google?.maps?.SymbolPath?.CIRCLE ?? 0,
+  scale,
+  fillColor,
+  fillOpacity: 1,
+  strokeColor: "#ffffff",
+  strokeWeight: 2,
+});
+
 const clampGradientProgress = (p: number) => Math.min(1, Math.max(0, p));
 
 const getGradientRouteColor = (progress: number) => {
@@ -910,7 +919,20 @@ export default function TrackingMap({ user }: Props) {
 
       let marker: any;
       if (existingMarker) {
+        const iconColor =
+          markerData.type === "pickup"
+            ? "#059669"
+            : markerData.type === "delivery"
+              ? "#DC2626"
+              : "#3B82F6";
         existingMarker.setPosition(position);
+        existingMarker.setIcon(
+          getCircleMarkerIcon(
+            iconColor,
+            markerData.type === "current" ? 12 : 9,
+          ),
+        );
+        existingMarker.setMap(mapInstance.current);
         marker = existingMarker;
       } else {
         try {
@@ -921,14 +943,10 @@ export default function TrackingMap({ user }: Props) {
                 ? "#DC2626"
                 : "#3B82F6";
 
-          const icon = {
-            path: window.google.maps.SymbolPath.CIRCLE,
-            fillColor: iconColor,
-            fillOpacity: 1,
-            strokeColor: "#FFFFFF",
-            strokeWeight: 2,
-            scale: markerData.type === "current" ? 12 : 9,
-          };
+          const icon = getCircleMarkerIcon(
+            iconColor,
+            markerData.type === "current" ? 12 : 9,
+          );
 
           marker = new window.google.maps.Marker({
             position,
