@@ -1,7 +1,12 @@
 // apps/customer/src/OrderDetails.tsx
 import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { db } from "@config";
+import {
+  db,
+  formatEtaCountdown,
+  getActiveEtaMs,
+  type DeliveryEta,
+} from "@config";
 import { doc, getDoc } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -37,6 +42,7 @@ interface OrderDetail {
     otp?: string;
     verified?: boolean;
   };
+  eta?: DeliveryEta | null;
 }
 
 const SUPPORT_EMAIL = "support@ptros.co.ls";
@@ -47,6 +53,12 @@ export default function OrderDetails() {
   const navigate = useNavigate();
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const normalizePhone = (rawPhone?: string) => {
     if (!rawPhone) return "";
@@ -275,6 +287,7 @@ export default function OrderDetails() {
             otpCode: data.otpCode,
             otpVerified: data.otpVerified,
             proofOfDelivery: data.proofOfDelivery,
+            eta: data.eta ?? null,
           });
         } else {
           toast.error("Order not found");
@@ -455,6 +468,26 @@ export default function OrderDetails() {
                   </p>
                 </div>
               )}
+              {(() => {
+                const etaMs = getActiveEtaMs(order.eta, order.status);
+                if (
+                  !etaMs ||
+                  ["delivered", "cancelled"].includes(order.status)
+                ) {
+                  return null;
+                }
+                const remaining = Math.max(0, etaMs - nowMs);
+                return (
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Live ETA</p>
+                    <p className="text-emerald-700 font-semibold">
+                      {remaining <= 0
+                        ? "arriving now"
+                        : formatEtaCountdown(remaining)}
+                    </p>
+                  </div>
+                );
+              })()}
 
               {shouldShowOtp && (
                 <div>

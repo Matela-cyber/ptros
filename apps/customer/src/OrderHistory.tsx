@@ -1,6 +1,11 @@
 // apps/customer/src/OrderHistory.tsx
 import { useState, useEffect } from "react";
-import { db } from "@config";
+import {
+  db,
+  formatEtaCountdown,
+  getActiveEtaMs,
+  type DeliveryEta,
+} from "@config";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { auth } from "@config";
 import { toast, Toaster } from "react-hot-toast";
@@ -15,6 +20,7 @@ interface Order {
   paymentAmount?: number;
   createdAt: Date;
   estimatedDelivery?: Date;
+  eta?: DeliveryEta | null;
 }
 
 export default function OrderHistory() {
@@ -22,6 +28,12 @@ export default function OrderHistory() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("all");
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     const queryFilter = searchParams.get("filter");
@@ -59,6 +71,7 @@ export default function OrderHistory() {
           paymentAmount: Number(data.paymentAmount || 0),
           createdAt: data.createdAt?.toDate() || new Date(),
           estimatedDelivery: data.estimatedDelivery?.toDate(),
+          eta: data.eta ?? null,
         });
       });
 
@@ -225,6 +238,24 @@ export default function OrderHistory() {
                   <p className="mt-2 text-xs text-gray-500 sm:text-sm">
                     Ordered on {order.createdAt.toLocaleDateString()}
                   </p>
+                  {(() => {
+                    const etaMs = getActiveEtaMs(order.eta, order.status);
+                    if (
+                      !etaMs ||
+                      ["delivered", "cancelled"].includes(order.status)
+                    ) {
+                      return null;
+                    }
+                    const remaining = Math.max(0, etaMs - nowMs);
+                    return (
+                      <p className="mt-1 text-xs font-semibold text-emerald-700 sm:text-sm">
+                        ⏱ ETA:{" "}
+                        {remaining <= 0
+                          ? "arriving now"
+                          : formatEtaCountdown(remaining)}
+                      </p>
+                    );
+                  })()}
                   <p className="mt-1 text-xs font-semibold text-purple-700 sm:text-sm">
                     Amount: M{Number(order.paymentAmount || 0).toFixed(2)}
                   </p>

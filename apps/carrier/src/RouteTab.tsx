@@ -23,15 +23,110 @@ import { useGPSLocation } from "./useGPSLocation";
 
 const MASERU_CENTER = { lat: -29.312, lng: 27.4869 };
 
+const formatCountdown = (remainingMs: number): string => {
+  if (remainingMs <= 0) return "Arriving now";
+  const totalMinutes = Math.ceil(remainingMs / 60000);
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+};
+
+const isAwaitingAcceptanceStatus = (status?: Delivery["status"] | null) =>
+  status === "pending" || status === "assigned";
+
+const getRouteStopTone = (
+  type: RouteStop["type"],
+  options?: {
+    visited?: boolean;
+    awaitingAcceptance?: boolean;
+    selected?: boolean;
+  },
+) => {
+  if (options?.visited) {
+    return {
+      container: options.selected
+        ? "bg-gray-100 border-gray-300 ring-2 ring-gray-200"
+        : "bg-gray-50 border-gray-200 opacity-60",
+      badge: "bg-gray-400",
+      typeText: "text-gray-400",
+      markerFill: "#9ca3af",
+    };
+  }
+
+  if (options?.awaitingAcceptance) {
+    return type === "pickup"
+      ? {
+          container: options.selected
+            ? "bg-amber-100 border-amber-400 ring-2 ring-amber-300"
+            : "bg-amber-50 border-amber-200",
+          badge: "bg-amber-500",
+          typeText: "text-amber-700",
+          markerFill: "#F59E0B",
+        }
+      : {
+          container: options.selected
+            ? "bg-orange-100 border-orange-400 ring-2 ring-orange-300"
+            : "bg-orange-50 border-orange-200",
+          badge: "bg-orange-500",
+          typeText: "text-orange-700",
+          markerFill: "#F97316",
+        };
+  }
+
+  return type === "pickup"
+    ? {
+        container: options?.selected
+          ? "bg-blue-100 border-blue-400 ring-2 ring-blue-300"
+          : "bg-blue-50 border-blue-200",
+        badge: "bg-blue-600",
+        typeText: "text-blue-700",
+        markerFill: "#2563EB",
+      }
+    : {
+        container: options?.selected
+          ? "bg-green-100 border-green-400 ring-2 ring-green-300"
+          : "bg-green-50 border-green-200",
+        badge: "bg-green-600",
+        typeText: "text-green-700",
+        markerFill: "#16a34a",
+      };
+};
+
+const formatEtaMeta = (stop: RouteStop, nowMs: number) => {
+  if (typeof stop.etaToReachMs !== "number") return null;
+
+  const countdown = formatCountdown(stop.etaToReachMs - nowMs);
+  const distance =
+    typeof stop.distanceFromCarrierKm === "number"
+      ? `${stop.distanceFromCarrierKm.toFixed(2)} km`
+      : null;
+  const updatedAt =
+    typeof stop.reoptimizedAtMs === "number"
+      ? new Date(stop.reoptimizedAtMs).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : null;
+
+  return {
+    countdown,
+    distance,
+    updatedAt,
+  };
+};
+
 // â”€â”€â”€ Delivery Detail Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function DeliveryModal({
   delivery,
   stop,
+  nowMs,
   onClose,
   onStatusUpdated,
 }: {
   delivery: Delivery | undefined;
   stop: RouteStop;
+  nowMs: number;
   onClose: () => void;
   onStatusUpdated?: () => void;
 }) {
@@ -55,6 +150,7 @@ function DeliveryModal({
   }
 
   const typeColor = stop.type === "pickup" ? "bg-blue-600" : "bg-green-600";
+  const stopEtaMeta = formatEtaMeta(stop, nowMs);
 
   const handleStatusUpdate = async (newStatus: Delivery["status"]) => {
     if (newStatus === "delivered") {
@@ -245,6 +341,24 @@ function DeliveryModal({
               [{stop.lat.toFixed(5)}, {stop.lng.toFixed(5)}]
             </span>,
           ],
+          ...(stopEtaMeta
+            ? [
+                [
+                  "ETA",
+                  <span className="font-medium text-emerald-700">
+                    {stopEtaMeta.countdown}
+                    {stopEtaMeta.distance ? ` · ${stopEtaMeta.distance}` : ""}
+                  </span>,
+                ],
+                [
+                  "Updated",
+                  <span className="text-gray-600">
+                    {stopEtaMeta.updatedAt || "—"}
+                    {stop.etaSource ? ` · ${stop.etaSource}` : ""}
+                  </span>,
+                ],
+              ]
+            : []),
         ].map(([label, value], i) => (
           <div key={i} className="flex items-start gap-2">
             <span className="text-gray-400 w-28 shrink-0 mt-0.5">
@@ -331,11 +445,15 @@ function DeliveryModal({
 // â”€â”€â”€ Route Map View (vanilla window.google.maps â€” same pattern as coordinator LiveMap) â”€â”€â”€
 function RouteMap({
   orderedStops,
+  stopStatusesByDeliveryId,
+  nowMs,
   carrierPos,
   pathMode,
   onStopClick,
 }: {
   orderedStops: RouteStop[];
+  stopStatusesByDeliveryId: Record<string, Delivery["status"] | undefined>;
+  nowMs: number;
   carrierPos: CarrierPosition | null;
   pathMode: "straight" | "road";
   onStopClick: (stop: RouteStop) => void;
@@ -346,6 +464,8 @@ function RouteMap({
   const carrierMarkerRef = useRef<any>(null);
   const polylineRef = useRef<any>(null);
   const infoWindowRef = useRef<any>(null);
+  const onStopClickRef = useRef(onStopClick);
+  const lastAutoFitKeyRef = useRef<string>("");
   const [mapsReady, setMapsReady] = useState<boolean>(!!window.google?.maps);
 
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
@@ -399,6 +519,10 @@ function RouteMap({
 
   // â”€â”€ Update stop markers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
+    onStopClickRef.current = onStopClick;
+  }, [onStopClick]);
+
+  useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !window.google?.maps) return;
 
@@ -415,14 +539,16 @@ function RouteMap({
     validStops.forEach((stop, idx) => {
       const key = `${stop.id}_${stop.type}`;
       const pos = { lat: stop.lat, lng: stop.lng };
-      const fillColor = stop.visited
-        ? "#9ca3af"
-        : stop.type === "pickup"
-          ? "#2563EB"
-          : "#16a34a";
+      const tone = getRouteStopTone(stop.type, {
+        visited: stop.visited,
+        awaitingAcceptance: isAwaitingAcceptanceStatus(
+          stopStatusesByDeliveryId[stop.id],
+        ),
+      });
+      const etaMeta = formatEtaMeta(stop, nowMs);
       const icon = {
         path: window.google.maps.SymbolPath.CIRCLE,
-        fillColor,
+        fillColor: tone.markerFill,
         fillOpacity: 1,
         strokeColor: "#ffffff",
         strokeWeight: 2,
@@ -434,12 +560,27 @@ function RouteMap({
         fontWeight: "bold",
         fontSize: "11px",
       };
+      const openStopInfo = (marker: any) => {
+        infoWindowRef.current?.setContent(
+          `<div style="font-family:system-ui;padding:4px 2px;min-width:150px">` +
+            `<strong>${stop.type === "pickup" ? "Pickup" : "Dropoff"} #${idx + 1}</strong>` +
+            `<p style="margin:4px 0 0;font-size:12px;color:#374151">${stop.address || "(no address)"}</p>` +
+            (etaMeta
+              ? `<p style="margin:6px 0 0;font-size:12px;color:#047857"><strong>ETA:</strong> ${etaMeta.countdown}${etaMeta.distance ? ` · ${etaMeta.distance}` : ""}</p>${etaMeta.updatedAt ? `<p style="margin:2px 0 0;font-size:11px;color:#6b7280">Updated ${etaMeta.updatedAt}${stop.etaSource ? ` · ${stop.etaSource}` : ""}</p>` : ""}`
+              : "") +
+            `</div>`,
+        );
+        infoWindowRef.current?.open(map, marker);
+        onStopClickRef.current(stop);
+      };
 
       const existing = markersRef.current.get(key);
       if (existing) {
         existing.setPosition(pos);
         existing.setIcon(icon);
         existing.setLabel(label);
+        window.google.maps.event.clearListeners(existing, "click");
+        existing.addListener("click", () => openStopInfo(existing));
       } else {
         const marker = new window.google.maps.Marker({
           position: pos,
@@ -449,25 +590,22 @@ function RouteMap({
           zIndex: stop.visited ? 1 : 10,
           title: `${stop.type === "pickup" ? "Pickup" : "Dropoff"}: ${stop.address || ""}`,
         });
-        marker.addListener("click", () => {
-          infoWindowRef.current?.setContent(
-            `<div style="font-family:system-ui;padding:4px 2px;min-width:150px">` +
-              `<strong>${stop.type === "pickup" ? "Pickup" : "Dropoff"} #${idx + 1}</strong>` +
-              `<p style="margin:4px 0 0;font-size:12px;color:#374151">${stop.address || "(no address)"}</p></div>`,
-          );
-          infoWindowRef.current?.open(map, marker);
-          onStopClick(stop);
-        });
+        marker.addListener("click", () => openStopInfo(marker));
         markersRef.current.set(key, marker);
       }
     });
 
-    // Fit bounds to all content
-    const bounds = new window.google.maps.LatLngBounds();
-    if (carrierPos) bounds.extend(carrierPos);
-    validStops.forEach((s) => bounds.extend({ lat: s.lat, lng: s.lng }));
-    if (!bounds.isEmpty()) map.fitBounds(bounds, 48);
-  }, [validStops, carrierPos, onStopClick]);
+    const fitKey = validStops
+      .map((s) => `${s.id}_${s.type}:${s.lat.toFixed(5)},${s.lng.toFixed(5)}`)
+      .join("|");
+    if (lastAutoFitKeyRef.current !== fitKey) {
+      lastAutoFitKeyRef.current = fitKey;
+      const bounds = new window.google.maps.LatLngBounds();
+      if (carrierPos) bounds.extend(carrierPos);
+      validStops.forEach((s) => bounds.extend({ lat: s.lat, lng: s.lng }));
+      if (!bounds.isEmpty()) map.fitBounds(bounds, 48);
+    }
+  }, [carrierPos, nowMs, stopStatusesByDeliveryId, validStops]);
 
   // â”€â”€ Carrier position marker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
@@ -597,8 +735,14 @@ export default function RouteTab() {
   const [effectiveCapacityKg, setEffectiveCapacityKg] = useState<number | null>(
     null,
   );
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const prevStatusKeyRef = useRef<string>("");
   const archivingRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // Load effective weight capacity: carrier-specific > coordinator vehicle default
   useEffect(() => {
@@ -938,6 +1082,14 @@ export default function RouteTab() {
     [enrichedActiveStops],
   );
 
+  const stopStatusesByDeliveryId = useMemo(
+    () =>
+      Object.fromEntries(
+        deliveries.map((delivery) => [delivery.id, delivery.status]),
+      ) as Record<string, Delivery["status"] | undefined>,
+    [deliveries],
+  );
+
   // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (error) {
     return (
@@ -1054,6 +1206,8 @@ export default function RouteTab() {
         <>
           <RouteMap
             orderedStops={orderedStops}
+            stopStatusesByDeliveryId={stopStatusesByDeliveryId}
+            nowMs={nowMs}
             carrierPos={carrierPos}
             pathMode={pathMode}
             onStopClick={(stop) =>
@@ -1068,6 +1222,7 @@ export default function RouteTab() {
             <DeliveryModal
               delivery={deliveries.find((d) => d.id === selectedStop.id)}
               stop={selectedStop}
+              nowMs={nowMs}
               onClose={() => setSelectedStop(null)}
               onStatusUpdated={() => setSelectedStop(null)}
             />
@@ -1082,6 +1237,14 @@ export default function RouteTab() {
             const isPickup = stop.type === "pickup";
             const isSelected =
               selectedStop?.id === stop.id && selectedStop?.type === stop.type;
+            const stopStatus = stopStatusesByDeliveryId[stop.id];
+            const isAwaitingAcceptance =
+              !stop.visited && isAwaitingAcceptanceStatus(stopStatus);
+            const tone = getRouteStopTone(stop.type, {
+              visited: stop.visited,
+              awaitingAcceptance: isAwaitingAcceptance,
+              selected: isSelected,
+            });
             const paired = orderedStops.find(
               (s) => s.id === stop.id && s.type !== stop.type,
             );
@@ -1091,47 +1254,30 @@ export default function RouteTab() {
             return (
               <Fragment key={`${stop.id}_${stop.type}`}>
                 <li
-                  className={`rounded-xl border p-3 cursor-pointer transition active:scale-[0.98] ${
-                    isSelected
-                      ? isPickup
-                        ? "bg-blue-100 border-blue-400 ring-2 ring-blue-300"
-                        : "bg-green-100 border-green-400 ring-2 ring-green-300"
-                      : stop.visited
-                        ? "bg-gray-50 border-gray-200 opacity-60"
-                        : isPickup
-                          ? "bg-blue-50 border-blue-200"
-                          : "bg-green-50 border-green-200"
-                  }`}
+                  className={`rounded-xl border p-3 cursor-pointer transition active:scale-[0.98] ${tone.container}`}
                   onClick={() => setSelectedStop(isSelected ? null : stop)}
                 >
                   <div className="flex items-start gap-3">
                     <div
-                      className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${
-                        stop.visited
-                          ? "bg-gray-400"
-                          : isPickup
-                            ? "bg-blue-600"
-                            : "bg-green-600"
-                      }`}
+                      className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${tone.badge}`}
                     >
                       {stop.visited ? "v" : idx + 1}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span
-                          className={`text-xs font-semibold uppercase tracking-wider ${
-                            stop.visited
-                              ? "text-gray-400"
-                              : isPickup
-                                ? "text-blue-700"
-                                : "text-green-700"
-                          }`}
+                          className={`text-xs font-semibold uppercase tracking-wider ${tone.typeText}`}
                         >
                           {isPickup ? "Pickup" : "Dropoff"}
                         </span>
                         {stop.visited && (
                           <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
                             Visited
+                          </span>
+                        )}
+                        {isAwaitingAcceptance && (
+                          <span className="text-xs text-amber-800 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
+                            Awaiting acceptance
                           </span>
                         )}
                       </div>
@@ -1141,6 +1287,31 @@ export default function RouteTab() {
                       <p className="text-xs text-gray-400 mt-0.5 font-mono">
                         [{stop.lat.toFixed(5)}, {stop.lng.toFixed(5)}]
                       </p>
+                      {typeof stop.etaToReachMs === "number" && (
+                        <p className="text-xs mt-1 text-emerald-700 font-medium">
+                          ⏱ ETA to reach:{" "}
+                          {formatCountdown(stop.etaToReachMs - nowMs)}
+                          {typeof stop.distanceFromCarrierKm === "number" && (
+                            <span className="text-gray-500 font-normal">
+                              {" "}
+                              · {stop.distanceFromCarrierKm.toFixed(2)} km
+                            </span>
+                          )}
+                        </p>
+                      )}
+                      {typeof stop.reoptimizedAtMs === "number" && (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Updated{" "}
+                          {new Date(stop.reoptimizedAtMs).toLocaleTimeString(
+                            [],
+                            {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            },
+                          )}
+                          {stop.etaSource ? ` · ${stop.etaSource}` : ""}
+                        </p>
+                      )}
                       {stop.cumulativeLoad !== undefined &&
                         (() => {
                           const load = stop.cumulativeLoad;
@@ -1195,6 +1366,7 @@ export default function RouteTab() {
                     <DeliveryModal
                       delivery={stopDelivery}
                       stop={stop}
+                      nowMs={nowMs}
                       onClose={() => setSelectedStop(null)}
                       onStatusUpdated={() => setSelectedStop(null)}
                     />
@@ -1226,6 +1398,8 @@ export default function RouteTab() {
           return (
             <RouteMap
               orderedStops={enrichedVisited}
+              stopStatusesByDeliveryId={stopStatusesByDeliveryId}
+              nowMs={nowMs}
               carrierPos={carrierPos}
               pathMode={pathMode}
               onStopClick={(stop) =>
@@ -1243,6 +1417,7 @@ export default function RouteTab() {
         <DeliveryModal
           delivery={deliveries.find((d) => d.id === selectedStop.id)}
           stop={selectedStop}
+          nowMs={nowMs}
           onClose={() => setSelectedStop(null)}
           onStatusUpdated={() => setSelectedStop(null)}
         />
@@ -1378,6 +1553,7 @@ export default function RouteTab() {
                       <DeliveryModal
                         delivery={stopDelivery}
                         stop={stop}
+                        nowMs={nowMs}
                         onClose={() => setSelectedStop(null)}
                         onStatusUpdated={() => setSelectedStop(null)}
                       />

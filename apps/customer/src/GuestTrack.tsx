@@ -1,10 +1,15 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { db } from "@config";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, limit } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faBox, faClock, faLocationDot, faPhone } from "@fortawesome/free-solid-svg-icons";
+import {
+  faBox,
+  faClock,
+  faLocationDot,
+  faPhone,
+} from "@fortawesome/free-solid-svg-icons";
 
 export default function GuestTrack() {
   const navigate = useNavigate();
@@ -24,6 +29,7 @@ export default function GuestTrack() {
       const q = query(
         collection(db, "deliveries"),
         where("trackingCode", "==", trackingCode.toUpperCase()),
+        limit(1),
       );
 
       const snapshot = await getDocs(q);

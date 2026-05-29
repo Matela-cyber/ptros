@@ -14,6 +14,12 @@ export interface RouteStop {
   visitOrder?: number; // timestamp (ms) when this stop was archived as visited
   loadKg?: number; // this stop's package weight
   cumulativeLoad?: number; // running carrier load after this stop
+  // ETA metadata written on each reoptimization/save for per-stop countdowns
+  etaToReachMs?: number | null;
+  etaComputedAtMs?: number;
+  etaSource?: "accepted" | "reoptimized";
+  reoptimizedAtMs?: number;
+  distanceFromCarrierKm?: number | null;
 }
 
 export interface CarrierPosition {

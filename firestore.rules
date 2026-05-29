@@ -185,9 +185,15 @@ service cloud.firestore {
     // Main delivery records with status, location, OTP, assignments, milestones
     match /deliveries/{deliveryId} {
       
-      // GUEST: Public read access for guest tracking (trackingCode must match - verified client-side)
-      // Guests can view basic delivery info by knowing the tracking code
-      allow read: if request.auth == null;
+      // GUEST: Public tracking is limited to single-document lookups.
+      // - `get` supports the guest tracking details page once the delivery id is known.
+      // - `list` is capped to limit(1) to reduce anonymous collection scraping.
+      // Tracking-code verification still happens in app flow; a dedicated public-tracking
+      // collection would be needed to lock this down further without breaking guest UX.
+      allow get: if request.auth == null;
+      allow list: if request.auth == null
+        && request.query.limit != null
+        && request.query.limit <= 1;
 
       // COORDINATOR: Full access - create, read, update all deliveries
       allow read: if isCoordinator();
@@ -245,8 +251,16 @@ service cloud.firestore {
           'routeFeedback',
           'routeReviews',
           'optimizationReasons',
-          'trackingRouteSummary'
+          'trackingRouteSummary',
+          'eta'
         ]);
+
+      // CARRIER: Write ETA-only update to any delivery in their active route.
+      // refreshRouteEtas() batch-writes only the eta field across all deliveries
+      // in the carrier's linked-list route after every accept or reoptimise.
+      allow update: if isCarrier()
+        && resource.data.carrierId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['eta']);
 
       // CARRIER: Decline/unassign their currently assigned delivery back to pending
       allow update: if isCarrier()
@@ -430,11 +444,19 @@ service cloud.firestore {
     // ==================== ROUTE NETWORK SEGMENTS ====================
     // Shared route governance overlays (shortcuts, blocked paths, restrictions)
     match /routeNetworkSegments/{segmentId} {
-      // Used across coordinator/carrier/customer maps
-      allow read: if isAuth();
+      // Public read: guest customers on the tracking page need these for map overlays.
+      // This data is non-sensitive road/path metadata.
+      allow read: if true;
 
-      // Coordinator curates and governs the route network
+      // Coordinator: full lifecycle management of the route network
       allow create, update, delete: if isCoordinator();
+
+      // Carrier: can create segments they authored and manage their own submissions
+      allow create: if isCarrier()
+        && request.resource.data.createdBy == request.auth.uid;
+
+      allow update, delete: if isCarrier()
+        && resource.data.createdBy == request.auth.uid;
     }
 
     // ==================== ROUTE REPORTS ====================
@@ -442,6 +464,10 @@ service cloud.firestore {
     match /routeReports/{reportId} {
       // Coordinator can review all reports
       allow read: if isCoordinator();
+
+      // Carrier can read their own submitted reports
+      allow read: if isCarrier()
+        && resource.data.reportedBy == request.auth.uid;
 
       // Carrier can submit report only for own assigned delivery
       allow create: if isCarrier()

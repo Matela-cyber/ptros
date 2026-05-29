@@ -102,6 +102,23 @@ const getCircleMarkerIcon = (
   };
 };
 
+const isAwaitingAcceptance = (status?: string | null) =>
+  status === "pending" || status === "assigned";
+
+const getStopMarkerColors = (status?: string | null) => {
+  if (isAwaitingAcceptance(status)) {
+    return {
+      pickup: "#F59E0B",
+      dropoff: "#F97316",
+    };
+  }
+
+  return {
+    pickup: "#059669",
+    dropoff: "#DC2626",
+  };
+};
+
 type GradientRouteSegment = {
   id: string;
   path: MapPoint[];
@@ -538,6 +555,7 @@ export default function CarrierLiveTrack() {
 
   const routeStartPoint = pickupPoint;
   const routeEndPoint = destinationPoint;
+  const stopColors = getStopMarkerColors(delivery?.status);
 
   const mapCenter = isBeforePickupStatus
     ? routeStartPoint || routeEndPoint || DEFAULT_CENTER
@@ -681,7 +699,7 @@ export default function CarrierLiveTrack() {
       "pickup",
       routeStartPoint,
       "Pickup location",
-      getCircleMarkerIcon("#059669", 9),
+      getCircleMarkerIcon(stopColors.pickup, 9),
       110,
       [delivery.pickupAddress || "Pickup unavailable"],
     );
@@ -690,7 +708,7 @@ export default function CarrierLiveTrack() {
       "dropoff",
       routeEndPoint,
       "Dropoff location",
-      getCircleMarkerIcon("#DC2626", 9),
+      getCircleMarkerIcon(stopColors.dropoff, 9),
       110,
       [delivery.deliveryAddress || "Destination unavailable"],
     );
@@ -714,6 +732,8 @@ export default function CarrierLiveTrack() {
     currentPoint,
     delivery,
     mapInstance,
+    stopColors.dropoff,
+    stopColors.pickup,
     routeEndPoint,
     routeStartPoint,
     showCarrierMarker,
@@ -871,7 +891,15 @@ export default function CarrierLiveTrack() {
                 <span style={{ color: "#059669" }}>⬤</span> Green: Pickup
               </li>
               <li>
+                <span style={{ color: "#F59E0B" }}>⬤</span> Amber: Awaiting
+                acceptance
+              </li>
+              <li>
                 <span style={{ color: "#DC2626" }}>⬤</span> Red: Dropoff
+              </li>
+              <li>
+                <span style={{ color: "#F97316" }}>⬤</span> Orange: Unaccepted
+                delivery stop
               </li>
               <li>
                 <span style={{ color: "#3B82F6" }}>⬤</span> Blue: Carrier
