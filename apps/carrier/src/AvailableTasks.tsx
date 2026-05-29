@@ -127,7 +127,7 @@ export default function AvailableTasks() {
         success = await CarrierService.acceptTask(jobId);
       }
       if (success) {
-        await CarrierService.saveRouteStops(chosenRoute);
+        await CarrierService.saveRouteStops(chosenRoute, "accepted");
         toast.success("Job accepted! Route updated.");
         if (source === "assigned")
           setAssignedTasks((prev) => prev.filter((t) => t.id !== jobId));

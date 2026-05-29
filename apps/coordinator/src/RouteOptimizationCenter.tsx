@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { db, syncSystemLocationGraphStructures } from "@config";
+import { db } from "@config";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { Link } from "react-router-dom";
 import { toast, Toaster } from "react-hot-toast";
@@ -43,14 +43,6 @@ export default function RouteOptimizationCenter() {
   const [promotingReportId, setPromotingReportId] = useState<string | null>(
     null,
   );
-  const [syncingGraph, setSyncingGraph] = useState(false);
-  const [lastGraphSyncSummary, setLastGraphSyncSummary] = useState<{
-    attempted: number;
-    succeeded: number;
-    failed: number;
-    warnings: number;
-    sampleFailures: string[];
-  } | null>(null);
 
   useEffect(() => {
     const unsubSegments = subscribeManagedRouteSegments(setSegments);
@@ -153,63 +145,6 @@ export default function RouteOptimizationCenter() {
     }
   };
 
-  const handleSyncGraphStructure = async () => {
-    try {
-      setSyncingGraph(true);
-      const result = await syncSystemLocationGraphStructures({
-        trigger: "manual_sync",
-        statuses: [
-          "pending",
-          "created",
-          "assigned",
-          "accepted",
-          "waiting_for_pickup",
-          "picked_up",
-          "in_transit",
-          "out_for_delivery",
-          "delivered",
-        ],
-      });
-
-      const warnings = result.results.reduce(
-        (total, item) => total + item.warnings.length,
-        0,
-      );
-      const sampleFailures = result.results
-        .filter((item) => !item.success)
-        .slice(0, 3)
-        .map((item) => `${item.deliveryId}: ${item.message}`);
-
-      setLastGraphSyncSummary({
-        attempted: result.attempted,
-        succeeded: result.succeeded,
-        failed: result.failed,
-        warnings,
-        sampleFailures,
-      });
-
-      if (result.failed > 0) {
-        toast.error(
-          `Graph sync completed with failures • ${result.succeeded}/${result.attempted} succeeded • ${result.failed} failed`,
-          { duration: 8000 },
-        );
-      } else {
-        toast.success(
-          `Graph sync successful • ${result.succeeded}/${result.attempted} deliveries synchronized${warnings ? ` • ${warnings} warning(s)` : ""}`,
-          { duration: 7000 },
-        );
-      }
-    } catch (error: any) {
-      console.error("Error syncing graph structures:", error);
-      toast.error(
-        `Graph sync failed to run: ${error?.message || "Unknown error"}`,
-        { duration: 8000 },
-      );
-    } finally {
-      setSyncingGraph(false);
-    }
-  };
-
   return (
     <div className="space-y-5">
       <Toaster position="top-right" />
@@ -225,16 +160,6 @@ export default function RouteOptimizationCenter() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={handleSyncGraphStructure}
-            disabled={syncingGraph}
-            className="inline-flex items-center rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {syncingGraph
-              ? "Syncing graph structure..."
-              : "Sync Graph Structure"}
-          </button>
           <Link
             to="/routes/management"
             className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
@@ -243,32 +168,6 @@ export default function RouteOptimizationCenter() {
           </Link>
         </div>
       </div>
-
-      {lastGraphSyncSummary && (
-        <div
-          className={`rounded-lg border p-3 text-xs ${
-            lastGraphSyncSummary.failed > 0
-              ? "border-red-200 bg-red-50 text-red-700"
-              : "border-emerald-200 bg-emerald-50 text-emerald-700"
-          }`}
-        >
-          <p className="font-medium">
-            Graph sync summary: {lastGraphSyncSummary.succeeded}/
-            {lastGraphSyncSummary.attempted} succeeded
-            {lastGraphSyncSummary.failed > 0 &&
-              ` • ${lastGraphSyncSummary.failed} failed`}
-            {lastGraphSyncSummary.warnings > 0 &&
-              ` • ${lastGraphSyncSummary.warnings} warning(s)`}
-          </p>
-          {lastGraphSyncSummary.sampleFailures.length > 0 && (
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
-              {lastGraphSyncSummary.sampleFailures.map((failure) => (
-                <li key={failure}>{failure}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4 shadow-sm">

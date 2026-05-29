@@ -1,7 +1,12 @@
 // apps/coordinator/src/DeliveryDetails.tsx
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { db } from "@config";
+import {
+  db,
+  formatEtaCountdown,
+  getActiveEtaMs,
+  type DeliveryEta,
+} from "@config";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
 import { format } from "date-fns";
@@ -84,6 +89,7 @@ interface DeliveryDetails {
   coordinatorReviewRequired?: boolean;
   coordinatorReviewReasons?: string[];
   proposedCarrier?: ProposedCarrier | null;
+  eta?: DeliveryEta | null;
 }
 
 export default function DeliveryDetails() {
@@ -97,6 +103,12 @@ export default function DeliveryDetails() {
     null,
   );
   const [loadingProfiles, setLoadingProfiles] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (id) {
@@ -144,6 +156,7 @@ export default function DeliveryDetails() {
           coordinatorReviewRequired: data.coordinatorReviewRequired ?? false,
           coordinatorReviewReasons: data.coordinatorReviewReasons ?? [],
           proposedCarrier: data.proposedCarrier ?? null,
+          eta: data.eta ?? null,
         });
 
         // Fetch customer and carrier profiles
@@ -1045,6 +1058,28 @@ export default function DeliveryDetails() {
                     format(delivery.updatedAt, "MMM d, yyyy h:mm a")}
                 </p>
               </div>
+              {(() => {
+                const etaMs = getActiveEtaMs(delivery.eta, delivery.status);
+                if (
+                  !etaMs ||
+                  ["delivered", "cancelled"].includes(delivery.status)
+                ) {
+                  return null;
+                }
+                const remaining = Math.max(0, etaMs - nowMs);
+                return (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-500">
+                      ETA
+                    </label>
+                    <p className="mt-1 text-sm font-semibold text-emerald-700">
+                      {remaining <= 0
+                        ? "arriving now"
+                        : formatEtaCountdown(remaining)}
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 

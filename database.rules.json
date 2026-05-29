@@ -2,28 +2,52 @@
   "rules": {
     "tracks": {
       "$uid": {
+        // Only the carrier themselves can publish their GPS position
         ".read": "auth != null",
-        ".write": "auth.uid === $uid"
+        ".write": "auth.uid === $uid",
+        ".validate": "newData.hasChildren(['lat', 'lng'])
+          && newData.child('lat').isNumber()
+          && newData.child('lng').isNumber()"
       }
     },
     "deliveryTracks": {
       "$deliveryId": {
+        // Public read so guest customers can subscribe to live carrier position
+        // without needing a Firebase account
         ".read": true,
-        ".write": "auth != null"
+        // Authenticated writers must stamp their own uid as carrierId.
+        // Existing carrier-owned records remain mutable by that same uid and can be deleted
+        // on disconnect; legacy records without carrierId may be claimed on the next write.
+        ".write": "auth != null && ( (!newData.exists() && data.exists() && data.child('carrierId').isString() && data.child('carrierId').val() === auth.uid) || (newData.exists() && ( (!data.exists() && newData.child('carrierId').isString() && newData.child('carrierId').val() === auth.uid) || (!data.child('carrierId').exists() && newData.child('carrierId').isString() && newData.child('carrierId').val() === auth.uid) || (data.child('carrierId').isString() && data.child('carrierId').val() === auth.uid && newData.child('carrierId').val() === data.child('carrierId').val()) ) ) )",
+        ".validate": "newData.hasChildren(['lat', 'lng', 'carrierId', 'timestampMs'])
+          && newData.child('lat').isNumber()
+          && newData.child('lng').isNumber()
+          && newData.child('carrierId').isString()
+          && newData.child('timestampMs').isNumber()"
       }
     },
     "deliveryRouteBuffer": {
       "$deliveryId": {
         ".read": "auth != null",
         "$pointId": {
-          ".write": "auth != null"
+          ".write": "auth != null && newData.exists() && newData.child('carrierId').isString() && newData.child('carrierId').val() === auth.uid",
+          ".validate": "newData.hasChildren(['lat', 'lng', 'carrierId', 'timestampMs'])
+            && newData.child('lat').isNumber()
+            && newData.child('lng').isNumber()
+            && newData.child('carrierId').isString()
+            && newData.child('timestampMs').isNumber()"
         }
       }
     },
     "locationNodeLive": {
       "$nodeId": {
+        // Coordinators and carriers read/write live graph node positions.
+        // Guests do not need this data.
         ".read": "auth != null",
-        ".write": "auth != null"
+        ".write": "auth != null",
+        ".validate": "newData.hasChildren(['lat', 'lng'])
+          && newData.child('lat').isNumber()
+          && newData.child('lng').isNumber()"
       }
     }
   }

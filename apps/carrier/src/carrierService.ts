@@ -254,6 +254,53 @@ export class CarrierService {
     await batch.commit();
   }
 
+  private static async resolveEtaAnchorFromCarrier(
+    userId: string,
+    orderedStops: Array<{ lat?: number; lng?: number }>,
+  ): Promise<{ lat: number; lng: number } | null> {
+    // 1) Prefer RTDB live GPS
+    const trackSnap = await rtdbGet(rtdbRef(realtimeDb, `tracks/${userId}`));
+    const track = trackSnap.val() as { lat?: number; lng?: number } | null;
+    if (
+      typeof track?.lat === "number" &&
+      Number.isFinite(track.lat) &&
+      typeof track?.lng === "number" &&
+      Number.isFinite(track.lng)
+    ) {
+      return { lat: track.lat, lng: track.lng };
+    }
+
+    // 2) Fallback to Firestore user.currentLocation
+    const userSnap = await getDoc(doc(db, "users", userId));
+    const userLoc = userSnap.exists()
+      ? (userSnap.data()?.currentLocation as
+          | { lat?: number; lng?: number }
+          | undefined)
+      : undefined;
+    if (
+      typeof userLoc?.lat === "number" &&
+      Number.isFinite(userLoc.lat) &&
+      typeof userLoc?.lng === "number" &&
+      Number.isFinite(userLoc.lng)
+    ) {
+      return { lat: userLoc.lat, lng: userLoc.lng };
+    }
+
+    // 3) Last resort: first stop coordinates
+    const firstWithCoords = orderedStops.find(
+      (stop) =>
+        typeof stop?.lat === "number" &&
+        Number.isFinite(stop.lat) &&
+        typeof stop?.lng === "number" &&
+        Number.isFinite(stop.lng),
+    );
+    if (firstWithCoords?.lat != null && firstWithCoords?.lng != null) {
+      return { lat: firstWithCoords.lat, lng: firstWithCoords.lng };
+    }
+
+    return null;
+  }
+
   /**
    * Recompute and persist ETAs for every delivery in the carrier's route.
    * Walks the linked-list order from the carrier's live GPS position and
@@ -267,20 +314,23 @@ export class CarrierService {
     const user = auth.currentUser;
     if (!user || !stops.length) return;
 
-    // Fetch carrier's live GPS from RTDB
-    const trackSnap = await rtdbGet(rtdbRef(realtimeDb, `tracks/${user.uid}`));
-    const track = trackSnap.val() as { lat?: number; lng?: number } | null;
-    if (!track?.lat || !track?.lng) return;
-
     const nowMs = Date.now();
     const AVG_SPEED_KMH = 30;
     let cumKm = 0;
-    let prev = { lat: track.lat, lng: track.lng };
 
     // Traverse stops in linked-list order
     const ordered = getOrderedStops(
       stops as Parameters<typeof getOrderedStops>[0],
     );
+    if (!ordered.length) return;
+
+    const anchor = await CarrierService.resolveEtaAnchorFromCarrier(
+      user.uid,
+      ordered,
+    );
+    if (!anchor) return;
+
+    let prev = { lat: anchor.lat, lng: anchor.lng };
 
     // Map: deliveryId → { pickupEtaMs?, deliveryEtaMs?, distToPickupKm? }
     const etaMap = new Map<
@@ -339,18 +389,61 @@ export class CarrierService {
     await etaBatch.commit();
   }
 
-  static async saveRouteStops(stops: any[]): Promise<void> {
+  static async saveRouteStops(
+    stops: any[],
+    etaSource: "accepted" | "reoptimized" = "reoptimized",
+  ): Promise<void> {
     const user = auth.currentUser;
     if (!user) throw new Error("Not authenticated");
     const batch = writeBatch(db);
     const stopsCol = collection(db, "users", user.uid, "routeStops");
+    const nowMs = Date.now();
+    const AVG_SPEED_KMH = 30;
+    const ordered = getOrderedStops(
+      stops as Parameters<typeof getOrderedStops>[0],
+    );
+    const anchor = await CarrierService.resolveEtaAnchorFromCarrier(
+      user.uid,
+      ordered,
+    );
+
+    const stopTiming = new Map<string, { etaMs: number; distanceKm: number }>();
+    if (anchor) {
+      let prev = { lat: anchor.lat, lng: anchor.lng };
+      let cumKm = 0;
+      for (const stop of ordered) {
+        if (
+          typeof stop?.lat !== "number" ||
+          !Number.isFinite(stop.lat) ||
+          typeof stop?.lng !== "number" ||
+          !Number.isFinite(stop.lng)
+        ) {
+          continue;
+        }
+        const segMeters = haversineDistanceMeters(prev, {
+          lat: stop.lat,
+          lng: stop.lng,
+        });
+        cumKm += segMeters / 1000;
+        const etaMs = nowMs + (cumKm / AVG_SPEED_KMH) * 3_600_000;
+        stopTiming.set(`${stop.id}_${stop.type}`, { etaMs, distanceKm: cumKm });
+        prev = { lat: stop.lat, lng: stop.lng };
+      }
+    }
+
     // Write new stops with prevId/nextId
     stops.forEach((stop) => {
       const docRef = doc(stopsCol, `${stop.id}_${stop.type}`);
+      const timing = stopTiming.get(`${stop.id}_${stop.type}`);
       batch.set(docRef, {
         ...stop,
         prevId: stop.prevId ?? null,
         nextId: stop.nextId ?? null,
+        etaToReachMs: timing?.etaMs ?? null,
+        etaComputedAtMs: nowMs,
+        etaSource,
+        reoptimizedAtMs: nowMs,
+        distanceFromCarrierKm: timing?.distanceKm ?? null,
       });
     });
     // Remove any stops not in the new list
@@ -365,7 +458,7 @@ export class CarrierService {
     });
     await batch.commit();
     // Recompute ETAs from carrier's current GPS through all route stops
-    CarrierService.refreshRouteEtas(stops, "reoptimized").catch((e) =>
+    CarrierService.refreshRouteEtas(stops, etaSource).catch((e) =>
       console.warn("ETA refresh failed:", e),
     );
     await CarrierService.syncDeliveryTrackingRouteSummaries(
@@ -1071,6 +1164,9 @@ export class CarrierService {
     lng: number,
   ): Promise<boolean> {
     try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("Not authenticated");
+
       const now = Date.now();
       const FIRESTORE_UPDATE_INTERVAL = 10 * 60 * 1000; // 10 minutes in milliseconds
 
@@ -1124,6 +1220,7 @@ export class CarrierService {
         await rtdbSet(dRef, {
           lat,
           lng,
+          carrierId: currentUser.uid,
           timestamp: ms,
           timestampISO: lesothoISO, // Lesotho time
           timestampMs: ms,
@@ -1138,8 +1235,10 @@ export class CarrierService {
         await rtdbSet(routeBufferRef, {
           lat,
           lng,
+          carrierId: currentUser.uid,
           timestamp: ms,
           timestampISO: lesothoISO,
+          timestampMs: ms,
           timestampUtcISO: utcISO,
           timezone: "SAST",
         });

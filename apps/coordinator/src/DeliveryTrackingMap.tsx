@@ -8,6 +8,7 @@ import {
 import {
   db,
   realtimeDb,
+  computeEtaAbsoluteMs,
   formatEtaCountdown,
   formatTrackingEta,
   formatRouteNetworkSegmentType,
@@ -1095,10 +1096,39 @@ export default function DeliveryTrackingMap() {
     if (!id || !recommendedCarrier) return;
 
     try {
+      const nowMs = Date.now();
+      const pickupKm = Number(recommendedCarrier.distanceKm || 0);
+      const pickupEtaMs = computeEtaAbsoluteMs(pickupKm, nowMs);
+      const routeKm =
+        delivery?.pickupLocation && delivery?.deliveryLocation
+          ? pickupKm +
+            (window.google?.maps
+              ? window.google.maps.geometry.spherical.computeDistanceBetween(
+                  new window.google.maps.LatLng(
+                    delivery.pickupLocation.lat,
+                    delivery.pickupLocation.lng,
+                  ),
+                  new window.google.maps.LatLng(
+                    delivery.deliveryLocation.lat,
+                    delivery.deliveryLocation.lng,
+                  ),
+                ) / 1000
+              : pickupKm)
+          : pickupKm;
+
       await updateDoc(doc(db, "deliveries", id), {
         carrierId: recommendedCarrier.id,
         carrierName: recommendedCarrier.fullName,
         status: "assigned",
+        eta: {
+          pickupEtaMs,
+          deliveryEtaMs: computeEtaAbsoluteMs(routeKm, nowMs),
+          computedAtMs: nowMs,
+          source: "assigned",
+          distanceToPickupKm: pickupKm,
+          totalDistanceKm: routeKm,
+          avgSpeedKmh: 30,
+        },
         optimizationReasons: arrayUnion({
           type: "reassignment",
           reason: `Reassigned to ${recommendedCarrier.fullName} after in-transit optimization`,

@@ -1,6 +1,11 @@
 // apps/coordinator/src/ActiveDeliveries.tsx
 import { useState, useEffect, useMemo } from "react";
-import { db } from "@config";
+import {
+  db,
+  formatEtaCountdown,
+  getActiveEtaMs,
+  type DeliveryEta,
+} from "@config";
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -31,6 +36,7 @@ interface Delivery {
   deliveryDate?: Date;
   pickupLocation?: { lat: number; lng: number };
   deliveryLocation?: { lat: number; lng: number };
+  eta?: DeliveryEta | null;
 }
 
 export default function ActiveDeliveries() {
@@ -53,6 +59,12 @@ export default function ActiveDeliveries() {
     cancelled: 0,
     revenue: 0,
   });
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // Load deliveries with real-time updates
   useEffect(() => {
@@ -92,6 +104,7 @@ export default function ActiveDeliveries() {
             deliveryDate: data.deliveryDate?.toDate(),
             pickupLocation: data.pickupLocation,
             deliveryLocation: data.deliveryLocation,
+            eta: data.eta ?? null,
           };
           deliveryList.push(delivery);
 
@@ -586,13 +599,36 @@ export default function ActiveDeliveries() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(
-                          delivery.status,
-                        )}`}
-                      >
-                        {delivery.status.replace("_", " ").toUpperCase()}
-                      </span>
+                      <div className="space-y-1">
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                            delivery.status,
+                          )}`}
+                        >
+                          {delivery.status.replace("_", " ").toUpperCase()}
+                        </span>
+                        {(() => {
+                          const etaMs = getActiveEtaMs(
+                            delivery.eta,
+                            delivery.status,
+                          );
+                          if (
+                            !etaMs ||
+                            ["delivered", "cancelled"].includes(delivery.status)
+                          ) {
+                            return null;
+                          }
+                          const remaining = Math.max(0, etaMs - nowMs);
+                          return (
+                            <p className="text-xs font-medium text-emerald-700">
+                              ⏱{" "}
+                              {remaining <= 0
+                                ? "arriving now"
+                                : formatEtaCountdown(remaining)}
+                            </p>
+                          );
+                        })()}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm">

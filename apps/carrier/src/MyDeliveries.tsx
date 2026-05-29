@@ -1,5 +1,11 @@
 import { useState, useEffect } from "react";
-import { db, auth } from "@config";
+import {
+  db,
+  auth,
+  formatEtaCountdown,
+  getActiveEtaMs,
+  type DeliveryEta,
+} from "@config";
 import {
   addDoc,
   arrayUnion,
@@ -48,6 +54,7 @@ interface Delivery {
   earnings?: number;
   pickupLocation?: { lat: number; lng: number };
   deliveryLocation?: { lat: number; lng: number };
+  eta?: DeliveryEta | null;
 }
 
 export default function MyDeliveries() {
@@ -70,6 +77,12 @@ export default function MyDeliveries() {
   const [routeReportNote, setRouteReportNote] = useState("");
   const [routeReportTemporary, setRouteReportTemporary] = useState(true);
   const [submittingRouteReport, setSubmittingRouteReport] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const { updateStatus, getAvailableStatuses, getStatusInfo } =
     useDeliveryStatus();
@@ -121,6 +134,7 @@ export default function MyDeliveries() {
             deliveryInstructions: data.deliveryInstructions,
             pickupLocation: data.pickupLocation,
             deliveryLocation: data.deliveryLocation,
+            eta: data.eta ?? null,
           });
         });
         setDeliveries(deliveryList);
@@ -609,6 +623,32 @@ export default function MyDeliveries() {
                         )}
                       </div>
                     </div>
+
+                    {(() => {
+                      const etaMs = getActiveEtaMs(
+                        delivery.eta,
+                        delivery.status,
+                      );
+                      if (
+                        !etaMs ||
+                        ["delivered", "cancelled"].includes(delivery.status)
+                      ) {
+                        return null;
+                      }
+                      const remaining = Math.max(0, etaMs - nowMs);
+                      return (
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                          <p className="text-xs text-emerald-700 font-semibold uppercase tracking-wide">
+                            ETA
+                          </p>
+                          <p className="text-sm font-bold text-emerald-800 mt-0.5">
+                            {remaining <= 0
+                              ? "Arriving now"
+                              : formatEtaCountdown(remaining)}
+                          </p>
+                        </div>
+                      );
+                    })()}
 
                     {/* More Details Section */}
                     {isExpanded && (
