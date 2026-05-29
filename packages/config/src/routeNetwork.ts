@@ -57,6 +57,27 @@ const toDateSafe = (value: any): Date | undefined => {
   return undefined;
 };
 
+const toLatLngPoint = (value: any): LatLngPoint | null => {
+  if (!value) return null;
+
+  const latRaw =
+    (typeof value.lat === "function" ? value.lat() : value.lat) ??
+    value.latitude ??
+    value._lat;
+  const lngRaw =
+    (typeof value.lng === "function" ? value.lng() : value.lng) ??
+    value.longitude ??
+    value.long ??
+    value.lon ??
+    value._long;
+
+  const lat = Number(latRaw);
+  const lng = Number(lngRaw);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  return { lat, lng };
+};
+
 const mapRouteNetworkSegment = (
   id: string,
   data: any,
@@ -66,8 +87,8 @@ const mapRouteNetworkSegment = (
   type: data.type || "shortcut",
   status: data.status || "active",
   note: data.note,
-  start: data.start,
-  end: data.end,
+  start: toLatLngPoint(data.start) || { lat: 0, lng: 0 },
+  end: toLatLngPoint(data.end) || { lat: 0, lng: 0 },
   blocked: !!data.blocked,
   temporary: !!data.temporary,
   maxWeightKg: typeof data.maxWeightKg === "number" ? data.maxWeightKg : null,
@@ -135,7 +156,7 @@ export const getRouteNetworkSegmentStyle = (
         strokeOpacity: 0.92,
         strokeWeight: 5,
         markerColor: "#22c55e",
-        iconMode: "arrow",
+        iconMode: "solid",
         label: "Shortcut",
       };
   }
@@ -184,7 +205,14 @@ export const getDisplayRouteNetworkSegments = (
   options?: RouteNetworkDisplayOptions,
 ) => {
   const activeSegments = segments.filter(
-    (segment) => segment.status === "active",
+    (segment) =>
+      segment.status === "active" &&
+      Number.isFinite(segment.start.lat) &&
+      Number.isFinite(segment.start.lng) &&
+      Number.isFinite(segment.end.lat) &&
+      Number.isFinite(segment.end.lng) &&
+      !(segment.start.lat === 0 && segment.start.lng === 0) &&
+      !(segment.end.lat === 0 && segment.end.lng === 0),
   );
   if (!activeSegments.length) return [];
 

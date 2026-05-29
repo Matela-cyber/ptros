@@ -20,6 +20,13 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "@config";
 import { useGPSLocation } from "./useGPSLocation";
+import {
+  formatRouteNetworkSegmentType,
+  getDisplayRouteNetworkSegments,
+  getRouteNetworkSegmentStyle,
+  subscribeRouteNetworkSegments,
+  type RouteNetworkSegment,
+} from "@config";
 
 const MASERU_CENTER = { lat: -29.312, lng: 27.4869 };
 
@@ -114,6 +121,75 @@ const formatEtaMeta = (stop: RouteStop, nowMs: number) => {
     distance,
     updatedAt,
   };
+};
+
+const getRouteSegmentIcons = (
+  iconMode: "arrow" | "dash" | "cross" | "dot" | "solid",
+  color: string,
+) => {
+  if (!window.google?.maps) return undefined;
+
+  if (iconMode === "arrow") {
+    return [
+      {
+        icon: {
+          path: window.google.maps.SymbolPath.FORWARD_OPEN_ARROW,
+          scale: 3,
+          strokeColor: color,
+          strokeOpacity: 1,
+        },
+        offset: "84%",
+      },
+    ];
+  }
+
+  if (iconMode === "dash") {
+    return [
+      {
+        icon: {
+          path: "M 0,-1 0,1",
+          scale: 3,
+          strokeOpacity: 1,
+          strokeColor: color,
+        },
+        offset: "0",
+        repeat: "16px",
+      },
+    ];
+  }
+
+  if (iconMode === "cross") {
+    return [
+      {
+        icon: {
+          path: "M -1,-1 1,1 M 1,-1 -1,1",
+          scale: 3,
+          strokeOpacity: 1,
+          strokeColor: color,
+        },
+        offset: "0",
+        repeat: "22px",
+      },
+    ];
+  }
+
+  if (iconMode === "dot") {
+    return [
+      {
+        icon: {
+          path: window.google.maps.SymbolPath.CIRCLE,
+          scale: 2,
+          fillOpacity: 1,
+          fillColor: color,
+          strokeOpacity: 0,
+        },
+        offset: "0",
+        repeat: "16px",
+      },
+    ];
+  }
+
+  return undefined;
 };
 
 // â”€â”€â”€ Delivery Detail Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -449,6 +525,7 @@ function RouteMap({
   nowMs,
   carrierPos,
   pathMode,
+  managedSegments,
   onStopClick,
 }: {
   orderedStops: RouteStop[];
@@ -456,6 +533,7 @@ function RouteMap({
   nowMs: number;
   carrierPos: CarrierPosition | null;
   pathMode: "straight" | "road";
+  managedSegments: RouteNetworkSegment[];
   onStopClick: (stop: RouteStop) => void;
 }) {
   const mapDivRef = useRef<HTMLDivElement>(null);
@@ -463,6 +541,7 @@ function RouteMap({
   const markersRef = useRef<Map<string, any>>(new Map());
   const carrierMarkerRef = useRef<any>(null);
   const polylineRef = useRef<any>(null);
+  const segmentPolylinesRef = useRef<any[]>([]);
   const infoWindowRef = useRef<any>(null);
   const onStopClickRef = useRef(onStopClick);
   const lastAutoFitKeyRef = useRef<string>("");
@@ -473,6 +552,19 @@ function RouteMap({
   const validStops = useMemo(
     () => orderedStops.filter((s) => s.lat !== 0 || s.lng !== 0),
     [orderedStops],
+  );
+
+  const visibleManagedSegments = useMemo(
+    () =>
+      getDisplayRouteNetworkSegments(
+        managedSegments,
+        [
+          carrierPos,
+          ...validStops.map((stop) => ({ lat: stop.lat, lng: stop.lng })),
+        ],
+        { thresholdKm: 12, fallbackLimit: 80 },
+      ),
+    [carrierPos, managedSegments, validStops],
   );
 
   // â”€â”€ Wait for Google Maps API (same pattern as LiveMap) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -687,6 +779,59 @@ function RouteMap({
     }
   }, [validStops, carrierPos, pathMode, mapsReady]);
 
+  // ── Managed route network overlays (shortcut/blocked/restricted) ──────────
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !window.google?.maps) return;
+
+    segmentPolylinesRef.current.forEach((polyline) => polyline.setMap(null));
+    segmentPolylinesRef.current = [];
+
+    visibleManagedSegments.forEach((segment) => {
+      const style = getRouteNetworkSegmentStyle(segment);
+      const polyline = new window.google.maps.Polyline({
+        path: [segment.start, segment.end],
+        geodesic: true,
+        strokeColor: style.strokeColor,
+        strokeOpacity: style.strokeOpacity,
+        strokeWeight: style.strokeWeight,
+        zIndex: 8,
+        icons: getRouteSegmentIcons(style.iconMode, style.strokeColor),
+        clickable: true,
+        map,
+      });
+
+      polyline.addListener("click", (event: any) => {
+        const position = event?.latLng ?? segment.start;
+        const pointLabel = `${position.lat().toFixed(5)}, ${position.lng().toFixed(5)}`;
+        infoWindowRef.current?.setContent(
+          `<div style="font-family:system-ui;padding:4px 2px;min-width:210px">` +
+            `<strong style="display:block;margin-bottom:4px;color:#111827">${segment.name || "Route segment"}</strong>` +
+            `<p style="margin:2px 0;font-size:12px;color:#374151"><strong>Type:</strong> ${formatRouteNetworkSegmentType(segment.type)}</p>` +
+            `<p style="margin:2px 0;font-size:12px;color:#374151"><strong>Status:</strong> ${segment.status}</p>` +
+            `<p style="margin:2px 0;font-size:12px;color:#374151"><strong>Temporary:</strong> ${segment.temporary ? "yes" : "no"}</p>` +
+            (typeof segment.maxWeightKg === "number"
+              ? `<p style="margin:2px 0;font-size:12px;color:#374151"><strong>Max load:</strong> ${segment.maxWeightKg} kg</p>`
+              : "") +
+            (segment.note
+              ? `<p style="margin:4px 0 0;font-size:12px;color:#4b5563"><strong>Note:</strong> ${segment.note}</p>`
+              : "") +
+            `<p style="margin:4px 0 0;font-size:11px;color:#6b7280">${pointLabel}</p>` +
+            `</div>`,
+        );
+        infoWindowRef.current?.setPosition(position);
+        infoWindowRef.current?.open(map);
+      });
+
+      segmentPolylinesRef.current.push(polyline);
+    });
+
+    return () => {
+      segmentPolylinesRef.current.forEach((polyline) => polyline.setMap(null));
+      segmentPolylinesRef.current = [];
+    };
+  }, [visibleManagedSegments]);
+
   if (!apiKey) {
     return (
       <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-sm text-red-700">
@@ -735,6 +880,9 @@ export default function RouteTab() {
   const [effectiveCapacityKg, setEffectiveCapacityKg] = useState<number | null>(
     null,
   );
+  const [managedSegments, setManagedSegments] = useState<RouteNetworkSegment[]>(
+    [],
+  );
   const [nowMs, setNowMs] = useState(() => Date.now());
   const prevStatusKeyRef = useRef<string>("");
   const archivingRef = useRef<Set<string>>(new Set());
@@ -742,6 +890,10 @@ export default function RouteTab() {
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    return subscribeRouteNetworkSegments(setManagedSegments);
   }, []);
 
   // Load effective weight capacity: carrier-specific > coordinator vehicle default
@@ -1210,6 +1362,7 @@ export default function RouteTab() {
             nowMs={nowMs}
             carrierPos={carrierPos}
             pathMode={pathMode}
+            managedSegments={managedSegments}
             onStopClick={(stop) =>
               setSelectedStop(
                 selectedStop?.id === stop.id && selectedStop?.type === stop.type
@@ -1402,6 +1555,7 @@ export default function RouteTab() {
               nowMs={nowMs}
               carrierPos={carrierPos}
               pathMode={pathMode}
+              managedSegments={managedSegments}
               onStopClick={(stop) =>
                 setSelectedStop(
                   selectedStop?.id === stop.id &&

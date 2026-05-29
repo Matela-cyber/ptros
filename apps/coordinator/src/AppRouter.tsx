@@ -19,7 +19,6 @@ import CustomerDetails from "./CustomerDetails";
 import LiveMap from "./LiveMap";
 import Analytics from "./Analytics";
 import MapManagement from "./MapManagement";
-import RouteOptimizationCenter from "./RouteOptimizationCenter";
 import MyProfile from "./MyProfile";
 import Settings from "./Settings";
 
@@ -81,10 +80,6 @@ export default function AppRouter({ user }: Props) {
             <Route path="/customers" element={<CustomerList />} />
             <Route path="/customers/:id" element={<CustomerDetails />} />
             <Route path="/tracking/live" element={<LiveMap />} />
-            <Route
-              path="/routes/optimization"
-              element={<RouteOptimizationCenter />}
-            />
             <Route path="/routes/management" element={<MapManagement />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/profile" element={<MyProfile />} />

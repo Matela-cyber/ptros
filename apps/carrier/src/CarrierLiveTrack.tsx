@@ -4,17 +4,12 @@ import { collection, doc, getDoc, onSnapshot } from "firebase/firestore";
 import { onValue, ref as rtdbRef } from "firebase/database";
 import {
   formatTrackingEta,
-  formatRouteNetworkSegmentType,
   getTrackingEtaLabel,
   getTrackingStopChain,
   orderTrackingRouteStops,
-  getDisplayRouteNetworkSegments,
-  getRouteNetworkSegmentStyle,
   isTrackingBeforePickup,
   shouldShowTrackingCarrierMarker,
-  subscribeRouteNetworkSegments,
   toTrackingRouteStop,
-  type RouteNetworkSegment,
   type TrackingRouteStop,
 } from "@config";
 import {
@@ -206,9 +201,6 @@ export default function CarrierLiveTrack() {
   const [authorized, setAuthorized] = useState(false);
   const [loadingDelivery, setLoadingDelivery] = useState(true);
   const [delivery, setDelivery] = useState<LiveTrackDelivery | null>(null);
-  const [managedSegments, setManagedSegments] = useState<RouteNetworkSegment[]>(
-    [],
-  );
   const [routeStops, setRouteStops] = useState<TrackingRouteStop[]>([]);
   const [liveLocation, setLiveLocation] = useState<MapPoint | null>(null);
   const [fullPlanDirections, setFullPlanDirections] = useState<any>(null);
@@ -260,10 +252,6 @@ export default function CarrierLiveTrack() {
 
     return () => unsubscribe();
   }, [navigate]);
-
-  useEffect(() => {
-    return subscribeRouteNetworkSegments(setManagedSegments);
-  }, []);
 
   useEffect(() => {
     if (!deliveryId || !authReady || !authorized) {
@@ -561,16 +549,6 @@ export default function CarrierLiveTrack() {
     ? routeStartPoint || routeEndPoint || DEFAULT_CENTER
     : currentPoint || routeEndPoint || routeStartPoint || DEFAULT_CENTER;
 
-  const visibleManagedSegments = useMemo(
-    () =>
-      getDisplayRouteNetworkSegments(
-        managedSegments,
-        [pickupPoint, destinationPoint, currentPoint],
-        { thresholdKm: 12, fallbackLimit: 120 },
-      ),
-    [currentPoint, destinationPoint, managedSegments, pickupPoint],
-  );
-
   const fullPlanGradientSegments = useMemo(
     () =>
       buildGradientRouteSegments(
@@ -602,14 +580,6 @@ export default function CarrierLiveTrack() {
     if (!mapInstance || !point) return;
     mapInstance.panTo(point);
     mapInstance.setZoom(16);
-  };
-
-  const focusSegment = (segment: RouteNetworkSegment) => {
-    if (!mapInstance || !window.google?.maps) return;
-    const bounds = new window.google.maps.LatLngBounds();
-    bounds.extend(segment.start);
-    bounds.extend(segment.end);
-    mapInstance.fitBounds(bounds, 80);
   };
 
   useEffect(() => {
@@ -940,35 +910,6 @@ export default function CarrierLiveTrack() {
               </button>
             </div>
           </div>
-
-          {visibleManagedSegments.length > 0 && (
-            <div className="rounded-xl bg-slate-50 p-4 border border-slate-200 space-y-3">
-              <p className="text-xs uppercase tracking-wide text-slate-500">
-                Visible route rules
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {visibleManagedSegments.map((segment) => {
-                  const style = getRouteNetworkSegmentStyle(segment);
-                  return (
-                    <button
-                      key={segment.id}
-                      type="button"
-                      onClick={() => focusSegment(segment)}
-                      className="rounded-full border px-3 py-1.5 text-xs font-semibold"
-                      style={{
-                        borderColor: style.strokeColor,
-                        color: style.strokeColor,
-                        backgroundColor: `${style.strokeColor}14`,
-                      }}
-                    >
-                      {segment.name} •{" "}
-                      {formatRouteNetworkSegmentType(segment.type)}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </aside>
 
         <section className="rounded-2xl border border-slate-200 bg-white overflow-hidden min-h-[70vh] shadow-sm">
