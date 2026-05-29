@@ -19,7 +19,10 @@ const sanitizeFullName = (value: string): string =>
 
 const isValidFullName = (value: string): boolean => {
   const normalizedValue = sanitizeFullName(value);
-  return normalizedValue.length >= 2 && FULL_NAME_VALIDATION_PATTERN.test(normalizedValue);
+  return (
+    normalizedValue.length >= 2 &&
+    FULL_NAME_VALIDATION_PATTERN.test(normalizedValue)
+  );
 };
 
 export default function Register() {
@@ -46,7 +49,7 @@ export default function Register() {
     licensePlate: "",
     idNumber: "",
 
-    // Profile Picture - REQUIRED
+    // Profile Picture - optional fallback when Storage is unavailable
     profilePicture: null as File | null,
 
     // Terms
@@ -230,12 +233,6 @@ export default function Register() {
   };
 
   const validateStep1 = () => {
-    // Validate Profile Picture - REQUIRED
-    if (!formData.profilePicture) {
-      setError("Profile picture is required");
-      return false;
-    }
-
     if (!formData.fullName.trim()) {
       setError("Full name is required");
       return false;
@@ -317,37 +314,48 @@ export default function Register() {
       const userId = userCredential.user.uid;
       console.log("Auth user created. User ID:", userId);
 
-      // 2. Upload profile picture (MANDATORY)
-      if (!formData.profilePicture) {
-        throw new Error("Profile picture is required");
+      // 2. Upload profile picture if provided (non-blocking when Storage is unavailable)
+      let photoURL: string | null = null;
+      let profileUploadSkipped = false;
+      let profileUploadFailed = false;
+
+      if (formData.profilePicture) {
+        try {
+          console.log("Step 2: Uploading profile picture...");
+          console.log("File details:", {
+            name: formData.profilePicture.name,
+            size: formData.profilePicture.size,
+            type: formData.profilePicture.type,
+          });
+
+          if (formData.profilePicture.size === 0) {
+            throw new Error("Profile picture file is empty (0 bytes)");
+          }
+
+          // Create storage reference
+          const storagePath = `carriers/${userId}/profile.jpg`;
+          console.log("Storage path:", storagePath);
+
+          const storageRef = ref(storage, storagePath);
+
+          console.log("Uploading file to Firebase Storage...");
+          await uploadBytes(storageRef, formData.profilePicture);
+          console.log("File uploaded successfully");
+
+          // Get the download URL
+          console.log("🔗 Getting download URL...");
+          photoURL = await getDownloadURL(storageRef);
+          console.log("Download URL obtained");
+        } catch (uploadErr: any) {
+          profileUploadFailed = true;
+          console.warn(
+            "Profile upload failed; continuing registration without photo URL:",
+            uploadErr,
+          );
+        }
+      } else {
+        profileUploadSkipped = true;
       }
-
-      console.log("Step 2: Uploading profile picture...");
-      console.log("File details:", {
-        name: formData.profilePicture.name,
-        size: formData.profilePicture.size,
-        type: formData.profilePicture.type,
-      });
-
-      if (formData.profilePicture.size === 0) {
-        throw new Error("Profile picture file is empty (0 bytes)");
-      }
-
-      // Create storage reference
-      const storagePath = `carriers/${userId}/profile.jpg`;
-      console.log("Storage path:", storagePath);
-
-      const storageRef = ref(storage, storagePath);
-
-      console.log("Uploading file to Firebase Storage...");
-      // Upload the file
-      await uploadBytes(storageRef, formData.profilePicture);
-      console.log("File uploaded successfully");
-
-      // Get the download URL
-      console.log("🔗 Getting download URL...");
-      const photoURL = await getDownloadURL(storageRef);
-      console.log("Download URL obtained");
 
       // 3. Save detailed profile to Firestore
       console.log("💾 Saving user data to Firestore...");
@@ -363,7 +371,7 @@ export default function Register() {
         vehicleType: formData.vehicleType || "Not specified",
         licensePlate: formData.licensePlate || "Not specified",
         idNumber: formData.idNumber || "Not specified",
-        photoURL, // Required photo URL
+        photoURL,
         isApproved: false,
         status: "pending",
         earnings: 0,
@@ -372,17 +380,24 @@ export default function Register() {
         createdAt: new Date(),
         updatedAt: new Date(),
         registrationStep: "completed",
-        hasProfilePicture: true,
+        hasProfilePicture: Boolean(photoURL),
+        profileUploadStatus: profileUploadFailed
+          ? "failed"
+          : profileUploadSkipped
+            ? "skipped"
+            : "uploaded",
       });
 
       console.log("Firestore document saved");
 
       // 4. Show success and redirect
-      alert(
-        "Registration Successful!\n\n" +
-          "Your application has been submitted. Please wait for coordinator approval.\n\n" +
-          "Your profile picture has been uploaded successfully.",
-      );
+      const successMessage = profileUploadFailed
+        ? "Registration Successful!\n\nYour application has been submitted. Please wait for coordinator approval.\n\nNote: Profile picture upload failed (likely due Storage/billing). You can update it later after service is restored."
+        : profileUploadSkipped
+          ? "Registration Successful!\n\nYour application has been submitted. Please wait for coordinator approval.\n\nYou can add a profile picture later."
+          : "Registration Successful!\n\nYour application has been submitted. Please wait for coordinator approval.\n\nYour profile picture has been uploaded successfully.";
+
+      alert(successMessage);
 
       console.log("🎉 Registration complete! Redirecting to login...");
 
@@ -549,7 +564,8 @@ export default function Register() {
                 <div className="space-y-6">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Profile Picture <span className="text-red-500">*</span>
+                      Profile Picture{" "}
+                      <span className="text-gray-400">(optional)</span>
                     </label>
                     <div className="flex items-center space-x-4">
                       <div className="flex-shrink-0">
@@ -584,8 +600,8 @@ export default function Register() {
                               <span className="text-gray-500 block text-xs">
                                 Upload photo
                               </span>
-                              <span className="text-xs text-red-500 block mt-1">
-                                Required
+                              <span className="text-xs text-gray-500 block mt-1">
+                                Optional
                               </span>
                             </div>
                           </div>
@@ -599,17 +615,13 @@ export default function Register() {
                           onChange={handleChange}
                           accept="image/*"
                           className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          required
                           disabled={isProcessingImage}
                         />
                         <p className="mt-2 text-xs text-gray-500">
                           Clear front-facing photo. Max 5MB. Cropped to square.
+                          If Storage is unavailable, you can continue without
+                          it.
                         </p>
-                        {!formData.profilePicture && !isProcessingImage && (
-                          <p className="text-red-500 font-medium mt-2 text-xs">
-                            Please upload your profile picture to continue.
-                          </p>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -628,7 +640,6 @@ export default function Register() {
                       autoCapitalize="words"
                       required
                     />
-
                   </div>
 
                   <div>
@@ -664,7 +675,9 @@ export default function Register() {
                           type="button"
                           onClick={() => setShowPassword((prev) => !prev)}
                           className="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-blue-600"
-                          aria-label={showPassword ? "Hide password" : "Show password"}
+                          aria-label={
+                            showPassword ? "Hide password" : "Show password"
+                          }
                         >
                           <i
                             className={`fa-solid ${showPassword ? "fa-eye-slash" : "fa-eye"}`}
@@ -714,7 +727,7 @@ export default function Register() {
                   <button
                     type="button"
                     onClick={nextStep}
-                    disabled={!formData.profilePicture || isProcessingImage}
+                    disabled={isProcessingImage}
                     className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isProcessingImage ? (
@@ -1006,9 +1019,9 @@ export default function Register() {
                             </div>
                           </>
                         ) : (
-                          <span className="text-red-500 font-medium inline-flex items-center gap-2">
-                            <i className="fa-solid fa-circle-xmark" />
-                            No picture uploaded
+                          <span className="text-gray-500 font-medium inline-flex items-center gap-2">
+                            <i className="fa-solid fa-circle-info" />
+                            No picture uploaded (can be added later)
                           </span>
                         )}
                       </div>
@@ -1046,13 +1059,14 @@ export default function Register() {
                     </div>
                     <div className="ml-3">
                       <h4 className="text-sm font-medium text-blue-800">
-                        Profile Picture Requirement
+                        Profile Picture Note
                       </h4>
                       <div className="text-sm text-blue-700 mt-1">
                         <p>
-                          Your profile picture is mandatory for identification
-                          and security verification. Applications without a
-                          clear profile picture will be rejected.
+                          A profile picture is recommended for faster identity
+                          verification. If Firebase Storage is unavailable, you
+                          can still submit registration and update the picture
+                          later.
                         </p>
                       </div>
                     </div>
@@ -1096,11 +1110,7 @@ export default function Register() {
                   </button>
                   <button
                     type="submit"
-                    disabled={
-                      loading ||
-                      !formData.acceptTerms ||
-                      !formData.profilePicture
-                    }
+                    disabled={loading || !formData.acceptTerms}
                     className="px-8 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {loading ? (
