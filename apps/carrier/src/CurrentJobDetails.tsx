@@ -1,12 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  formatEtaCountdown,
-  formatRouteNetworkSegmentType,
-  getDisplayRouteNetworkSegments,
-  getRouteNetworkSegmentStyle,
-  subscribeRouteNetworkSegments,
-  type RouteNetworkSegment,
-} from "@config";
+import { useEffect, useState } from "react";
+import { formatEtaCountdown } from "@config";
 import { GoogleMap, InfoWindow, Marker } from "@react-google-maps/api";
 import { Delivery } from "./types";
 import { formatCurrency, formatDate } from "./utils";
@@ -37,9 +30,6 @@ export default function CurrentJobDetails({
     Array<{ lat: number; lng: number }>
   >([]);
   const [vehicleSpecificShortcut, setVehicleSpecificShortcut] = useState(false);
-  const [managedSegments, setManagedSegments] = useState<RouteNetworkSegment[]>(
-    [],
-  );
   const [modalMapInstance, setModalMapInstance] =
     useState<google.maps.Map | null>(null);
   const [selectedMapInfo, setSelectedMapInfo] = useState<{
@@ -47,10 +37,6 @@ export default function CurrentJobDetails({
     title: string;
     details: string[];
   } | null>(null);
-
-  useEffect(() => {
-    return subscribeRouteNetworkSegments(setManagedSegments);
-  }, []);
 
   // ── ETA countdown ────────────────────────────────────────────────────────
   const [etaRemainingMs, setEtaRemainingMs] = useState<number | null>(null);
@@ -202,16 +188,6 @@ export default function CurrentJobDetails({
           lng: delivery.currentLocation.lng,
         }
       : { lat: -29.31, lng: 27.48 });
-
-  const visibleManagedSegments = useMemo(
-    () =>
-      getDisplayRouteNetworkSegments(
-        managedSegments,
-        [pickupPoint, deliveryPoint, currentPoint],
-        { thresholdKm: 12, fallbackLimit: 100 },
-      ),
-    [currentPoint, deliveryPoint, managedSegments, pickupPoint],
-  );
 
   const focusPointOnModalMap = (point?: { lat: number; lng: number }) => {
     if (!modalMapInstance || !point) return;
@@ -909,30 +885,6 @@ export default function CurrentJobDetails({
                       </button>
                     </div>
                   </div>
-
-                  {visibleManagedSegments.length > 0 && (
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      {visibleManagedSegments.map((segment) => {
-                        const style = getRouteNetworkSegmentStyle(segment);
-                        return (
-                          <button
-                            key={segment.id}
-                            type="button"
-                            onClick={() => focusPointOnModalMap(segment.start)}
-                            className="rounded-full border px-3 py-1.5 font-semibold"
-                            style={{
-                              borderColor: style.strokeColor,
-                              color: style.strokeColor,
-                              backgroundColor: `${style.strokeColor}12`,
-                            }}
-                          >
-                            {segment.name} •{" "}
-                            {formatRouteNetworkSegmentType(segment.type)}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
 
                   <label className="inline-flex items-center gap-2 text-sm text-gray-700">
                     <input

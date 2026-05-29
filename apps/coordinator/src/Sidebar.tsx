@@ -20,7 +20,6 @@ import {
   FaLocationDot,
   FaMotorcycle,
   FaPlus,
-  FaRoute,
   FaUsers,
 } from "react-icons/fa6";
 
@@ -109,19 +108,10 @@ export default function Sidebar() {
     { path: "/deliveries/active", icon: FaBox, label: "Deliveries" },
     { path: "/carriers/active", icon: FaMotorcycle, label: "Carriers" },
     { path: "/customers", icon: FaUsers, label: "Customers" },
-    {
-      path: "/routes/optimization",
-      icon: FaRoute,
-      label: "Route Optimization",
-    },
     { path: "/tracking/live", icon: FaLocationDot, label: "Live Tracking" },
     { path: "/analytics", icon: FaChartLine, label: "Analytics" },
     { path: "/settings", icon: FaGear, label: "Settings" },
   ];
-
-  const isRouteOptimizationActive =
-    location.pathname.startsWith("/routes/optimization") ||
-    location.pathname.startsWith("/routes/management");
 
   return (
     <aside
@@ -174,9 +164,7 @@ export default function Sidebar() {
                 to={item.path}
                 className={({ isActive }) =>
                   `flex items-center px-3 py-1.5 rounded-md transition-all duration-200 text-sm ${
-                    isActive ||
-                    (item.path === "/routes/optimization" &&
-                      isRouteOptimizationActive)
+                    isActive
                       ? "bg-white text-primary shadow-sm font-semibold"
                       : "text-blue-100 hover:bg-primary-dark hover:text-white"
                   }`

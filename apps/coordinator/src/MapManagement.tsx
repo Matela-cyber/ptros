@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { GoogleMap, Marker, Polyline } from "@react-google-maps/api";
 import {
   formatRouteNetworkSegmentType,
@@ -13,7 +12,6 @@ import {
   FaMapLocationDot,
   FaPlus,
   FaRoad,
-  FaRoute,
   FaTruck,
 } from "react-icons/fa6";
 import {
@@ -317,12 +315,6 @@ export default function MapManagement() {
           <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700">
             <FaMapLocationDot /> {segments.length} managed segments
           </div>
-          <Link
-            to="/routes/optimization"
-            className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-          >
-            <FaRoute /> Back to Route Optimization
-          </Link>
         </div>
       </div>
 
