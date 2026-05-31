@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { initializeFirestore } from "firebase/firestore";
+import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
 import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
 const firebaseConfig = {
@@ -24,6 +25,15 @@ export const db = initializeFirestore(app, {
 });
 export const storage = getStorage(app);
 export const realtimeDb = getDatabase(app);
+export const functions = getFunctions(app);
+
+if (
+  typeof window !== "undefined" &&
+  import.meta.env.DEV &&
+  import.meta.env.VITE_USE_FUNCTIONS_EMULATOR === "true"
+) {
+  connectFunctionsEmulator(functions, "127.0.0.1", 5001);
+}
 
 export default app;
 export * from "./routeNetwork";
@@ -31,3 +41,4 @@ export * from "./locationGraph";
 export * from "./locationGraphSync";
 export * from "./businessRules";
 export * from "./trackingRoute";
+export * from "./otpEmail";
