@@ -267,7 +267,8 @@ export default function MyDeliveries() {
           d.id === selectedDelivery.id
             ? {
                 ...d,
-                status: otpPhase === "pickup" ? "picked_up" : "delivered",
+                status:
+                  otpPhase === "pickup" ? "out_for_delivery" : "delivered",
                 otpVerified: otpPhase === "delivery" ? true : d.otpVerified,
                 proofOfDelivery: {
                   ...(d.proofOfDelivery || {}),

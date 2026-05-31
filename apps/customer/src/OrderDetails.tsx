@@ -345,9 +345,15 @@ export default function OrderDetails() {
       "in_transit",
       "delivered",
     ];
+    const normalizedStatus =
+      order.status === "accepted"
+        ? "assigned"
+        : order.status === "out_for_delivery"
+          ? "in_transit"
+          : order.status;
     return steps.map((step, index) => ({
       step,
-      completed: steps.indexOf(order.status) >= index,
+      completed: steps.indexOf(normalizedStatus) >= index,
     }));
   };
 

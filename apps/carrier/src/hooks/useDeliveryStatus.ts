@@ -19,10 +19,10 @@ export const useDeliveryStatus = () => {
   ): { valid: boolean; message?: string } => {
     const allowedTransitions: Record<string, string[]> = {
       accepted: ["picked_up"],
-      picked_up: ["out_for_delivery", "stuck"],
-      in_transit: ["out_for_delivery", "stuck"],
+      picked_up: ["delivered", "stuck"],
+      in_transit: ["delivered", "stuck"],
       out_for_delivery: ["delivered", "stuck"],
-      stuck: ["in_transit", "out_for_delivery"],
+      stuck: ["out_for_delivery"],
     };
 
     if (!allowedTransitions[current]) {
@@ -112,14 +112,13 @@ export const useDeliveryStatus = () => {
       case "accepted":
         return ["picked_up"];
       case "picked_up":
-        // in_transit is NOT a manual option from picked_up — only reachable from stuck
-        return ["out_for_delivery", "stuck"];
+        return ["delivered", "stuck"];
       case "in_transit":
-        return ["out_for_delivery", "stuck"];
+        return ["delivered", "stuck"];
       case "out_for_delivery":
         return ["delivered", "stuck"];
       case "stuck":
-        return ["in_transit", "out_for_delivery"];
+        return ["out_for_delivery"];
       default:
         return [];
     }
@@ -129,10 +128,10 @@ export const useDeliveryStatus = () => {
   const getStatusInfo = (status: string) => {
     const statusInfo = {
       picked_up: {
-        label: "Picked Up",
+        label: "Confirm Pickup",
         icon: "fa-solid fa-box",
         color: "bg-blue-600",
-        description: "Package collected from pickup location",
+        description: "Verify pickup OTP and start delivery",
       },
       in_transit: {
         label: "Resume Transit",
@@ -141,10 +140,10 @@ export const useDeliveryStatus = () => {
         description: "Resuming after being stuck",
       },
       out_for_delivery: {
-        label: "Out for Delivery",
+        label: "Resume Delivery",
         icon: "fa-solid fa-route",
         color: "bg-indigo-600",
-        description: "On the way to recipient",
+        description: "Resume the delivery after a delay",
       },
       stuck: {
         label: "Report Stuck",

@@ -176,6 +176,8 @@ interface DeliveryData {
   carrierId?: string;
   estimatedDelivery?: Date;
   pickupTime?: Date;
+  inTransitTime?: Date;
+  outForDeliveryTime?: Date;
   deliveryTime?: Date;
   createdAt: Date;
   acceptedAt?: Date;
@@ -332,6 +334,8 @@ export default function PackageTrackingPage({
           carrierId: data.carrierId,
           estimatedDelivery: data.estimatedDelivery?.toDate(),
           pickupTime: data.pickupTime?.toDate(),
+          inTransitTime: data.inTransitTime?.toDate(),
+          outForDeliveryTime: data.outForDeliveryTime?.toDate(),
           deliveryTime: data.deliveryTime?.toDate(),
           createdAt: data.createdAt?.toDate() || new Date(),
           acceptedAt: data.acceptedAt?.toDate(),
@@ -1283,6 +1287,8 @@ export default function PackageTrackingPage({
             <DeliveryTimeline
               status={delivery.status}
               pickupTime={delivery.pickupTime}
+              inTransitTime={delivery.inTransitTime}
+              outForDeliveryTime={delivery.outForDeliveryTime}
               deliveryTime={delivery.deliveryTime}
               acceptedAt={delivery.acceptedAt}
               assignedAt={delivery.assignedAt}

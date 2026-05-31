@@ -346,7 +346,7 @@ export default function CurrentJobDetails({
         : "✅ Pickup confirmed",
     );
     setTimeout(() => setStatusMessage(null), 3000);
-    onStatusUpdate?.(delivery.id, "picked_up");
+    onStatusUpdate?.(delivery.id, "out_for_delivery");
   };
 
   const distanceKm = (delivery as any)?.distance ?? delivery.route?.distance;

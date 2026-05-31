@@ -330,7 +330,7 @@ function DeliveryModal({
       case "accepted":
         return [
           {
-            label: "Mark Picked Up",
+            label: "Confirm Pickup (OTP)",
             status: "picked_up",
             color: "bg-indigo-600 hover:bg-indigo-700",
           },
@@ -338,9 +338,9 @@ function DeliveryModal({
       case "picked_up":
         return [
           {
-            label: "Out for Delivery",
-            status: "out_for_delivery",
-            color: "bg-orange-500 hover:bg-orange-600",
+            label: "Mark Delivered (OTP)",
+            status: "delivered",
+            color: "bg-green-600 hover:bg-green-700",
           },
           {
             label: "Report Stuck",
@@ -351,9 +351,9 @@ function DeliveryModal({
       case "in_transit":
         return [
           {
-            label: "Out for Delivery",
-            status: "out_for_delivery",
-            color: "bg-orange-500 hover:bg-orange-600",
+            label: "Mark Delivered (OTP)",
+            status: "delivered",
+            color: "bg-green-600 hover:bg-green-700",
           },
           {
             label: "Report Stuck",
@@ -364,12 +364,7 @@ function DeliveryModal({
       case "stuck":
         return [
           {
-            label: "Resume Transit",
-            status: "in_transit",
-            color: "bg-purple-600 hover:bg-purple-700",
-          },
-          {
-            label: "Out for Delivery",
+            label: "Resume Delivery",
             status: "out_for_delivery",
             color: "bg-orange-500 hover:bg-orange-600",
           },

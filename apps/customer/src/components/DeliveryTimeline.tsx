@@ -21,6 +21,8 @@ interface TimelineEvent {
 interface DeliveryTimelineProps {
   status: string;
   pickupTime?: Date;
+  inTransitTime?: Date;
+  outForDeliveryTime?: Date;
   deliveryTime?: Date;
   acceptedAt?: Date;
   assignedAt?: Date;
@@ -30,6 +32,8 @@ interface DeliveryTimelineProps {
 export default function DeliveryTimeline({
   status,
   pickupTime,
+  inTransitTime,
+  outForDeliveryTime,
   deliveryTime,
   acceptedAt,
   assignedAt,
@@ -79,14 +83,14 @@ export default function DeliveryTimeline({
     {
       status: "in_transit",
       label: "In Transit",
-      timestamp: pickupTime,
+      timestamp: inTransitTime || outForDeliveryTime || pickupTime,
       completed: statusIndex >= 4,
       icon: faTruck,
     },
     {
       status: "out_for_delivery",
       label: "Out for Delivery",
-      timestamp: pickupTime,
+      timestamp: outForDeliveryTime || inTransitTime || pickupTime,
       completed: statusIndex >= 5,
       icon: faLocationDot,
     },
