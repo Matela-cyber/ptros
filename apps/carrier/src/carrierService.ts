@@ -1137,6 +1137,7 @@ export class CarrierService {
 
       const user = auth.currentUser;
       const now = Timestamp.now();
+      const nowIso = new Date().toISOString();
       const bypassReason = options?.bypassReason?.trim() || null;
       const updateData: any = {
         updatedAt: now,
@@ -1151,19 +1152,38 @@ export class CarrierService {
       };
 
       if (phase === "pickup") {
-        updateData.status = "picked_up";
+        updateData.status = "out_for_delivery";
         updateData.pickupTime = now;
+        updateData.inTransitTime = now;
+        updateData.outForDeliveryTime = now;
         updateData["otp.pickup.verified"] = true;
         updateData["otp.pickup.verifiedAt"] = now;
         updateData["otp.pickup.verifiedBy"] = user?.uid || null;
         updateData["otp.pickup.bypassed"] = isBypass;
         updateData["otp.pickup.bypassReason"] = bypassReason;
+        updateData.statusHistory = arrayUnion(
+          {
+            status: "picked_up",
+            timestamp: nowIso,
+            location: null,
+          },
+          {
+            status: "out_for_delivery",
+            timestamp: nowIso,
+            location: null,
+          },
+        );
       } else {
         const deliveryEarnings = data
           ? data.earnings || data.estimatedEarnings || 0
           : 0;
         updateData.status = "delivered";
         updateData.deliveryTime = now;
+        updateData.statusHistory = arrayUnion({
+          status: "delivered",
+          timestamp: nowIso,
+          location: null,
+        });
         updateData.otpVerified = true;
         updateData["otp.delivery.verified"] = true;
         updateData["otp.delivery.verifiedAt"] = now;
@@ -1195,12 +1215,31 @@ export class CarrierService {
       try {
         await CarrierService.archiveStopsForDelivery(
           deliveryId,
-          phase === "pickup" ? "picked_up" : "delivered",
+          phase === "pickup" ? "out_for_delivery" : "delivered",
         );
       } catch (archiveErr) {
         console.error(
           "archiveStopsForDelivery failed (verifyOtpForPhase):",
           archiveErr,
+        );
+      }
+
+      const graphTrigger =
+        phase === "pickup" ? "out_for_delivery" : "delivered";
+      syncDeliveryLocationGraphStructure({
+        deliveryId,
+        trigger: graphTrigger,
+      }).catch((e) =>
+        console.warn("Graph sync failed (verifyOtpForPhase):", e),
+      );
+
+      if (phase === "pickup") {
+        this.flushRouteSnapshot(deliveryId, "status_change").catch((e) =>
+          console.warn("Route snapshot flush failed (pickup OTP):", e),
+        );
+      } else {
+        this.flushRouteSnapshot(deliveryId, "delivery_complete").catch((e) =>
+          console.warn("Route snapshot flush failed (delivery OTP):", e),
         );
       }
 

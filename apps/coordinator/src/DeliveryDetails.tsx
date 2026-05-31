@@ -78,6 +78,9 @@ interface DeliveryDetails {
   carrierName?: string;
   carrierId?: string;
   carrierPhone?: string;
+  pickupTime?: Date;
+  inTransitTime?: Date;
+  outForDeliveryTime?: Date;
   packageDescription: string;
   packageWeight?: number;
   packageDimensions?: string;
@@ -147,6 +150,9 @@ export default function DeliveryDetails() {
           carrierName: data.carrierName,
           carrierId: data.carrierId,
           carrierPhone: data.carrierPhone,
+          pickupTime: data.pickupTime?.toDate(),
+          inTransitTime: data.inTransitTime?.toDate(),
+          outForDeliveryTime: data.outForDeliveryTime?.toDate(),
           packageDescription: data.packageDescription,
           packageWeight: data.packageWeight,
           packageDimensions: data.packageDimensions,
@@ -237,12 +243,30 @@ export default function DeliveryDetails() {
         `deliveries/${delivery.id}/status`,
       );
       const timeServiceStatus = getTimeServiceStatus();
-
-      await updateDoc(doc(db, "deliveries", delivery.id), {
+      const updateData: Record<string, unknown> = {
         status: newStatus,
         updatedAt: timestamp,
         timeSource: timeServiceStatus.primarySource,
-      });
+      };
+
+      if (newStatus === "picked_up") {
+        updateData.pickupTime = timestamp;
+      }
+
+      if (newStatus === "out_for_delivery") {
+        updateData.pickupTime =
+          delivery.status === "assigned"
+            ? timestamp
+            : delivery.pickupTime || timestamp;
+        updateData.inTransitTime = timestamp;
+        updateData.outForDeliveryTime = timestamp;
+      }
+
+      if (newStatus === "delivered") {
+        updateData.deliveryTime = timestamp;
+      }
+
+      await updateDoc(doc(db, "deliveries", delivery.id), updateData);
 
       toast.success(`Status updated to ${newStatus.replace("_", " ")}`);
       loadDelivery(delivery.id); // Reload
@@ -469,10 +493,10 @@ export default function DeliveryDetails() {
             )}
             {delivery.status === "assigned" && (
               <button
-                onClick={() => updateStatus("picked_up")}
+                onClick={() => updateStatus("out_for_delivery")}
                 className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
               >
-                Mark as Picked Up
+                Confirm Pickup & Start Delivery
               </button>
             )}
             {delivery.status === "picked_up" && (
@@ -480,7 +504,7 @@ export default function DeliveryDetails() {
                 onClick={() => updateStatus("out_for_delivery")}
                 className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600"
               >
-                Out for Delivery
+                Resume Delivery
               </button>
             )}
             {(delivery.status === "in_transit" ||
@@ -489,7 +513,7 @@ export default function DeliveryDetails() {
                 onClick={() => updateStatus("out_for_delivery")}
                 className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600"
               >
-                Out for Delivery
+                Resume Delivery
               </button>
             )}
             {delivery.status === "out_for_delivery" && (

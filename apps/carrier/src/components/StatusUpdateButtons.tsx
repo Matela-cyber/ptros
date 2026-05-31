@@ -18,7 +18,7 @@ export const StatusUpdateButtons: React.FC<StatusUpdateButtonsProps> = ({
   const { updateStatus, loading, error } = useDeliveryStatus();
 
   const handleStatusUpdate = async (
-    status: "picked_up" | "in_transit" | "stuck" | "delivered",
+    status: "picked_up" | "out_for_delivery" | "stuck" | "delivered",
   ) => {
     try {
       if (status === "picked_up" || status === "delivered") {
@@ -99,11 +99,13 @@ export const StatusUpdateButtons: React.FC<StatusUpdateButtonsProps> = ({
       case "accepted":
         return ["picked_up"];
       case "picked_up":
-        return ["in_transit", "stuck"];
+        return ["delivered", "stuck"];
       case "in_transit":
         return ["delivered", "stuck"];
+      case "out_for_delivery":
+        return ["delivered", "stuck"];
       case "stuck":
-        return ["in_transit"]; // Can resume from stuck
+        return ["out_for_delivery"];
       default:
         return [];
     }
@@ -121,10 +123,10 @@ export const StatusUpdateButtons: React.FC<StatusUpdateButtonsProps> = ({
       color: "bg-blue-600 hover:bg-blue-700",
       description: "Package collected from pickup location",
     },
-    in_transit: {
-      label: "🚚 In Transit",
-      color: "bg-purple-600 hover:bg-purple-700",
-      description: "Package is on the way",
+    out_for_delivery: {
+      label: "🚚 Resume Delivery",
+      color: "bg-indigo-600 hover:bg-indigo-700",
+      description: "Continue delivery after an issue",
     },
     stuck: {
       label: "⚠️ Stuck",
@@ -184,7 +186,7 @@ export const StatusUpdateButtons: React.FC<StatusUpdateButtonsProps> = ({
           >
             <span className="text-lg mb-1">
               {status === "picked_up" && "📦"}
-              {status === "in_transit" && "🚚"}
+              {status === "out_for_delivery" && "🚚"}
               {status === "stuck" && "⚠️"}
               {status === "delivered" && "✅"}
             </span>
