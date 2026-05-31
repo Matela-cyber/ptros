@@ -1,5 +1,6 @@
-import React from 'react';
-import { useDeliveryStatus } from '../hooks/useDeliveryStatus';
+import React from "react";
+import { useDeliveryStatus } from "../hooks/useDeliveryStatus";
+import { CarrierService } from "../carrierService";
 
 interface StatusUpdateButtonsProps {
   deliveryId: string;
@@ -12,64 +13,129 @@ export const StatusUpdateButtons: React.FC<StatusUpdateButtonsProps> = ({
   deliveryId,
   currentStatus,
   onStatusUpdate,
-  compact = false
+  compact = false,
 }) => {
   const { updateStatus, loading, error } = useDeliveryStatus();
 
-  const handleStatusUpdate = async (status: 'picked_up' | 'in_transit' | 'stuck' | 'delivered') => {
+  const handleStatusUpdate = async (
+    status: "picked_up" | "in_transit" | "stuck" | "delivered",
+  ) => {
     try {
+      if (status === "picked_up" || status === "delivered") {
+        const phase = status === "picked_up" ? "pickup" : "delivery";
+        const otp = window.prompt(`Enter ${phase} OTP`);
+
+        let riskAccepted = false;
+        let bypassReason: string | null = null;
+        const otpValue = otp?.trim() ?? "";
+
+        if (!otp) {
+          const wantsRiskBypass = window.confirm(
+            `Unable to get ${phase} OTP right now? Click OK to accept risk and continue without OTP.`,
+          );
+          if (!wantsRiskBypass) {
+            return;
+          }
+
+          const reason = window.prompt(
+            `Why are you accepting ${phase} OTP risk?`,
+            "Customer unreachable after confirmed handoff",
+          );
+
+          if (!reason || reason.trim().length < 5) {
+            throw new Error(
+              "Please provide a valid risk reason (min 5 chars).",
+            );
+          }
+
+          riskAccepted = true;
+          bypassReason = reason.trim();
+        }
+
+        const verified = await CarrierService.verifyOtpForPhase(
+          deliveryId,
+          phase,
+          riskAccepted ? "0000" : otpValue,
+          riskAccepted
+            ? {
+                allowBypass: true,
+                bypassReason,
+              }
+            : undefined,
+        );
+
+        if (!verified) {
+          throw new Error(
+            riskAccepted
+              ? "Could not record OTP risk acceptance. Please try again."
+              : "Invalid OTP. Please try again.",
+          );
+        }
+
+        if (riskAccepted) {
+          window.alert(
+            `${phase === "pickup" ? "Pickup" : "Delivery"} completed with OTP risk acceptance.`,
+          );
+        }
+
+        if (onStatusUpdate) {
+          onStatusUpdate(status);
+        }
+        return;
+      }
+
       await updateStatus(deliveryId, status);
       if (onStatusUpdate) {
         onStatusUpdate(status);
       }
     } catch (err) {
-      console.error('Failed to update status:', err);
+      console.error("Failed to update status:", err);
     }
   };
 
   // Determine which buttons to show based on current status
   const getAvailableStatuses = () => {
     switch (currentStatus) {
-      case 'accepted':
-        return ['picked_up'];
-      case 'picked_up':
-        return ['in_transit', 'stuck'];
-      case 'in_transit':
-        return ['delivered', 'stuck'];
-      case 'stuck':
-        return ['in_transit']; // Can resume from stuck
+      case "accepted":
+        return ["picked_up"];
+      case "picked_up":
+        return ["in_transit", "stuck"];
+      case "in_transit":
+        return ["delivered", "stuck"];
+      case "stuck":
+        return ["in_transit"]; // Can resume from stuck
       default:
         return [];
     }
   };
 
   const availableStatuses = getAvailableStatuses();
-  
+
   if (availableStatuses.length === 0) {
     return null;
   }
 
   const statusConfig = {
     picked_up: {
-      label: '📦 Picked Up',
-      color: 'bg-blue-600 hover:bg-blue-700',
-      description: 'Package collected from pickup location'
+      label: "📦 Picked Up",
+      color: "bg-blue-600 hover:bg-blue-700",
+      description: "Package collected from pickup location",
     },
     in_transit: {
-      label: '🚚 In Transit',
-      color: 'bg-purple-600 hover:bg-purple-700',
-      description: 'Package is on the way'
+      label: "🚚 In Transit",
+      color: "bg-purple-600 hover:bg-purple-700",
+      description: "Package is on the way",
     },
     stuck: {
-      label: '⚠️ Stuck',
-      color: 'bg-orange-600 hover:bg-orange-700',
-      description: 'Facing delays or issues'
+      label: "⚠️ Stuck",
+      color: "bg-orange-600 hover:bg-orange-700",
+      description: "Facing delays or issues",
     },
     delivered: {
-      label: '✅ Delivered',
-      color: 'bg-green-600 hover:bg-green-700',
-      description: 'Package delivered successfully'
-    }
+      label: "✅ Delivered",
+      color: "bg-green-600 hover:bg-green-700",
+      description: "Package delivered successfully",
+    },
   };
 
   if (compact) {
@@ -88,7 +154,9 @@ export const StatusUpdateButtons: React.FC<StatusUpdateButtonsProps> = ({
               disabled={loading}
               className={`px-3 py-2 rounded-lg text-white text-sm font-medium transition ${statusConfig[status as keyof typeof statusConfig].color} disabled:opacity-50`}
             >
-              {loading ? 'Updating...' : statusConfig[status as keyof typeof statusConfig].label}
+              {loading
+                ? "Updating..."
+                : statusConfig[status as keyof typeof statusConfig].label}
             </button>
           ))}
         </div>
@@ -99,7 +167,7 @@ export const StatusUpdateButtons: React.FC<StatusUpdateButtonsProps> = ({
   return (
     <div className="space-y-4">
       <h3 className="font-semibold text-gray-700">Update Delivery Status</h3>
-      
+
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg">
           {error}
@@ -115,12 +183,14 @@ export const StatusUpdateButtons: React.FC<StatusUpdateButtonsProps> = ({
             className={`p-4 rounded-xl text-white flex flex-col items-center justify-center transition ${statusConfig[status as keyof typeof statusConfig].color} disabled:opacity-50 hover:shadow-lg`}
           >
             <span className="text-lg mb-1">
-              {status === 'picked_up' && '📦'}
-              {status === 'in_transit' && '🚚'}
-              {status === 'stuck' && '⚠️'}
-              {status === 'delivered' && '✅'}
+              {status === "picked_up" && "📦"}
+              {status === "in_transit" && "🚚"}
+              {status === "stuck" && "⚠️"}
+              {status === "delivered" && "✅"}
             </span>
-            <span className="font-semibold">{statusConfig[status as keyof typeof statusConfig].label}</span>
+            <span className="font-semibold">
+              {statusConfig[status as keyof typeof statusConfig].label}
+            </span>
             <span className="text-xs opacity-90 mt-1">
               {statusConfig[status as keyof typeof statusConfig].description}
             </span>

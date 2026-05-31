@@ -233,8 +233,22 @@ service cloud.firestore {
           'currentLocation',
           'location',
           'otpCode',
+          'otp',
+          'otp.pickup.verified',
+          'otp.pickup.verifiedAt',
+          'otp.pickup.verifiedBy',
+          'otp.pickup.bypassed',
+          'otp.pickup.bypassReason',
+          'otp.delivery.verified',
+          'otp.delivery.verifiedAt',
+          'otp.delivery.verifiedBy',
+          'otp.delivery.bypassed',
+          'otp.delivery.bypassReason',
           'otpVerified',
+          'otpAudit',
           'proofOfDelivery',
+          'proofOfDelivery.verified',
+          'proofOfDelivery.verifiedAt',
           'pickupTime',
           'inTransitTime',
           'outForDeliveryTime',
@@ -285,7 +299,11 @@ service cloud.firestore {
         && resource.data.status in ['assigned', 'accepted', 'picked_up', 'in_transit', 'out_for_delivery', 'stuck'];
 
       // CUSTOMER: Create their own delivery/order
-      allow create: if isCustomer() && request.resource.data.customerId == request.auth.uid;
+      allow create: if isCustomer()
+        && request.resource.data.customerId == request.auth.uid
+        && request.resource.data.senderEmail is string
+        && request.resource.data.receiverEmail is string
+        && request.resource.data.otp is map;
 
       // Route snapshot stream for persistent trip replay
       match /routeSnapshots/{snapshotId} {

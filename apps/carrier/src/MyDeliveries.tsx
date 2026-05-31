@@ -65,7 +65,10 @@ export default function MyDeliveries() {
   const [selectedDelivery, setSelectedDelivery] = useState<Delivery | null>(
     null,
   );
+  const [otpPhase, setOtpPhase] = useState<"pickup" | "delivery">("delivery");
   const [otpInput, setOtpInput] = useState("");
+  const [otpRiskAccepted, setOtpRiskAccepted] = useState(false);
+  const [otpRiskReason, setOtpRiskReason] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [updatingDeliveryId, setUpdatingDeliveryId] = useState<string | null>(
     null,
@@ -178,6 +181,16 @@ export default function MyDeliveries() {
       const delivery = deliveries.find((d) => d.id === deliveryId);
       if (!delivery) throw new Error("Delivery not found");
 
+      if (newStatus === "picked_up" || newStatus === "delivered") {
+        setSelectedDelivery(delivery);
+        setOtpPhase(newStatus === "picked_up" ? "pickup" : "delivery");
+        setOtpInput("");
+        setOtpRiskAccepted(false);
+        setOtpRiskReason("");
+        setShowOtpModal(true);
+        return;
+      }
+
       await updateStatus(deliveryId, newStatus, delivery.status);
 
       toast.success(`Status updated to ${newStatus.replace("_", " ")}`);
@@ -196,30 +209,57 @@ export default function MyDeliveries() {
     }
   };
 
-  const handleCompleteDelivery = async () => {
-    if (!selectedDelivery || !otpInput) {
-      toast.error("Please enter OTP");
+  const handleOtpVerification = async () => {
+    if (!selectedDelivery) {
+      toast.error("Delivery context is missing. Please retry.");
+      return;
+    }
+
+    if (otpRiskAccepted) {
+      if (otpRiskReason.trim().length < 5) {
+        toast.error("Please provide a brief reason for OTP risk acceptance.");
+        return;
+      }
+    } else if (!otpInput || otpInput.length !== 4) {
+      toast.error("Please enter a valid 4-digit OTP");
       return;
     }
 
     setVerifying(true);
     try {
-      const verified = await CarrierService.verifyOTP(
+      const verified = await CarrierService.verifyOtpForPhase(
         selectedDelivery.id,
-        otpInput,
+        otpPhase,
+        otpRiskAccepted ? "0000" : otpInput,
+        otpRiskAccepted
+          ? {
+              allowBypass: true,
+              bypassReason: otpRiskReason.trim(),
+            }
+          : undefined,
       );
 
       if (!verified) {
         toast.error(
-          "Invalid OTP or OTP not generated yet. Ask customer for the OTP shown in their tracking page.",
+          otpRiskAccepted
+            ? `Risk acceptance could not be recorded for ${otpPhase}. Please try again.`
+            : `Invalid ${otpPhase} OTP or OTP not generated yet. Ask customer for the OTP shown in their tracking page.`,
         );
         setOtpInput("");
         return;
       }
 
-      toast.success("Delivery completed successfully.");
+      toast.success(
+        otpRiskAccepted
+          ? `${otpPhase === "pickup" ? "Pickup" : "Delivery"} completed with OTP risk acceptance.`
+          : otpPhase === "pickup"
+            ? "Pickup confirmed successfully."
+            : "Delivery completed successfully.",
+      );
       setShowOtpModal(false);
       setOtpInput("");
+      setOtpRiskAccepted(false);
+      setOtpRiskReason("");
       setSelectedDelivery(null);
 
       setDeliveries((prev) =>
@@ -227,34 +267,39 @@ export default function MyDeliveries() {
           d.id === selectedDelivery.id
             ? {
                 ...d,
-                status: "delivered",
-                otpVerified: true,
+                status: otpPhase === "pickup" ? "picked_up" : "delivered",
+                otpVerified: otpPhase === "delivery" ? true : d.otpVerified,
                 proofOfDelivery: {
                   ...(d.proofOfDelivery || {}),
-                  verified: true,
+                  verified:
+                    otpPhase === "delivery"
+                      ? true
+                      : d.proofOfDelivery?.verified,
                 },
               }
             : d,
         ),
       );
 
-      // Check if carrier has more active deliveries
-      const activeCount = deliveries.filter(
-        (d) =>
-          [
-            "assigned",
-            "accepted",
-            "picked_up",
-            "in_transit",
-            "out_for_delivery",
-            "stuck",
-          ].includes(d.status) && d.id !== selectedDelivery.id,
-      ).length;
+      if (otpPhase === "delivery") {
+        // Check if carrier has more active deliveries
+        const activeCount = deliveries.filter(
+          (d) =>
+            [
+              "assigned",
+              "accepted",
+              "picked_up",
+              "in_transit",
+              "out_for_delivery",
+              "stuck",
+            ].includes(d.status) && d.id !== selectedDelivery.id,
+        ).length;
 
-      // If no more active deliveries, update carrier status to active
-      if (activeCount === 0) {
-        await CarrierService.updateCarrierStatus("active");
-        toast.success("Status updated to Active");
+        // If no more active deliveries, update carrier status to active
+        if (activeCount === 0) {
+          await CarrierService.updateCarrierStatus("active");
+          toast.success("Status updated to Active");
+        }
       }
     } catch (error) {
       console.error("Error completing delivery:", error);
@@ -733,6 +778,10 @@ export default function MyDeliveries() {
                         <button
                           onClick={() => {
                             setSelectedDelivery(delivery);
+                            setOtpPhase("delivery");
+                            setOtpInput("");
+                            setOtpRiskAccepted(false);
+                            setOtpRiskReason("");
                             setShowOtpModal(true);
                           }}
                           className="w-full py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition flex items-center justify-center gap-2"
@@ -792,7 +841,7 @@ export default function MyDeliveries() {
             <div className="p-6">
               <div className="flex justify-between items-start mb-6">
                 <h2 className="text-xl font-bold text-gray-800">
-                  Verify Delivery OTP
+                  Verify {otpPhase === "pickup" ? "Pickup" : "Delivery"} OTP
                 </h2>
                 <button
                   onClick={() => {
@@ -810,15 +859,18 @@ export default function MyDeliveries() {
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                   <p className="text-blue-800 font-medium text-sm">
                     <i className="fa-solid fa-location-dot mr-2" />
-                    {selectedDelivery.deliveryAddress}
+                    {otpPhase === "pickup"
+                      ? selectedDelivery.pickupAddress
+                      : selectedDelivery.deliveryAddress}
                   </p>
                   <p className="text-blue-700 text-xs mt-2">
-                    Ask the customer for their OTP code
+                    Ask the customer for their {otpPhase} OTP code
                   </p>
                 </div>
 
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Customer OTP Code
+                  Customer {otpPhase === "pickup" ? "Pickup" : "Delivery"} OTP
+                  Code
                 </label>
                 <input
                   type="text"
@@ -828,13 +880,43 @@ export default function MyDeliveries() {
                   onChange={(e) =>
                     setOtpInput(e.target.value.replace(/\D/g, "").slice(0, 4))
                   }
+                  disabled={otpRiskAccepted}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg text-center text-2xl tracking-widest focus:outline-none focus:ring-2 focus:ring-green-500"
                   autoFocus
                 />
                 <p className="text-xs text-gray-500 mt-2">
                   Customer gets this OTP in Customer App → Track Orders → Order
-                  Summary (shown after pickup).
+                  Summary.
                 </p>
+
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <label className="inline-flex items-center gap-2 text-sm font-medium text-amber-800">
+                    <input
+                      type="checkbox"
+                      checked={otpRiskAccepted}
+                      onChange={(e) => {
+                        setOtpRiskAccepted(e.target.checked);
+                        if (!e.target.checked) {
+                          setOtpRiskReason("");
+                        }
+                      }}
+                    />
+                    Accept risk of missing OTP for this {otpPhase}
+                  </label>
+                  <p className="text-xs text-amber-700 mt-1">
+                    Use only when OTP cannot be obtained despite a genuine
+                    pickup/delivery handoff.
+                  </p>
+                  {otpRiskAccepted && (
+                    <textarea
+                      value={otpRiskReason}
+                      onChange={(e) => setOtpRiskReason(e.target.value)}
+                      rows={3}
+                      placeholder="Reason (e.g. customer network issue, OTP not reachable after handoff)"
+                      className="mt-2 w-full rounded-lg border border-amber-300 px-3 py-2 text-sm text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                  )}
+                </div>
               </div>
 
               <div className="flex space-x-4">
@@ -842,6 +924,8 @@ export default function MyDeliveries() {
                   onClick={() => {
                     setShowOtpModal(false);
                     setOtpInput("");
+                    setOtpRiskAccepted(false);
+                    setOtpRiskReason("");
                     setSelectedDelivery(null);
                   }}
                   className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium"
@@ -849,10 +933,16 @@ export default function MyDeliveries() {
                   Cancel
                 </button>
                 <button
-                  onClick={handleCompleteDelivery}
-                  disabled={verifying || otpInput.length !== 4}
+                  onClick={handleOtpVerification}
+                  disabled={
+                    verifying ||
+                    (!otpRiskAccepted && otpInput.length !== 4) ||
+                    (otpRiskAccepted && otpRiskReason.trim().length < 5)
+                  }
                   className={`flex-1 px-4 py-3 rounded-lg font-medium ${
-                    otpInput.length === 4 && !verifying
+                    ((!otpRiskAccepted && otpInput.length === 4) ||
+                      (otpRiskAccepted && otpRiskReason.trim().length >= 5)) &&
+                    !verifying
                       ? "bg-green-600 text-white hover:bg-green-700"
                       : "bg-gray-300 text-gray-500 cursor-not-allowed"
                   }`}
@@ -881,8 +971,16 @@ export default function MyDeliveries() {
                       </svg>
                       Verifying...
                     </span>
+                  ) : otpRiskAccepted ? (
+                    otpPhase === "pickup" ? (
+                      "✓ Accept Risk & Confirm Pickup"
+                    ) : (
+                      "✓ Accept Risk & Complete Delivery"
+                    )
+                  ) : otpPhase === "pickup" ? (
+                    "✓ Verify OTP & Confirm Pickup"
                   ) : (
-                    "✓ Complete Delivery"
+                    "✓ Verify OTP & Complete Delivery"
                   )}
                 </button>
               </div>

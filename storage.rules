@@ -3,6 +3,38 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function getUserRole(uid) {
+      return isAuth()
+        ? firestore.get(/databases/(default)/documents/users/$(uid)).data.role
+        : null;
+    }
+
+    function isCoordinator() {
+      return isAuth() && (
+        getUserRole(request.auth.uid) == 'coordinator'
+        || getUserRole(request.auth.uid) == 'Coordinator'
+        || getUserRole(request.auth.uid) == 'admin'
+        || getUserRole(request.auth.uid) == 'Admin'
+        || getUserRole(request.auth.uid) == 'super_admin'
+      );
+    }
+
+    function deliveryDoc(deliveryId) {
+      return firestore.get(/databases/(default)/documents/deliveries/$(deliveryId)).data;
+    }
+
+    function isDeliveryCarrier(deliveryId) {
+      return isAuth() && deliveryDoc(deliveryId).carrierId == request.auth.uid;
+    }
+
+    function isDeliveryCustomer(deliveryId) {
+      return isAuth() && deliveryDoc(deliveryId).customerId == request.auth.uid;
+    }
+
     // Carrier profile photo uploads.
     // Only the carrier themselves can read/write.
     // Restricted to image files under 5 MB to prevent abuse.
@@ -28,10 +60,13 @@ service firebase.storage {
     // and the customer who owns the delivery (enforced client-side by path convention:
     // proofOfDelivery/{deliveryId}/{fileName})
     match /proofOfDelivery/{deliveryId}/{fileName} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null
+      allow read: if isCoordinator()
+        || isDeliveryCarrier(deliveryId)
+        || isDeliveryCustomer(deliveryId);
+      allow write: if isCoordinator()
+        || (isDeliveryCarrier(deliveryId)
         && request.resource.size < 10 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
+        && request.resource.contentType.matches('image/.*'));
     }
 
     // Default deny — nothing else is accessible

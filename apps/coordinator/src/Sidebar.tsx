@@ -1,5 +1,5 @@
 // apps/coordinator/src/Sidebar.tsx
-import { Link, NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { db } from "@config";
 import {
@@ -30,7 +30,6 @@ interface QuickStats {
 }
 
 export default function Sidebar() {
-  const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [stats, setStats] = useState<QuickStats>({
     active: 0,

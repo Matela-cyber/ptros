@@ -43,6 +43,8 @@ export interface Delivery {
     | "delivered"
     | "cancelled";
   customerEmail: string;
+  senderEmail?: string;
+  receiverEmail?: string;
   customerName: string;
   customerPhone: string;
   recipientName: string;
@@ -92,6 +94,24 @@ export interface Delivery {
     waypoints?: Array<{ lat: number; lng: number }>;
   };
   otpCode?: string;
+  otp?: {
+    pickup?: {
+      code?: string | null;
+      verified?: boolean;
+      verifiedAt?: Timestamp | null;
+      verifiedBy?: string | null;
+      bypassed?: boolean;
+      bypassReason?: string | null;
+    };
+    delivery?: {
+      code?: string | null;
+      verified?: boolean;
+      verifiedAt?: Timestamp | null;
+      verifiedBy?: string | null;
+      bypassed?: boolean;
+      bypassReason?: string | null;
+    };
+  };
   otpVerified: boolean;
   paymentMethod: "cash" | "mobile_money" | "card";
   createdAt: Timestamp;

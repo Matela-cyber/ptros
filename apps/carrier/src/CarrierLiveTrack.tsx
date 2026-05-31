@@ -56,6 +56,25 @@ interface LiveTrackDelivery {
 }
 
 const DEFAULT_CENTER = { lat: -29.31, lng: 27.48 };
+const DIRECTIONS_REQUEST_THROTTLE_MS = 12_000;
+const DIRECTIONS_COORD_DECIMALS = 4;
+
+const toDirectionsPointKey = (point: MapPoint) => {
+  const lat = Number(point.lat.toFixed(DIRECTIONS_COORD_DECIMALS));
+  const lng = Number(point.lng.toFixed(DIRECTIONS_COORD_DECIMALS));
+  return `${lat},${lng}`;
+};
+
+const buildDirectionsRequestKey = (
+  origin: MapPoint,
+  destination: MapPoint,
+  waypoints: Array<{ location: MapPoint; stopover: boolean }> = [],
+) => {
+  const waypointKey = waypoints
+    .map((waypoint) => toDirectionsPointKey(waypoint.location))
+    .join("|");
+  return `${toDirectionsPointKey(origin)}->${toDirectionsPointKey(destination)}::${waypointKey}`;
+};
 
 const asMapPoint = (value: any): MapPoint | undefined => {
   if (!value) return undefined;
@@ -216,6 +235,13 @@ export default function CarrierLiveTrack() {
   const [error, setError] = useState<string | null>(null);
   const markerRefs = useRef<Record<string, google.maps.Marker | null>>({});
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const directionsRequestCacheRef = useRef<
+    Record<string, { key: string; at: number; result: any | null }>
+  >({});
+
+  useEffect(() => {
+    directionsRequestCacheRef.current = {};
+  }, [delivery?.id]);
 
   const handleBack = () => {
     if (window.history.length > 1) {
@@ -395,6 +421,21 @@ export default function CarrierLiveTrack() {
 
     const service = new window.google.maps.DirectionsService();
     let cancelled = false;
+    const requestKey = buildDirectionsRequestKey(
+      pickupPointForRoute,
+      destinationPointForRoute,
+    );
+    const cached = directionsRequestCacheRef.current.fullPlan;
+    const now = Date.now();
+
+    if (
+      cached &&
+      cached.key === requestKey &&
+      now - cached.at < DIRECTIONS_REQUEST_THROTTLE_MS
+    ) {
+      setFullPlanDirections(cached.result);
+      return;
+    }
 
     service.route(
       {
@@ -404,11 +445,13 @@ export default function CarrierLiveTrack() {
       },
       (result: any, status: any) => {
         if (cancelled) return;
-        if (status === "OK" && result) {
-          setFullPlanDirections(result);
-          return;
-        }
-        setFullPlanDirections(null);
+        const normalizedResult = status === "OK" && result ? result : null;
+        directionsRequestCacheRef.current.fullPlan = {
+          key: requestKey,
+          at: Date.now(),
+          result: normalizedResult,
+        };
+        setFullPlanDirections(normalizedResult);
       },
     );
 
@@ -442,6 +485,22 @@ export default function CarrierLiveTrack() {
 
     let cancelled = false;
     const service = new window.google.maps.DirectionsService();
+    const requestKey = buildDirectionsRequestKey(
+      currentPoint,
+      { lat: destination.lat, lng: destination.lng },
+      waypoints,
+    );
+    const cached = directionsRequestCacheRef.current.carrierRoute;
+    const now = Date.now();
+
+    if (
+      cached &&
+      cached.key === requestKey &&
+      now - cached.at < DIRECTIONS_REQUEST_THROTTLE_MS
+    ) {
+      setCarrierRouteDirections(cached.result);
+      return;
+    }
 
     service.route(
       {
@@ -453,7 +512,13 @@ export default function CarrierLiveTrack() {
       },
       (result: any, status: any) => {
         if (cancelled) return;
-        setCarrierRouteDirections(status === "OK" && result ? result : null);
+        const normalizedResult = status === "OK" && result ? result : null;
+        directionsRequestCacheRef.current.carrierRoute = {
+          key: requestKey,
+          at: Date.now(),
+          result: normalizedResult,
+        };
+        setCarrierRouteDirections(normalizedResult);
       },
     );
 
@@ -492,6 +557,37 @@ export default function CarrierLiveTrack() {
 
     let cancelled = false;
     const service = new window.google.maps.DirectionsService();
+    const requestKey = buildDirectionsRequestKey(
+      currentPoint,
+      { lat: destination.lat, lng: destination.lng },
+      waypoints,
+    );
+    const cached = directionsRequestCacheRef.current.activeRoute;
+    const now = Date.now();
+
+    if (
+      cached &&
+      cached.key === requestKey &&
+      now - cached.at < DIRECTIONS_REQUEST_THROTTLE_MS
+    ) {
+      const cachedDirections = cached.result;
+      setActiveRouteDirections(cachedDirections);
+      if (cachedDirections?.routes?.[0]?.legs?.length) {
+        const seconds = cachedDirections.routes[0].legs.reduce(
+          (sum: number, leg: any) => sum + (leg.duration?.value || 0),
+          0,
+        );
+        setEtaInfo({
+          label: getTrackingEtaLabel(delivery.status),
+          text: formatTrackingEta(seconds),
+          detail:
+            activeRouteStopsAhead > 0
+              ? `${activeRouteStopsAhead} stop${activeRouteStopsAhead === 1 ? "" : "s"} ahead in the re-optimized route`
+              : undefined,
+        });
+      }
+      return;
+    }
 
     service.route(
       {
@@ -504,13 +600,20 @@ export default function CarrierLiveTrack() {
       (result: any, status: any) => {
         if (cancelled) return;
 
-        if (status === "OK" && result?.routes?.[0]?.legs?.length) {
-          const seconds = result.routes[0].legs.reduce(
+        const normalizedResult = status === "OK" && result ? result : null;
+        directionsRequestCacheRef.current.activeRoute = {
+          key: requestKey,
+          at: Date.now(),
+          result: normalizedResult,
+        };
+
+        if (normalizedResult?.routes?.[0]?.legs?.length) {
+          const seconds = normalizedResult.routes[0].legs.reduce(
             (sum: number, leg: any) => sum + (leg.duration?.value || 0),
             0,
           );
 
-          setActiveRouteDirections(result);
+          setActiveRouteDirections(normalizedResult);
           setEtaInfo({
             label: getTrackingEtaLabel(delivery.status),
             text: formatTrackingEta(seconds),

@@ -4,6 +4,8 @@ import { GoogleMap, InfoWindow, Marker } from "@react-google-maps/api";
 import { Delivery } from "./types";
 import { formatCurrency, formatDate } from "./utils";
 import { useDeliveryStatus } from "./hooks/useDeliveryStatus";
+import { CarrierService } from "./carrierService";
+import { submitRouteFeedback } from "./services/deliveryService";
 import MapLegend from "./components/MapLegend";
 import "./Dashboard.css"; // Assuming you have some custom styles for the dashboard
 interface CurrentJobDetailsProps {
@@ -23,7 +25,15 @@ export default function CurrentJobDetails({
     useDeliveryStatus();
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [showMoreDetails, setShowMoreDetails] = useState(false);
+  const [showPickupOtpModal, setShowPickupOtpModal] = useState(false);
   const [showDeliveryRouteModal, setShowDeliveryRouteModal] = useState(false);
+  const [pickupOtpInput, setPickupOtpInput] = useState("");
+  const [deliveryOtpInput, setDeliveryOtpInput] = useState("");
+  const [acceptPickupRisk, setAcceptPickupRisk] = useState(false);
+  const [acceptDeliveryRisk, setAcceptDeliveryRisk] = useState(false);
+  const [pickupRiskReason, setPickupRiskReason] = useState("");
+  const [deliveryRiskReason, setDeliveryRiskReason] = useState("");
+  const [otpErrorMessage, setOtpErrorMessage] = useState<string | null>(null);
   const [deviationReason, setDeviationReason] = useState("normal_route");
   const [deviationNote, setDeviationNote] = useState("");
   const [shortcutPoints, setShortcutPoints] = useState<
@@ -87,6 +97,12 @@ export default function CurrentJobDetails({
       | "delivered",
   ) => {
     try {
+      setOtpErrorMessage(null);
+      if (status === "picked_up") {
+        setShowPickupOtpModal(true);
+        return;
+      }
+
       if (status === "delivered") {
         setShowDeliveryRouteModal(true);
         return;
@@ -201,6 +217,39 @@ export default function CurrentJobDetails({
   void _onShortcutMapClick;
 
   const confirmDeliveredWithRouteContext = async () => {
+    setOtpErrorMessage(null);
+
+    const trimmedDeliveryOtp = deliveryOtpInput.trim();
+    const allowDeliveryBypass = acceptDeliveryRisk;
+    const trimmedDeliveryRiskReason = deliveryRiskReason.trim();
+
+    if (!allowDeliveryBypass && trimmedDeliveryOtp.length !== 4) {
+      setOtpErrorMessage("Enter the 4-digit delivery OTP before confirming.");
+      return;
+    }
+
+    if (allowDeliveryBypass && !trimmedDeliveryRiskReason) {
+      setOtpErrorMessage(
+        "Provide a reason before accepting risk to bypass OTP.",
+      );
+      return;
+    }
+
+    const deliveryOtpOk = await CarrierService.verifyOtpForPhase(
+      delivery.id,
+      "delivery",
+      trimmedDeliveryOtp || "0000",
+      {
+        allowBypass: allowDeliveryBypass,
+        bypassReason: allowDeliveryBypass ? trimmedDeliveryRiskReason : null,
+      },
+    );
+
+    if (!deliveryOtpOk) {
+      setOtpErrorMessage("Delivery OTP is invalid. Status was not changed.");
+      return;
+    }
+
     const start = shortcutPoints[0];
     const end = shortcutPoints[1];
 
@@ -214,21 +263,90 @@ export default function CurrentJobDetails({
           }
         : undefined;
 
-    await updateStatus(delivery.id, "delivered", delivery.status, {
-      reason: deviationReason,
-      note: deviationNote || undefined,
-      shortcut,
-    });
+    if (
+      deviationReason !== "normal_route" ||
+      deviationNote.trim() ||
+      shortcut
+    ) {
+      await submitRouteFeedback(delivery.id, {
+        type:
+          deviationReason === "shortcut"
+            ? "shortcut"
+            : deviationReason === "blocked_route"
+              ? "blocked_route"
+              : deviationReason === "traffic"
+                ? "traffic"
+                : "other",
+        reason: deviationReason,
+        note: deviationNote || undefined,
+        shortcut,
+      });
+    }
 
     setShowDeliveryRouteModal(false);
+    setDeliveryOtpInput("");
+    setAcceptDeliveryRisk(false);
+    setDeliveryRiskReason("");
     setDeviationReason("normal_route");
     setDeviationNote("");
     setShortcutPoints([]);
     setVehicleSpecificShortcut(false);
 
-    setStatusMessage("✅ Delivery marked as Delivered");
+    setStatusMessage(
+      allowDeliveryBypass
+        ? "⚠️ Delivery marked as Delivered with OTP risk acceptance"
+        : "✅ Delivery marked as Delivered",
+    );
     setTimeout(() => setStatusMessage(null), 3000);
     onStatusUpdate?.(delivery.id, "delivered");
+  };
+
+  const confirmPickupWithOtp = async () => {
+    setOtpErrorMessage(null);
+
+    const trimmedPickupOtp = pickupOtpInput.trim();
+    const allowPickupBypass = acceptPickupRisk;
+    const trimmedPickupRiskReason = pickupRiskReason.trim();
+
+    if (!allowPickupBypass && trimmedPickupOtp.length !== 4) {
+      setOtpErrorMessage("Enter the 4-digit pickup OTP before confirming.");
+      return;
+    }
+
+    if (allowPickupBypass && !trimmedPickupRiskReason) {
+      setOtpErrorMessage(
+        "Provide a reason before accepting risk to bypass OTP.",
+      );
+      return;
+    }
+
+    const pickupOtpOk = await CarrierService.verifyOtpForPhase(
+      delivery.id,
+      "pickup",
+      trimmedPickupOtp || "0000",
+      {
+        allowBypass: allowPickupBypass,
+        bypassReason: allowPickupBypass ? trimmedPickupRiskReason : null,
+      },
+    );
+
+    if (!pickupOtpOk) {
+      setOtpErrorMessage("Pickup OTP is invalid. Status was not changed.");
+      return;
+    }
+
+    setShowPickupOtpModal(false);
+    setPickupOtpInput("");
+    setAcceptPickupRisk(false);
+    setPickupRiskReason("");
+
+    setStatusMessage(
+      allowPickupBypass
+        ? "⚠️ Pickup confirmed with OTP risk acceptance"
+        : "✅ Pickup confirmed",
+    );
+    setTimeout(() => setStatusMessage(null), 3000);
+    onStatusUpdate?.(delivery.id, "picked_up");
   };
 
   const distanceKm = (delivery as any)?.distance ?? delivery.route?.distance;
@@ -674,6 +792,47 @@ export default function CurrentJobDetails({
             </div>
 
             <div className="space-y-4 px-6 py-5">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+                <label className="block text-sm font-medium text-gray-700">
+                  Delivery OTP
+                </label>
+                <input
+                  value={deliveryOtpInput}
+                  onChange={(e) =>
+                    setDeliveryOtpInput(
+                      e.target.value.replace(/\D/g, "").slice(0, 4),
+                    )
+                  }
+                  inputMode="numeric"
+                  placeholder="Enter 4-digit OTP"
+                  className="w-full rounded-lg border border-gray-300 p-2 text-sm tracking-widest"
+                  disabled={loading || acceptDeliveryRisk}
+                />
+                <label className="inline-flex items-center gap-2 text-sm text-amber-900">
+                  <input
+                    type="checkbox"
+                    checked={acceptDeliveryRisk}
+                    onChange={(e) => setAcceptDeliveryRisk(e.target.checked)}
+                  />
+                  Accept risk and bypass OTP for delivery
+                </label>
+                {acceptDeliveryRisk && (
+                  <textarea
+                    value={deliveryRiskReason}
+                    onChange={(e) => setDeliveryRiskReason(e.target.value)}
+                    rows={2}
+                    className="w-full rounded-lg border border-amber-300 p-2 text-sm"
+                    placeholder="Reason for OTP bypass (required for audit)"
+                  />
+                )}
+              </div>
+
+              {otpErrorMessage && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {otpErrorMessage}
+                </div>
+              )}
+
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">
                   Route outcome
@@ -910,7 +1069,13 @@ export default function CurrentJobDetails({
 
             <div className="flex justify-end gap-2 border-t px-6 py-4">
               <button
-                onClick={() => setShowDeliveryRouteModal(false)}
+                onClick={() => {
+                  setShowDeliveryRouteModal(false);
+                  setDeliveryOtpInput("");
+                  setAcceptDeliveryRisk(false);
+                  setDeliveryRiskReason("");
+                  setOtpErrorMessage(null);
+                }}
                 className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700"
               >
                 Cancel
@@ -925,6 +1090,88 @@ export default function CurrentJobDetails({
                 className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 Confirm Delivered
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPickupOtpModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+            <div className="border-b px-6 py-4">
+              <h3 className="text-lg font-bold text-gray-800">
+                Pickup OTP Verification
+              </h3>
+              <p className="text-sm text-gray-600">
+                Enter sender OTP before changing status to Picked Up.
+              </p>
+            </div>
+
+            <div className="space-y-4 px-6 py-5">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Pickup OTP
+                </label>
+                <input
+                  value={pickupOtpInput}
+                  onChange={(e) =>
+                    setPickupOtpInput(
+                      e.target.value.replace(/\D/g, "").slice(0, 4),
+                    )
+                  }
+                  inputMode="numeric"
+                  placeholder="Enter 4-digit OTP"
+                  className="w-full rounded-lg border border-gray-300 p-2 text-sm tracking-widest"
+                  disabled={loading || acceptPickupRisk}
+                />
+              </div>
+
+              <label className="inline-flex items-center gap-2 text-sm text-amber-900">
+                <input
+                  type="checkbox"
+                  checked={acceptPickupRisk}
+                  onChange={(e) => setAcceptPickupRisk(e.target.checked)}
+                />
+                Accept risk and bypass OTP for pickup
+              </label>
+
+              {acceptPickupRisk && (
+                <textarea
+                  value={pickupRiskReason}
+                  onChange={(e) => setPickupRiskReason(e.target.value)}
+                  rows={2}
+                  className="w-full rounded-lg border border-amber-300 p-2 text-sm"
+                  placeholder="Reason for OTP bypass (required for audit)"
+                />
+              )}
+
+              {otpErrorMessage && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {otpErrorMessage}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 border-t px-6 py-4">
+              <button
+                onClick={() => {
+                  setShowPickupOtpModal(false);
+                  setPickupOtpInput("");
+                  setAcceptPickupRisk(false);
+                  setPickupRiskReason("");
+                  setOtpErrorMessage(null);
+                }}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmPickupWithOtp}
+                disabled={loading}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                Confirm Pickup
               </button>
             </div>
           </div>

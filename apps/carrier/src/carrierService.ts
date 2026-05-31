@@ -1103,55 +1103,108 @@ export class CarrierService {
     deliveryId: string,
     otpCode: string,
   ): Promise<boolean> {
+    return this.verifyOtpForPhase(deliveryId, "delivery", otpCode, {
+      allowBypass: true,
+      bypassReason: otpCode.trim() === "0000" ? "legacy_0000_bypass" : null,
+    });
+  }
+
+  static async verifyOtpForPhase(
+    deliveryId: string,
+    phase: "pickup" | "delivery",
+    otpCode: string,
+    options?: {
+      allowBypass?: boolean;
+      bypassReason?: string | null;
+    },
+  ): Promise<boolean> {
     try {
       const deliveryRef = doc(db, "deliveries", deliveryId);
-      const deliveryDoc = await getDocs(
-        query(
-          collection(db, "deliveries"),
-          where("__name__", "==", deliveryId),
-        ),
-      );
+      const deliveryDoc = await getDoc(deliveryRef);
+      if (!deliveryDoc.exists()) return false;
 
-      // Accept real OTP or the "0000" dev bypass
-      const isBypass = otpCode.trim() === "0000";
-      const data = deliveryDoc.empty ? null : deliveryDoc.docs[0].data();
-      const otpMatches = data && (isBypass || data.otpCode === otpCode);
+      const data = deliveryDoc.data() as any;
+      const expectedOtp =
+        phase === "pickup"
+          ? (data?.otp?.pickup?.code ?? null)
+          : (data?.otp?.delivery?.code ?? data?.otpCode ?? null);
 
-      if (otpMatches) {
+      const isBypass =
+        !!options?.allowBypass &&
+        (otpCode.trim() === "0000" || Boolean(options?.bypassReason));
+      const otpMatches = isBypass || (expectedOtp && expectedOtp === otpCode);
+      if (!otpMatches) return false;
+
+      const user = auth.currentUser;
+      const now = Timestamp.now();
+      const bypassReason = options?.bypassReason?.trim() || null;
+      const updateData: any = {
+        updatedAt: now,
+        otpAudit: arrayUnion({
+          phase,
+          action: isBypass ? "risk_accepted" : "verified",
+          actorId: user?.uid || null,
+          actorEmail: user?.email || null,
+          timestamp: now,
+          bypassReason,
+        }),
+      };
+
+      if (phase === "pickup") {
+        updateData.status = "picked_up";
+        updateData.pickupTime = now;
+        updateData["otp.pickup.verified"] = true;
+        updateData["otp.pickup.verifiedAt"] = now;
+        updateData["otp.pickup.verifiedBy"] = user?.uid || null;
+        updateData["otp.pickup.bypassed"] = isBypass;
+        updateData["otp.pickup.bypassReason"] = bypassReason;
+      } else {
         const deliveryEarnings = data
           ? data.earnings || data.estimatedEarnings || 0
           : 0;
-        await updateDoc(deliveryRef, {
-          status: "delivered",
-          otpVerified: true,
-          deliveryTime: Timestamp.now(),
-          updatedAt: Timestamp.now(),
-        });
-        // Archive route stops — non-critical, must not fail the OTP verification
-        try {
-          await CarrierService.archiveStopsForDelivery(deliveryId, "delivered");
-        } catch (archiveErr) {
-          console.error(
-            "archiveStopsForDelivery failed (verifyOTP):",
-            archiveErr,
-          );
-        }
+        updateData.status = "delivered";
+        updateData.deliveryTime = now;
+        updateData.otpVerified = true;
+        updateData["otp.delivery.verified"] = true;
+        updateData["otp.delivery.verifiedAt"] = now;
+        updateData["otp.delivery.verifiedBy"] = user?.uid || null;
+        updateData["otp.delivery.bypassed"] = isBypass;
+        updateData["otp.delivery.bypassReason"] = bypassReason;
+
+        // preserve existing PoD compatibility fields
+        updateData["proofOfDelivery.verified"] = true;
+        updateData["proofOfDelivery.verifiedAt"] = now;
+
         // Update carrier stats on their user document
-        const user = auth.currentUser;
         if (user) {
           try {
             await updateDoc(doc(db, "users", user.uid), {
               completedDeliveries: increment(1),
               earnings: increment(deliveryEarnings),
-              updatedAt: Timestamp.now(),
+              updatedAt: now,
             });
           } catch (e) {
             console.error("Error updating carrier stats:", e);
           }
         }
-        return true;
       }
-      return false;
+
+      await updateDoc(deliveryRef, updateData);
+
+      // Archive route stops — non-critical, must not fail the OTP verification
+      try {
+        await CarrierService.archiveStopsForDelivery(
+          deliveryId,
+          phase === "pickup" ? "picked_up" : "delivered",
+        );
+      } catch (archiveErr) {
+        console.error(
+          "archiveStopsForDelivery failed (verifyOtpForPhase):",
+          archiveErr,
+        );
+      }
+
+      return true;
     } catch (error) {
       console.error("Error verifying OTP:", error);
       return false;

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import {
   db,
+  auth,
   formatEtaCountdown,
   getActiveEtaMs,
   type DeliveryEta,
@@ -23,6 +24,8 @@ import {
 interface OrderDetail {
   id: string;
   trackingCode: string;
+  customerId?: string;
+  customerEmail?: string;
   status: string;
   pickupAddress: string;
   deliveryAddress: string;
@@ -38,6 +41,12 @@ interface OrderDetail {
   };
   otpCode?: string;
   otpVerified?: boolean;
+  senderEmail?: string;
+  receiverEmail?: string;
+  otp?: {
+    pickup?: { code?: string; verified?: boolean };
+    delivery?: { code?: string; verified?: boolean };
+  };
   proofOfDelivery?: {
     otp?: string;
     verified?: boolean;
@@ -274,6 +283,8 @@ export default function OrderDetails() {
           setOrder({
             id: docSnap.id,
             trackingCode: data.trackingCode,
+            customerId: data.customerId,
+            customerEmail: data.customerEmail,
             status: data.status,
             pickupAddress: data.pickupAddress,
             deliveryAddress: data.deliveryAddress,
@@ -286,6 +297,9 @@ export default function OrderDetails() {
             currentLocation: data.currentLocation,
             otpCode: data.otpCode,
             otpVerified: data.otpVerified,
+            senderEmail: data.senderEmail,
+            receiverEmail: data.receiverEmail,
+            otp: data.otp,
             proofOfDelivery: data.proofOfDelivery,
             eta: data.eta ?? null,
           });
@@ -337,8 +351,29 @@ export default function OrderDetails() {
     }));
   };
 
-  const displayOtp = order.proofOfDelivery?.otp || order.otpCode;
-  const shouldShowOtp = [
+  const authEmail = auth.currentUser?.email?.toLowerCase() || "";
+  const isOrderOwnerById =
+    !!order.customerId && auth.currentUser?.uid === order.customerId;
+  const isOrderOwnerByEmail =
+    !!authEmail &&
+    [order.customerEmail, order.senderEmail]
+      .filter((value): value is string => !!value)
+      .some((value) => value.toLowerCase() === authEmail);
+  const isOrderOwner =
+    !!auth.currentUser && (isOrderOwnerById || isOrderOwnerByEmail);
+  const pickupOtp = order.otp?.pickup?.code;
+  const deliveryOtp =
+    order.otp?.delivery?.code || order.proofOfDelivery?.otp || order.otpCode;
+  const shouldShowPickupOtp = [
+    "assigned",
+    "accepted",
+    "picked_up",
+    "in_transit",
+    "out_for_delivery",
+  ].includes(order.status);
+  const shouldShowDeliveryOtp = [
+    "assigned",
+    "accepted",
     "picked_up",
     "in_transit",
     "out_for_delivery",
@@ -450,6 +485,22 @@ export default function OrderDetails() {
                   {order.packageDetails}
                 </p>
               </div>
+              {order.senderEmail && (
+                <div>
+                  <p className="text-sm text-gray-500 mb-1">Sender Email</p>
+                  <p className="text-gray-800 font-medium">
+                    {order.senderEmail}
+                  </p>
+                </div>
+              )}
+              {order.receiverEmail && (
+                <div>
+                  <p className="text-sm text-gray-500 mb-1">Receiver Email</p>
+                  <p className="text-gray-800 font-medium">
+                    {order.receiverEmail}
+                  </p>
+                </div>
+              )}
               {order.carrierName && (
                 <div>
                   <p className="text-sm text-gray-500 mb-1">Carrier</p>
@@ -489,22 +540,43 @@ export default function OrderDetails() {
                 );
               })()}
 
-              {shouldShowOtp && (
+              {isOrderOwner && shouldShowPickupOtp && (
                 <div>
-                  <p className="text-sm text-gray-500 mb-1">Delivery OTP</p>
-                  {displayOtp ? (
+                  <p className="text-sm text-gray-500 mb-1">Pickup OTP</p>
+                  {pickupOtp ? (
                     <div>
                       <span className="inline-flex items-center px-3 py-1 rounded-lg bg-amber-50 text-amber-800 font-bold tracking-widest border border-amber-200">
-                        {displayOtp}
+                        {pickupOtp}
                       </span>
                       <p className="text-xs text-gray-500 mt-1">
-                        Give this OTP to the carrier only when your package is
-                        delivered.
+                        Share this pickup OTP with the carrier only when the
+                        package is collected from sender.
                       </p>
                     </div>
                   ) : (
                     <p className="text-sm text-gray-500">
-                      OTP is generated after pickup.
+                      Pickup OTP is not available yet.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {isOrderOwner && shouldShowDeliveryOtp && (
+                <div>
+                  <p className="text-sm text-gray-500 mb-1">Delivery OTP</p>
+                  {deliveryOtp ? (
+                    <div>
+                      <span className="inline-flex items-center px-3 py-1 rounded-lg bg-amber-50 text-amber-800 font-bold tracking-widest border border-amber-200">
+                        {deliveryOtp}
+                      </span>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Share this delivery OTP with the carrier only when your
+                        package is delivered.
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">
+                      Delivery OTP is not available yet.
                     </p>
                   )}
                 </div>
