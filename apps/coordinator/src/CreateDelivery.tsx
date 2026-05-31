@@ -6,6 +6,7 @@ import {
   auth,
   defaultBusinessRules,
   loadBusinessRulesConfig,
+  sendDeliveryOtpEmails,
   type BusinessRulesConfig,
 } from "@config";
 import {
@@ -1610,6 +1611,23 @@ export default function CreateDelivery() {
         );
       }
 
+      let otpEmailMessage =
+        "OTP emails are being handled separately from delivery creation.";
+
+      try {
+        const emailResult = await sendDeliveryOtpEmails(docRef.id);
+        otpEmailMessage = emailResult.message;
+      } catch (emailError: any) {
+        console.error("Error sending OTP emails:", emailError);
+        const errorCode = emailError?.code
+          ? String(emailError.code).replace("functions/", "")
+          : "unknown";
+        const errorMessage = emailError?.message
+          ? String(emailError.message).replace(/^Firebase:\s*/i, "")
+          : "Unknown error";
+        otpEmailMessage = `Delivery created, but OTP email sending failed (${errorCode}): ${errorMessage}`;
+      }
+
       // Show success message with details
       const successMessage = (
         <div>
@@ -1639,6 +1657,7 @@ export default function CreateDelivery() {
               Package location is set to pickup address until carrier picks it
               up.
             </p>
+            <p className="text-xs text-gray-600 mt-1">{otpEmailMessage}</p>
           </div>
         </div>
       );

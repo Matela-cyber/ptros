@@ -1,4 +1,8 @@
 {
+  "functions": {
+    "source": "functions",
+    "predeploy": ["pnpm --dir functions build"]
+  },
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
