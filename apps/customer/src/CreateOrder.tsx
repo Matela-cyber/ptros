@@ -537,6 +537,7 @@ export default function CreateOrder({ user }: Props) {
     pickupCoordinates: null as Coordinates | null,
     pickupContactName: "",
     pickupContactPhone: "",
+    senderEmail: "",
     pickupInstructions: "",
     pickupDate: new Date().toISOString().split("T")[0],
     pickupTime: "09:00",
@@ -546,6 +547,7 @@ export default function CreateOrder({ user }: Props) {
     deliveryCoordinates: null as Coordinates | null,
     deliveryContactName: "",
     deliveryContactPhone: "",
+    receiverEmail: "",
     deliveryInstructions: "",
     deliveryDate: new Date().toISOString().split("T")[0],
     deliveryTimeWindow: "09:00-17:00",
@@ -900,6 +902,7 @@ export default function CreateOrder({ user }: Props) {
             ...prev,
             pickupContactName: data.fullName || prev.pickupContactName,
             pickupContactPhone: data.phone || prev.pickupContactPhone,
+            senderEmail: data.email || user.email || prev.senderEmail,
           }));
         }
       } catch (err) {
@@ -1004,6 +1007,9 @@ export default function CreateOrder({ user }: Props) {
     return `${prefix}-${randomNum}`;
   };
 
+  const generateOtpCode = () =>
+    Math.floor(1000 + Math.random() * 9000).toString();
+
   const validateForm = () => {
     if (!formData.packageDescription) {
       toast.error("Package description is required");
@@ -1015,6 +1021,10 @@ export default function CreateOrder({ user }: Props) {
     }
     if (!formData.deliveryContactName || !formData.deliveryContactPhone) {
       toast.error("Delivery contact information is required");
+      return false;
+    }
+    if (!formData.senderEmail.trim() || !formData.receiverEmail.trim()) {
+      toast.error("Sender and receiver email addresses are required");
       return false;
     }
     if (!pickupConfirmed || !deliveryConfirmed) {
@@ -1411,6 +1421,8 @@ export default function CreateOrder({ user }: Props) {
       }
 
       const trackingCode = generateTrackingCode();
+      const pickupOtp = generateOtpCode();
+      const deliveryOtp = generateOtpCode();
       const topRecommendedCarrier = recommendedCarriers[0];
       const manuallySelectedCarrier = recommendedCarriers.find(
         (carrier) => carrier.id === selectedCarrierId,
@@ -1500,6 +1512,8 @@ export default function CreateOrder({ user }: Props) {
         // Customer Info (from logged-in user)
         customerId: user.uid,
         customerEmail: user.email || "",
+        senderEmail: formData.senderEmail.trim() || user.email || "",
+        receiverEmail: formData.receiverEmail.trim(),
         customerName: formData.pickupContactName || "",
         customerPhone: formData.pickupContactPhone || "",
 
@@ -1635,11 +1649,31 @@ export default function CreateOrder({ user }: Props) {
 
         // Proof of Delivery
         proofOfDelivery: {
-          otp: null,
+          otp: deliveryOtp,
           verified: false,
           verifiedAt: null,
           photoUrl: null,
           signatureUrl: null,
+        },
+        otpCode: deliveryOtp,
+        otpVerified: false,
+        otp: {
+          pickup: {
+            code: pickupOtp,
+            verified: false,
+            verifiedAt: null,
+            verifiedBy: null,
+            bypassed: false,
+            bypassReason: null,
+          },
+          delivery: {
+            code: deliveryOtp,
+            verified: false,
+            verifiedAt: null,
+            verifiedBy: null,
+            bypassed: false,
+            bypassReason: null,
+          },
         },
 
         // Current Location starts at PICKUP location
@@ -1767,6 +1801,7 @@ export default function CreateOrder({ user }: Props) {
         pickupCoordinates: null,
         pickupContactName: "",
         pickupContactPhone: "",
+        senderEmail: user.email || "",
         pickupInstructions: "",
         pickupDate: new Date().toISOString().split("T")[0],
         pickupTime: "09:00",
@@ -1774,6 +1809,7 @@ export default function CreateOrder({ user }: Props) {
         deliveryCoordinates: null,
         deliveryContactName: "",
         deliveryContactPhone: "",
+        receiverEmail: "",
         deliveryInstructions: "",
         deliveryDate: new Date().toISOString().split("T")[0],
         deliveryTimeWindow: "09:00-17:00",
@@ -2106,6 +2142,20 @@ export default function CreateOrder({ user }: Props) {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
+                Sender Email *
+              </label>
+              <input
+                type="email"
+                name="senderEmail"
+                value={formData.senderEmail}
+                onChange={handleChange}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Pickup Date
               </label>
               <input
@@ -2257,6 +2307,20 @@ export default function CreateOrder({ user }: Props) {
                 type="tel"
                 name="deliveryContactPhone"
                 value={formData.deliveryContactPhone}
+                onChange={handleChange}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Receiver Email *
+              </label>
+              <input
+                type="email"
+                name="receiverEmail"
+                value={formData.receiverEmail}
                 onChange={handleChange}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                 required

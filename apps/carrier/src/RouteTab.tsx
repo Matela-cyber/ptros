@@ -209,7 +209,10 @@ function DeliveryModal({
   const navigate = useNavigate();
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [showOtp, setShowOtp] = useState(false);
+  const [otpPhase, setOtpPhase] = useState<"pickup" | "delivery">("delivery");
   const [otpInput, setOtpInput] = useState("");
+  const [otpRiskAccepted, setOtpRiskAccepted] = useState(false);
+  const [otpRiskReason, setOtpRiskReason] = useState("");
 
   if (!delivery) {
     return (
@@ -229,7 +232,11 @@ function DeliveryModal({
   const stopEtaMeta = formatEtaMeta(stop, nowMs);
 
   const handleStatusUpdate = async (newStatus: Delivery["status"]) => {
-    if (newStatus === "delivered") {
+    if (newStatus === "picked_up" || newStatus === "delivered") {
+      setOtpPhase(newStatus === "picked_up" ? "pickup" : "delivery");
+      setOtpInput("");
+      setOtpRiskAccepted(false);
+      setOtpRiskReason("");
       setShowOtp(true);
       return;
     }
@@ -254,19 +261,49 @@ function DeliveryModal({
   };
 
   const handleOtpSubmit = async () => {
-    if (!otpInput.trim()) {
-      toast.error("Enter OTP code");
+    if (otpRiskAccepted) {
+      if (otpRiskReason.trim().length < 5) {
+        toast.error("Please add a brief risk reason.");
+        return;
+      }
+    } else if (!otpInput.trim()) {
+      toast.error(`Enter ${otpPhase} OTP code`);
       return;
     }
+
     setStatusUpdating(true);
     try {
-      const ok = await CarrierService.verifyOTP(delivery.id, otpInput.trim());
+      const ok = await CarrierService.verifyOtpForPhase(
+        delivery.id,
+        otpPhase,
+        otpRiskAccepted ? "0000" : otpInput.trim(),
+        otpRiskAccepted
+          ? {
+              allowBypass: true,
+              bypassReason: otpRiskReason.trim(),
+            }
+          : undefined,
+      );
       if (ok) {
-        toast.success("Delivered! OTP verified.");
+        toast.success(
+          otpRiskAccepted
+            ? `${otpPhase === "pickup" ? "Pickup" : "Delivery"} completed with OTP risk acceptance.`
+            : otpPhase === "pickup"
+              ? "Pickup confirmed."
+              : "Delivered! OTP verified.",
+        );
+        setShowOtp(false);
+        setOtpInput("");
+        setOtpRiskAccepted(false);
+        setOtpRiskReason("");
         onStatusUpdated?.();
         onClose();
       } else {
-        toast.error("Incorrect OTP code");
+        toast.error(
+          otpRiskAccepted
+            ? "Could not record OTP risk acceptance. Try again."
+            : `Incorrect ${otpPhase} OTP code`,
+        );
       }
     } catch {
       toast.error("Failed to verify OTP");
@@ -451,28 +488,72 @@ function DeliveryModal({
       {showOtp && (
         <div className="px-5 pb-4 space-y-2">
           <p className="text-sm font-semibold text-gray-700">
-            Enter OTP from recipient:
+            Enter {otpPhase === "pickup" ? "pickup" : "delivery"} OTP from{" "}
+            {otpPhase === "pickup" ? "sender" : "recipient"}:
           </p>
           <div className="flex gap-2">
             <input
               type="number"
               inputMode="numeric"
-              placeholder="4-digit OTP"
+              placeholder={`4-digit ${otpPhase} OTP`}
               value={otpInput}
               onChange={(e) => setOtpInput(e.target.value)}
               maxLength={4}
-              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono text-center focus:outline-none focus:ring-2 focus:ring-green-500"
+              disabled={otpRiskAccepted}
+              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono text-center focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-100 disabled:text-gray-500"
             />
             <button
               onClick={handleOtpSubmit}
-              disabled={statusUpdating}
+              disabled={
+                statusUpdating ||
+                (!otpRiskAccepted && otpInput.trim().length === 0) ||
+                (otpRiskAccepted && otpRiskReason.trim().length < 5)
+              }
               className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-bold disabled:opacity-60 hover:bg-green-700 transition"
             >
-              {statusUpdating ? "..." : "Verify"}
+              {statusUpdating
+                ? "..."
+                : otpRiskAccepted
+                  ? "Accept Risk"
+                  : "Verify"}
             </button>
           </div>
+
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <label className="inline-flex items-center gap-2 text-sm font-medium text-amber-800">
+              <input
+                type="checkbox"
+                checked={otpRiskAccepted}
+                onChange={(e) => {
+                  setOtpRiskAccepted(e.target.checked);
+                  if (!e.target.checked) {
+                    setOtpRiskReason("");
+                  }
+                }}
+              />
+              Accept risk of missing OTP for this {otpPhase}
+            </label>
+            <p className="text-xs text-amber-700 mt-1">
+              Use only when handoff happened but OTP cannot be obtained.
+            </p>
+            {otpRiskAccepted && (
+              <textarea
+                value={otpRiskReason}
+                onChange={(e) => setOtpRiskReason(e.target.value)}
+                rows={3}
+                placeholder="Reason (minimum 5 characters)"
+                className="mt-2 w-full rounded-lg border border-amber-300 px-3 py-2 text-sm text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+            )}
+          </div>
+
           <button
-            onClick={() => setShowOtp(false)}
+            onClick={() => {
+              setShowOtp(false);
+              setOtpInput("");
+              setOtpRiskAccepted(false);
+              setOtpRiskReason("");
+            }}
             className="text-xs text-gray-400 hover:text-gray-600"
           >
             Cancel

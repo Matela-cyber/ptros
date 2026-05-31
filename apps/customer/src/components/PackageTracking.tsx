@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   DirectionsRenderer,
@@ -10,6 +10,7 @@ import {
 import {
   db,
   realtimeDb,
+  auth,
   formatEtaCountdown,
   getTrackingEtaLabel,
   formatRouteNetworkSegmentType,
@@ -32,6 +33,28 @@ const formatMinutes = (secs: number): string => {
   const mins = Math.round(secs / 60);
   if (mins === 0) return "< 1 min";
   return mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+};
+
+const DIRECTIONS_REQUEST_THROTTLE_MS = 12_000;
+const DIRECTIONS_COORD_DECIMALS = 4;
+
+type DirectionsPoint = { lat: number; lng: number };
+
+const toDirectionsPointKey = (point: DirectionsPoint) => {
+  const lat = Number(point.lat.toFixed(DIRECTIONS_COORD_DECIMALS));
+  const lng = Number(point.lng.toFixed(DIRECTIONS_COORD_DECIMALS));
+  return `${lat},${lng}`;
+};
+
+const buildDirectionsRequestKey = (
+  origin: DirectionsPoint,
+  destination: DirectionsPoint,
+  waypoints: Array<{ location: DirectionsPoint; stopover: true }> = [],
+) => {
+  const waypointKey = waypoints
+    .map((waypoint) => toDirectionsPointKey(waypoint.location))
+    .join("|");
+  return `${toDirectionsPointKey(origin)}->${toDirectionsPointKey(destination)}::${waypointKey}`;
 };
 
 // Handles plain objects { lat, lng }, Firestore GeoPoints (lat is a function),
@@ -140,6 +163,8 @@ const getGradientSegmentOptions = (
 interface DeliveryData {
   id: string;
   trackingCode: string;
+  customerId?: string;
+  customerEmail?: string;
   status: string;
   customerName: string;
   customerPhone: string;
@@ -174,6 +199,12 @@ interface DeliveryData {
   paymentMethod?: string;
   otpCode?: string;
   otpVerified?: boolean;
+  senderEmail?: string;
+  receiverEmail?: string;
+  otp?: {
+    pickup?: { code?: string; verified?: boolean };
+    delivery?: { code?: string; verified?: boolean };
+  };
   proofOfDelivery?: {
     otp?: string;
     verified?: boolean;
@@ -246,6 +277,14 @@ export default function PackageTrackingPage({
   const [persistedEtaRemainingMs, setPersistedEtaRemainingMs] = useState<
     number | null
   >(null);
+  const directionsRequestCacheRef = useRef<
+    Record<string, { key: string; at: number; result: any | null }>
+  >({});
+
+  useEffect(() => {
+    directionsRequestCacheRef.current = {};
+  }, [delivery?.id]);
+
   useEffect(() => {
     const eta = delivery?.eta;
     if (!eta) {
@@ -280,6 +319,8 @@ export default function PackageTrackingPage({
         setDelivery({
           id: docSnap.id,
           trackingCode: data.trackingCode,
+          customerId: data.customerId,
+          customerEmail: data.customerEmail,
           status: data.status,
           customerName: data.customerName,
           customerPhone: data.customerPhone,
@@ -302,6 +343,9 @@ export default function PackageTrackingPage({
           paymentMethod: data.paymentMethod,
           otpCode: data.otpCode,
           otpVerified: data.otpVerified,
+          senderEmail: data.senderEmail,
+          receiverEmail: data.receiverEmail,
+          otp: data.otp,
           proofOfDelivery: data.proofOfDelivery,
           routeReviews: data.routeReviews || [],
           routeFeedback: data.routeFeedback || [],
@@ -410,6 +454,7 @@ export default function PackageTrackingPage({
     let cancelled = false;
 
     const getRoute = (
+      routeId: string,
       origin: { lat: number; lng: number },
       destination: { lat: number; lng: number },
       waypoints: Array<{
@@ -418,6 +463,22 @@ export default function PackageTrackingPage({
       }> = [],
     ) =>
       new Promise<any | null>((resolve) => {
+        const requestKey = buildDirectionsRequestKey(
+          origin,
+          destination,
+          waypoints,
+        );
+        const cached = directionsRequestCacheRef.current[routeId];
+        const now = Date.now();
+        if (
+          cached &&
+          cached.key === requestKey &&
+          now - cached.at < DIRECTIONS_REQUEST_THROTTLE_MS
+        ) {
+          resolve(cached.result);
+          return;
+        }
+
         service.route(
           {
             origin,
@@ -427,11 +488,13 @@ export default function PackageTrackingPage({
             travelMode: window.google.maps.TravelMode.DRIVING,
           },
           (result: any, status: any) => {
-            if (status === "OK" && result) {
-              resolve(result);
-              return;
-            }
-            resolve(null);
+            const normalizedResult = status === "OK" && result ? result : null;
+            directionsRequestCacheRef.current[routeId] = {
+              key: requestKey,
+              at: Date.now(),
+              result: normalizedResult,
+            };
+            resolve(normalizedResult);
           },
         );
       });
@@ -462,20 +525,25 @@ export default function PackageTrackingPage({
         await Promise.all([
           // Approach route (carrier → pickup): only pre-pickup AND live RTDB GPS.
           isBeforePickup && approachPoint && pickupPoint
-            ? getRoute(approachPoint, pickupPoint)
+            ? getRoute("approach", approachPoint, pickupPoint)
             : Promise.resolve(null),
           // Active delivery route (carrier → dropoff): only post-pickup.
           // Pre-pickup this is null so fullPlanResult alone draws the ghost route,
           // preventing double-drawing of the same pickup→delivery segment.
           !isBeforePickup && activePoint
-            ? getRoute(activePoint, deliveryPoint)
+            ? getRoute("dropoff", activePoint, deliveryPoint)
             : Promise.resolve(null),
           // Ghost plan (pickup → delivery): always computed as baseline reference.
           pickupPoint
-            ? getRoute(pickupPoint, deliveryPoint)
+            ? getRoute("full-plan", pickupPoint, deliveryPoint)
             : Promise.resolve(null),
           linkedOrigin && linkedDestination
-            ? getRoute(linkedOrigin, linkedDestination, linkedWaypoints)
+            ? getRoute(
+                "linked",
+                linkedOrigin,
+                linkedDestination,
+                linkedWaypoints,
+              )
             : Promise.resolve(null),
         ]);
 
@@ -604,10 +672,39 @@ export default function PackageTrackingPage({
     return labels[status] || status;
   };
 
-  const displayOtp = delivery?.proofOfDelivery?.otp || delivery?.otpCode;
-  const shouldShowOtp =
+  const authEmail = auth.currentUser?.email?.toLowerCase() || "";
+  const isOrderOwnerById =
+    !!delivery?.customerId && auth.currentUser?.uid === delivery.customerId;
+  const isOrderOwnerByEmail =
+    !!authEmail &&
+    [delivery?.customerEmail, delivery?.senderEmail]
+      .filter((value): value is string => !!value)
+      .some((value) => value.toLowerCase() === authEmail);
+  const isOrderOwner =
+    !!auth.currentUser && (isOrderOwnerById || isOrderOwnerByEmail);
+  const pickupOtp = delivery?.otp?.pickup?.code;
+  const deliveryOtp =
+    delivery?.otp?.delivery?.code ||
+    delivery?.proofOfDelivery?.otp ||
+    delivery?.otpCode;
+  const shouldShowPickupOtp =
     !!delivery &&
-    ["picked_up", "in_transit", "out_for_delivery"].includes(delivery.status);
+    [
+      "assigned",
+      "accepted",
+      "picked_up",
+      "in_transit",
+      "out_for_delivery",
+    ].includes(delivery.status);
+  const shouldShowDeliveryOtp =
+    !!delivery &&
+    [
+      "assigned",
+      "accepted",
+      "picked_up",
+      "in_transit",
+      "out_for_delivery",
+    ].includes(delivery.status);
   const freshnessMinutes = carrierLocation?.timestamp
     ? Math.max(0, Math.round((Date.now() - carrierLocation.timestamp) / 60000))
     : null;
@@ -1255,15 +1352,38 @@ export default function PackageTrackingPage({
             </div>
 
             {/* Delivery OTP */}
-            {shouldShowOtp && (
+            {isOrderOwner && shouldShowPickupOtp && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-blue-900 mb-2">
+                  Pickup OTP
+                </h3>
+                {pickupOtp ? (
+                  <>
+                    <p className="text-2xl font-bold tracking-widest text-blue-800">
+                      {pickupOtp}
+                    </p>
+                    <p className="text-xs text-blue-700 mt-2">
+                      Share this code with the carrier only when the parcel is
+                      collected from sender.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-blue-800">
+                    Pickup OTP is not available yet.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {isOrderOwner && shouldShowDeliveryOtp && (
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-6">
                 <h3 className="text-lg font-semibold text-amber-900 mb-2">
                   Delivery OTP
                 </h3>
-                {displayOtp ? (
+                {deliveryOtp ? (
                   <>
                     <p className="text-2xl font-bold tracking-widest text-amber-800">
-                      {displayOtp}
+                      {deliveryOtp}
                     </p>
                     <p className="text-xs text-amber-700 mt-2">
                       Share this OTP with the carrier only when your package is
@@ -1272,7 +1392,7 @@ export default function PackageTrackingPage({
                   </>
                 ) : (
                   <p className="text-sm text-amber-800">
-                    OTP is generated after pickup.
+                    Delivery OTP is not available yet.
                   </p>
                 )}
               </div>

@@ -63,6 +63,12 @@ export const useDeliveryStatus = () => {
     setError(null);
 
     try {
+      if (["picked_up", "delivered"].includes(status)) {
+        throw new Error(
+          "OTP verification is required before this status change.",
+        );
+      }
+
       // Validate status transition if currentStatus is provided
       if (currentStatus) {
         const validation = validateStatusTransition(currentStatus, status);

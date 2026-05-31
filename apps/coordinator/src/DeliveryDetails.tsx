@@ -60,6 +60,8 @@ interface DeliveryDetails {
   id: string;
   trackingCode: string;
   status: string;
+  senderEmail?: string;
+  receiverEmail?: string;
   customerName: string;
   customerPhone: string;
   customerId: string;
@@ -127,6 +129,8 @@ export default function DeliveryDetails() {
           id: docSnap.id,
           trackingCode: data.trackingCode,
           status: data.status,
+          senderEmail: data.senderEmail || data.customerEmail || "",
+          receiverEmail: data.receiverEmail || "",
           customerName: data.customerName,
           customerPhone: data.customerPhone,
           customerId: data.customerId,
@@ -913,6 +917,14 @@ export default function DeliveryDetails() {
                     {delivery.pickupContactPhone}
                   </p>
                 </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-500">
+                    Sender Email
+                  </label>
+                  <p className="mt-1 font-medium">
+                    {delivery.senderEmail || "Not provided"}
+                  </p>
+                </div>
               </div>
               {delivery.pickupInstructions && (
                 <div>
@@ -967,6 +979,14 @@ export default function DeliveryDetails() {
                   </label>
                   <p className="mt-1 font-medium">
                     {delivery.deliveryContactPhone}
+                  </p>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-500">
+                    Receiver Email
+                  </label>
+                  <p className="mt-1 font-medium">
+                    {delivery.receiverEmail || "Not provided"}
                   </p>
                 </div>
               </div>

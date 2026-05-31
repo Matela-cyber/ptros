@@ -482,6 +482,7 @@ export default function CreateDelivery() {
     pickupCoordinates: null as Coordinates | null,
     pickupContactName: "",
     pickupContactPhone: "",
+    senderEmail: "",
     pickupInstructions: "",
     pickupDate: new Date().toISOString().split("T")[0],
     pickupTime: "09:00",
@@ -491,6 +492,7 @@ export default function CreateDelivery() {
     deliveryCoordinates: null as Coordinates | null,
     deliveryContactName: "",
     deliveryContactPhone: "",
+    receiverEmail: "",
     deliveryInstructions: "",
     deliveryDate: new Date().toISOString().split("T")[0],
     deliveryTimeWindow: "09:00-17:00",
@@ -786,6 +788,7 @@ export default function CreateDelivery() {
         customerId,
         pickupContactName: customer.fullName,
         pickupContactPhone: customer.phone,
+        senderEmail: customer.email || prev.senderEmail,
         pickupAddress: customer.address,
       }));
     }
@@ -1032,6 +1035,9 @@ export default function CreateDelivery() {
     return `${prefix}-${randomNum}`;
   };
 
+  const generateOtpCode = () =>
+    Math.floor(1000 + Math.random() * 9000).toString();
+
   const validateForm = () => {
     if (customerMode === "existing" && !formData.customerId) {
       toast.error("Please select an existing customer");
@@ -1066,6 +1072,11 @@ export default function CreateDelivery() {
     }
     if (!formData.deliveryContactName || !formData.deliveryContactPhone) {
       toast.error("Delivery contact information is required");
+      return false;
+    }
+
+    if (!formData.senderEmail.trim() || !formData.receiverEmail.trim()) {
+      toast.error("Sender and receiver email addresses are required");
       return false;
     }
 
@@ -1243,6 +1254,8 @@ export default function CreateDelivery() {
       }
 
       const trackingCode = generateTrackingCode();
+      const pickupOtp = generateOtpCode();
+      const deliveryOtp = generateOtpCode();
 
       // Calculate distance and estimates
       let distance = 0;
@@ -1330,6 +1343,8 @@ export default function CreateDelivery() {
         // Customer Info
         customerId: effectiveCustomer.id,
         customerEmail: effectiveCustomer.email,
+        senderEmail: formData.senderEmail.trim() || effectiveCustomer.email,
+        receiverEmail: formData.receiverEmail.trim(),
         customerName: effectiveCustomer.fullName,
         customerPhone: effectiveCustomer.phone,
         customerType: customerMode,
@@ -1509,11 +1524,31 @@ export default function CreateDelivery() {
 
         // Proof of Delivery
         proofOfDelivery: {
-          otp: null,
+          otp: deliveryOtp,
           verified: false,
           verifiedAt: null,
           photoUrl: null,
           signatureUrl: null,
+        },
+        otpCode: deliveryOtp,
+        otpVerified: false,
+        otp: {
+          pickup: {
+            code: pickupOtp,
+            verified: false,
+            verifiedAt: null,
+            verifiedBy: null,
+            bypassed: false,
+            bypassReason: null,
+          },
+          delivery: {
+            code: deliveryOtp,
+            verified: false,
+            verifiedAt: null,
+            verifiedBy: null,
+            bypassed: false,
+            bypassReason: null,
+          },
         },
 
         // 🚨 CRITICAL: Current Location starts at PICKUP location
@@ -1621,6 +1656,7 @@ export default function CreateDelivery() {
         pickupCoordinates: null,
         pickupContactName: "",
         pickupContactPhone: "",
+        senderEmail: "",
         pickupInstructions: "",
         pickupDate: new Date().toISOString().split("T")[0],
         pickupTime: "09:00",
@@ -1628,6 +1664,7 @@ export default function CreateDelivery() {
         deliveryCoordinates: null,
         deliveryContactName: "",
         deliveryContactPhone: "",
+        receiverEmail: "",
         deliveryInstructions: "",
         deliveryDate: new Date().toISOString().split("T")[0],
         deliveryTimeWindow: "09:00-17:00",
@@ -2079,6 +2116,20 @@ export default function CreateDelivery() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
+                Sender Email *
+              </label>
+              <input
+                type="email"
+                name="senderEmail"
+                value={formData.senderEmail}
+                onChange={handleChange}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Pickup Date
               </label>
               <input
@@ -2227,6 +2278,20 @@ export default function CreateDelivery() {
                 type="tel"
                 name="deliveryContactPhone"
                 value={formData.deliveryContactPhone}
+                onChange={handleChange}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Receiver Email *
+              </label>
+              <input
+                type="email"
+                name="receiverEmail"
+                value={formData.receiverEmail}
                 onChange={handleChange}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                 required
