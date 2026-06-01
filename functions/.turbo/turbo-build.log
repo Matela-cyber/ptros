@@ -1,0 +1,6 @@
+ WARN  Unsupported engine: wanted: {"node":"20"} (current: {"node":"v24.13.0","pnpm":"10.33.0"})
+ WARN  Unsupported engine: wanted: {"node":"20"} (current: {"node":"v24.13.0","pnpm":"10.33.0"})
+
+> @ptros/functions@ build C:\Users\Lenovo\Desktop\ptros-platform\functions
+> tsc -p tsconfig.json
+

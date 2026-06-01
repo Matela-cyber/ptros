@@ -35,6 +35,45 @@ function formatOptionalRecipient(
   return safeName ? `${safeName} <${email}>` : email;
 }
 
+function describeError(error: unknown): string {
+  if (!error) return "unknown_error";
+
+  if (typeof error === "string") return error;
+
+  const maybeError = error as {
+    message?: string;
+    name?: string;
+    statusCode?: number;
+    code?: string;
+  };
+
+  const parts: string[] = [];
+  if (maybeError.name) parts.push(maybeError.name);
+  if (maybeError.code) parts.push(String(maybeError.code));
+  if (maybeError.statusCode) parts.push(`status_${maybeError.statusCode}`);
+  if (maybeError.message) parts.push(maybeError.message);
+
+  if (parts.length) return parts.join(": ");
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "unknown_error";
+  }
+}
+
+async function sendResendEmailOrThrow(
+  resend: Resend,
+  params: Parameters<typeof resend.emails.send>[0],
+): Promise<void> {
+  const result = await resend.emails.send(params);
+
+  const sdkError = (result as { error?: unknown } | undefined)?.error;
+  if (sdkError) {
+    throw new Error(describeError(sdkError));
+  }
+}
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -213,10 +252,11 @@ export const sendDeliveryOtpEmails = onCall(async (request) => {
   let senderEmailSent = false;
   let receiverEmailSent = false;
   const sendErrors: string[] = [];
+  const sendErrorDetails: { sender?: string; receiver?: string } = {};
 
   if (senderEmail) {
     try {
-      await resend.emails.send({
+      await sendResendEmailOrThrow(resend, {
         from,
         to: [formatOptionalRecipient(senderName, senderEmail)],
         replyTo: replyTo ? [replyTo] : undefined,
@@ -231,15 +271,17 @@ export const sendDeliveryOtpEmails = onCall(async (request) => {
         text: `Hello ${senderName}, your PTROS pickup OTP for ${trackingCode} is ${pickupCode}. Pickup: ${pickupAddress}. Delivery: ${deliveryAddress}.`,
       });
       senderEmailSent = true;
-    } catch (error) {
+    } catch (error: unknown) {
+      const detail = describeError(error);
       logger.error("Failed to send pickup OTP email", { deliveryId, error });
       sendErrors.push("sender_email_failed");
+      sendErrorDetails.sender = detail;
     }
   }
 
   if (receiverEmail) {
     try {
-      await resend.emails.send({
+      await sendResendEmailOrThrow(resend, {
         from,
         to: [formatOptionalRecipient(receiverName, receiverEmail)],
         replyTo: replyTo ? [replyTo] : undefined,
@@ -254,9 +296,11 @@ export const sendDeliveryOtpEmails = onCall(async (request) => {
         text: `Hello ${receiverName}, your PTROS delivery OTP for ${trackingCode} is ${deliveryCode}. Pickup: ${pickupAddress}. Delivery: ${deliveryAddress}.`,
       });
       receiverEmailSent = true;
-    } catch (error) {
+    } catch (error: unknown) {
+      const detail = describeError(error);
       logger.error("Failed to send delivery OTP email", { deliveryId, error });
       sendErrors.push("receiver_email_failed");
+      sendErrorDetails.receiver = detail;
     }
   }
 
@@ -270,6 +314,7 @@ export const sendDeliveryOtpEmails = onCall(async (request) => {
         lastAttemptAt: Timestamp.now(),
         lastAttemptBy: request.auth.uid,
         lastErrorCodes: sendErrors,
+        lastErrorDetails: sendErrorDetails,
       },
       otpAudit: FieldValue.arrayUnion({
         type: "otp_email_dispatch",
@@ -278,15 +323,27 @@ export const sendDeliveryOtpEmails = onCall(async (request) => {
         senderEmailSent,
         receiverEmailSent,
         errors: sendErrors,
+        errorDetails: sendErrorDetails,
       }),
     },
     { merge: true },
   );
 
   if (!senderEmailSent && !receiverEmailSent) {
+    const detailParts = [
+      sendErrorDetails.sender
+        ? `sender: ${sendErrorDetails.sender}`
+        : undefined,
+      sendErrorDetails.receiver
+        ? `receiver: ${sendErrorDetails.receiver}`
+        : undefined,
+    ].filter(Boolean);
+
     throw new HttpsError(
-      "internal",
-      "Failed to send OTP emails. Check Functions logs and Resend configuration.",
+      "failed-precondition",
+      detailParts.length
+        ? `Failed to send OTP emails. ${detailParts.join(" | ")}`
+        : "Failed to send OTP emails. Check Functions logs and Resend configuration.",
     );
   }
 

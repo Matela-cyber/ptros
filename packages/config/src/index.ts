@@ -5,13 +5,13 @@ import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
 import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
 const firebaseConfig = {
-  apiKey: "AIzaSyBXSeU4cfq171-Mq0GWhxViYl3UUyYwQoE",
-  authDomain: "ptros-lesotho-d145d.firebaseapp.com",
-  databaseURL: "https://ptros-lesotho-d145d-default-rtdb.firebaseio.com/",
-  projectId: "ptros-lesotho-d145d",
-  storageBucket: "ptros-lesotho-d145d.firebasestorage.app",
-  messagingSenderId: "355339066230",
-  appId: "1:355339066230:web:fca735feb941dbd8e57857",
+  apiKey: "AIzaSyD9Z19Ka5ftDSrdV1rVEZh6g21sPRfbTL0",
+  authDomain: "ptros-ls.firebaseapp.com",
+  databaseURL: "https://ptros-ls-default-rtdb.firebaseio.com",
+  projectId: "ptros-ls",
+  storageBucket: "ptros-ls.firebasestorage.app",
+  messagingSenderId: "126837395384",
+  appId: "1:126837395384:web:c729451b4d9d36a0a9094d",
 };
 
 // Initialize Firebase
