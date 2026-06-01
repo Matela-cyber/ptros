@@ -75,6 +75,7 @@ export interface CarrierOptimizationProfile {
   };
   maxWeightKg?: number;
   maxParcels?: number;
+  rating?: number; // Average delivery rating from customers (0-5)
 }
 
 export interface CarrierRecommendation {
@@ -105,6 +106,8 @@ export interface CarrierRecommendation {
   reasonFactors: string[];
   estimatedDeliveryHours: number;
   estimatedPrice: number;
+  rating: number; // Average customer rating (0-5 scale)
+  ratingBonus: number; // Bonus applied to score from rating
 }
 
 export interface ManagedRouteSegment {
@@ -425,6 +428,7 @@ const fetchCarrierProfiles = async (): Promise<
       routeLearningStats: data.routeLearningStats || {},
       maxWeightKg: data.maxWeightKg,
       maxParcels: data.maxParcels,
+      rating: Number(data.rating || 0),
     } satisfies CarrierOptimizationProfile;
   });
 };
@@ -902,6 +906,10 @@ export const getCarrierRecommendationsForDraft = async (
           strictPriorityPenalty,
       );
 
+      // Rating bonus: Higher rated carriers get score reduction (0.5 per rating point)
+      // 5.0 ⭐ → -2.5, 4.0 ⭐ → -2.0, 3.0 ⭐ → -1.5, 0.0 → 0.0
+      const ratingBonus = -(carrier.rating || 0) * 0.5;
+
       const recommendationScore =
         distanceToPickupKm * 2.25 +
         estimatedDetourKm * 2.9 +
@@ -913,7 +921,8 @@ export const getCarrierRecommendationsForDraft = async (
         routeGovernancePenalty +
         strictPriorityPenalty -
         shortcutContributionScore * 0.7 -
-        costEfficiencyScore * 0.4;
+        costEfficiencyScore * 0.4 +
+        ratingBonus;
 
       // ETA and price — both computed in service so coordinator/customer use same values.
       // Use actual linked-list chained distance when available (routeStops subcollection read);
@@ -948,6 +957,9 @@ export const getCarrierRecommendationsForDraft = async (
         `${pendingStopCount} pending stops`,
         `${remainingCapacityKg.toFixed(0)}kg capacity left`,
         locationSource === "rtdb" ? "live GPS" : "cached location",
+        carrier.rating && carrier.rating > 0
+          ? `⭐ ${carrier.rating.toFixed(1)} rating`
+          : "no ratings yet",
       ];
 
       if (estimatedDetourKm > 0.5) {
@@ -1015,6 +1027,8 @@ export const getCarrierRecommendationsForDraft = async (
         reasonFactors,
         estimatedDeliveryHours: Number(estimatedDeliveryHours.toFixed(1)),
         estimatedPrice,
+        rating: carrier.rating || 0,
+        ratingBonus: Number(ratingBonus.toFixed(2)),
       } satisfies CarrierRecommendation;
     })
     .filter((carrier) => carrier.status !== "inactive")

@@ -29,6 +29,7 @@ import { ref as rtdbRef, onValue } from "firebase/database";
 import { toast, Toaster } from "react-hot-toast";
 import { format } from "date-fns";
 import DeliveryTimeline from "./DeliveryTimeline";
+import { RatingModal } from "./RatingModal";
 import MapLegend, { type LegendItem } from "./MapLegend";
 
 const getCircleMarkerIcon = (
@@ -195,6 +196,7 @@ export default function PackageTrackingPage({
   const [loading, setLoading] = useState(true);
   const [learnedSegments, setLearnedSegments] = useState<LearnedSegment[]>([]);
   const [routeStops, setRouteStops] = useState<TrackingRouteStop[]>([]);
+  const [showRatingModal, setShowRatingModal] = useState(false);
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
   const markerRefs = useRef<Record<string, google.maps.Marker | null>>({});
@@ -1121,6 +1123,42 @@ export default function PackageTrackingPage({
             delivered.
           </p>
         </div>
+      )}
+
+      {/* Rating Section */}
+      {delivery.status === "delivered" && delivery.carrierId && delivery.carrierName && (
+        <div className="bg-amber-50 border-t border-amber-200 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-amber-900 mb-1">
+                ⭐ Rate Your Delivery
+              </p>
+              <p className="text-xs text-amber-700">
+                Help us improve by rating your experience with {delivery.carrierName}
+              </p>
+            </div>
+            <button
+              onClick={() => setShowRatingModal(true)}
+              className="px-3 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-semibold text-sm whitespace-nowrap"
+            >
+              Rate Now
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Rating Modal */}
+      {delivery && delivery.carrierId && delivery.carrierName && (
+        <RatingModal
+          isOpen={showRatingModal}
+          onClose={() => setShowRatingModal(false)}
+          deliveryId={delivery.id}
+          carrierId={delivery.carrierId}
+          carrierName={delivery.carrierName}
+          onRatingSubmitted={() => {
+            setShowRatingModal(false);
+          }}
+        />
       )}
     </div>
   );
