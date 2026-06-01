@@ -17,9 +17,12 @@ import {
   getDisplayRouteNetworkSegments,
   getRouteNetworkSegmentStyle,
   isTrackingBeforePickup,
+  isCarrierApproachToPickupStatus,
+  isCarrierHeadingToDropoffStatus,
   shouldShowTrackingCarrierMarker,
   subscribeRouteNetworkSegments,
   toTrackingRouteStop,
+  TRACKING_ROUTE_COLORS,
   type RouteNetworkSegment,
   type TrackingRouteStop,
 } from "@config";
@@ -165,6 +168,24 @@ const getCircleMarkerIcon = (
   };
 };
 
+const createStraightLineSegments = (
+  mapInstance: google.maps.Map | null,
+  path: Array<{ lat: number; lng: number }>,
+  options: Omit<google.maps.PolylineOptions, "path" | "map">,
+) => {
+  if (!mapInstance || !path || path.length < 2) return [];
+  return path.slice(1).map(
+    (point, index) =>
+      new window.google.maps.Polyline({
+        path: [path[index], point],
+        geodesic: true,
+        clickable: false,
+        map: mapInstance,
+        ...options,
+      }),
+  );
+};
+
 /* RoutePathPoint and gradient types disabled (Directions API removed)
 type RoutePathPoint = { lat: number; lng: number };
 */
@@ -278,6 +299,7 @@ export default function DeliveryTrackingMap() {
   } | null>(null);
   const markerRefs = useRef<Record<string, google.maps.Marker | null>>({});
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const routePolylineRefs = useRef<google.maps.Polyline[]>([]);
   // Directions cache disabled
   // const directionsRequestCacheRef = useRef<
   //   Record<string, { key: string; at: number; result: any | null }>
@@ -421,10 +443,12 @@ export default function DeliveryTrackingMap() {
 
   const isBeforePickupStatus = isTrackingBeforePickup(delivery?.status);
   const showCarrierMarker = shouldShowTrackingCarrierMarker(delivery?.status);
+  const shouldCenterOnPickup =
+    isBeforePickupStatus && delivery?.status !== "accepted";
 
   const mapCenter = useMemo(
     () =>
-      isBeforePickupStatus && delivery?.pickupLocation
+      shouldCenterOnPickup && delivery?.pickupLocation
         ? { lat: delivery.pickupLocation.lat, lng: delivery.pickupLocation.lng }
         : carrierLocation
           ? { lat: carrierLocation.lat, lng: carrierLocation.lng }
@@ -435,7 +459,7 @@ export default function DeliveryTrackingMap() {
               }
             : { lat: -29.61, lng: 28.2336 },
     [
-      isBeforePickupStatus,
+      shouldCenterOnPickup,
       delivery?.pickupLocation,
       carrierLocation,
       delivery?.currentLocation,
@@ -894,7 +918,7 @@ export default function DeliveryTrackingMap() {
             : null
         : null,
       delivery.carrierName || "Carrier location",
-      getCircleMarkerIcon("#3B82F6", 12),
+      getCircleMarkerIcon("#3B82F6", 6),
       120,
       [
         `Status: ${getStatusLabel(delivery.status)}`,
@@ -943,6 +967,85 @@ export default function DeliveryTrackingMap() {
       infoWindowRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!mapInstance || !window.google?.maps || !delivery) return;
+
+    routePolylineRefs.current.forEach((polyline) => polyline.setMap(null));
+    routePolylineRefs.current = [];
+
+    const pickupPoint = delivery.pickupLocation
+      ? { lat: delivery.pickupLocation.lat, lng: delivery.pickupLocation.lng }
+      : null;
+    const dropoffPoint = delivery.deliveryLocation
+      ? {
+          lat: delivery.deliveryLocation.lat,
+          lng: delivery.deliveryLocation.lng,
+        }
+      : null;
+    const carrierPoint = carrierLocation
+      ? { lat: carrierLocation.lat, lng: carrierLocation.lng }
+      : delivery.currentLocation
+        ? {
+            lat: delivery.currentLocation.lat,
+            lng: delivery.currentLocation.lng,
+          }
+        : null;
+
+    const showCarrierToPickupRoute =
+      isCarrierApproachToPickupStatus(delivery.status) &&
+      carrierPoint &&
+      pickupPoint;
+    const showCarrierToDropoffRoute =
+      isCarrierHeadingToDropoffStatus(delivery.status) &&
+      carrierPoint &&
+      dropoffPoint;
+
+    if (showCarrierToPickupRoute) {
+      routePolylineRefs.current.push(
+        ...createStraightLineSegments(
+          mapInstance,
+          [carrierPoint, pickupPoint],
+          {
+            strokeColor: TRACKING_ROUTE_COLORS.carrierToPickup,
+            strokeOpacity: 0.95,
+            strokeWeight: 6,
+          },
+        ),
+      );
+    } else if (showCarrierToDropoffRoute) {
+      routePolylineRefs.current.push(
+        ...createStraightLineSegments(
+          mapInstance,
+          [carrierPoint, dropoffPoint],
+          {
+            strokeColor: TRACKING_ROUTE_COLORS.carrierToDropoff,
+            strokeOpacity: 0.95,
+            strokeWeight: 6,
+          },
+        ),
+      );
+    }
+
+    if (pickupPoint && dropoffPoint) {
+      routePolylineRefs.current.push(
+        ...createStraightLineSegments(
+          mapInstance,
+          [pickupPoint, dropoffPoint],
+          {
+            strokeColor: TRACKING_ROUTE_COLORS.pickupToDropoff,
+            strokeOpacity: 0.95,
+            strokeWeight: 5,
+          },
+        ),
+      );
+    }
+
+    return () => {
+      routePolylineRefs.current.forEach((polyline) => polyline.setMap(null));
+      routePolylineRefs.current = [];
+    };
+  }, [delivery, mapInstance, carrierLocation, orderedCarrierRouteStops]);
 
   const focusPoint = (point?: { lat: number; lng: number } | null) => {
     if (!mapInstance || !point) return;
@@ -1042,65 +1145,7 @@ export default function DeliveryTrackingMap() {
                   ],
                 }}
               >
-                {/* Directions API disabled: DirectionsRenderer and gradient segments removed
-                {fullPlanDirections && (
-                  <DirectionsRenderer
-                    directions={fullPlanDirections}
-                    options={
-                      {
-                        suppressMarkers: true,
-                        suppressBoundsUpdate: true,
-                        suppressPolylines: true,
-                      } as any
-                    }
-                  />
-                )}
-                {fullPlanGradientSegments.map((segment) => (
-                  <Polyline
-                    key={segment.id}
-                    path={segment.path}
-                    options={getGradientSegmentOptions(segment.color, 0.36, 4)}
-                  />
-                ))}
-                {carrierRouteDirections && (
-                  <DirectionsRenderer
-                    directions={carrierRouteDirections}
-                    options={
-                      {
-                        suppressMarkers: true,
-                        suppressBoundsUpdate: true,
-                        suppressPolylines: true,
-                      } as any
-                    }
-                  />
-                )}
-                {carrierRouteGradientSegments.map((segment) => (
-                  <Polyline
-                    key={segment.id}
-                    path={segment.path}
-                    options={getGradientSegmentOptions(segment.color, 0.58, 5)}
-                  />
-                ))}
-                {activeRouteDirections && (
-                  <DirectionsRenderer
-                    directions={activeRouteDirections}
-                    options={
-                      {
-                        suppressMarkers: true,
-                        suppressBoundsUpdate: true,
-                        suppressPolylines: true,
-                      } as any
-                    }
-                  />
-                )}
-                {activeRouteGradientSegments.map((segment) => (
-                  <Polyline
-                    key={segment.id}
-                    path={segment.path}
-                    options={getGradientSegmentOptions(segment.color, 0.94, 6)}
-                  />
-                ))}
-                */}
+                {/* Directions API disabled: carrier and pickup/dropoff routes render as straight line overlays */}
               </GoogleMap>
             </>
           )}
@@ -1122,21 +1167,17 @@ export default function DeliveryTrackingMap() {
             </li>
             <li>
               <span
-                className="inline-block h-2.5 w-10 rounded-full border border-slate-300 align-middle"
-                style={{
-                  background:
-                    "linear-gradient(90deg, #dc2626 0%, #f59e0b 38%, #84cc16 70%, #16a34a 100%)",
-                }}
-              />{" "}
-              Gradient routes: red = route start, green = route finish
+                className="inline-block h-2.5 w-10 rounded-full bg-blue-600 mr-2 align-middle"
+                style={{ opacity: 0.95 }}
+              />
+              Carrier → pickup when accepted / dropoff after pickup
             </li>
             <li>
-              <span className="font-semibold text-slate-700">Thicker line</span>
-              : current active route
-            </li>
-            <li>
-              <span className="font-semibold text-slate-700">Medium line</span>:
-              carrier linked route
+              <span
+                className="inline-block h-2.5 w-10 rounded-full bg-slate-400 mr-2 align-middle"
+                style={{ opacity: 0.35 }}
+              />
+              Pickup → dropoff baseline
             </li>
           </ul>
         </div>
@@ -1302,8 +1343,8 @@ export default function DeliveryTrackingMap() {
                 )}
                 {!!orderedCarrierRouteStops.length && (
                   <p className="text-xs text-gray-500 mt-1">
-                    Carrier linked route: {orderedCarrierRouteStops.length}{" "}
-                    remaining stop
+                    Route stops: {orderedCarrierRouteStops.length} remaining
+                    stop
                     {orderedCarrierRouteStops.length === 1 ? "" : "s"}
                   </p>
                 )}
@@ -1334,8 +1375,8 @@ export default function DeliveryTrackingMap() {
                 )}
                 {!!orderedCarrierRouteStops.length && (
                   <p className="text-xs text-gray-500 mt-1">
-                    Carrier linked route: {orderedCarrierRouteStops.length}{" "}
-                    remaining stop
+                    Route stops: {orderedCarrierRouteStops.length} remaining
+                    stop
                     {orderedCarrierRouteStops.length === 1 ? "" : "s"}
                   </p>
                 )}

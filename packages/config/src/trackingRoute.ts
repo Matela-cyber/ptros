@@ -27,13 +27,18 @@ export interface DeliveryTrackingRouteSummary {
 }
 
 const PRE_PICKUP_STATUSES = new Set(["pending", "assigned", "accepted"]);
-const HIDDEN_CARRIER_STATUSES = new Set([
-  "pending",
-  "assigned",
-  "accepted",
-  "delivered",
-  "cancelled",
+const CARRIER_TO_PICKUP_STATUSES = new Set(["assigned", "accepted"]);
+const CARRIER_TO_DROPOFF_STATUSES = new Set([
+  "picked_up",
+  "in_transit",
+  "out_for_delivery",
 ]);
+
+export const TRACKING_ROUTE_COLORS = {
+  pickupToDropoff: "#2563eb",
+  carrierToPickup: "#f97316",
+  carrierToDropoff: "#22c55e",
+};
 
 const hasFiniteCoordinate = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
@@ -41,8 +46,22 @@ const hasFiniteCoordinate = (value: unknown): value is number =>
 export const isTrackingBeforePickup = (status?: string | null) =>
   PRE_PICKUP_STATUSES.has(status || "");
 
+export const isCarrierApproachToPickupStatus = (status?: string | null) =>
+  CARRIER_TO_PICKUP_STATUSES.has(status || "");
+
+export const isCarrierHeadingToDropoffStatus = (status?: string | null) =>
+  CARRIER_TO_DROPOFF_STATUSES.has(status || "");
+
 export const shouldShowTrackingCarrierMarker = (status?: string | null) =>
-  !!status && !HIDDEN_CARRIER_STATUSES.has(status);
+  isCarrierApproachToPickupStatus(status) ||
+  isCarrierHeadingToDropoffStatus(status);
+
+export const getTrackingRouteDisplayState = (status?: string | null) => ({
+  showPickupToDropoffRoute: true,
+  showCarrierMarker: shouldShowTrackingCarrierMarker(status),
+  showCarrierToPickupRoute: isCarrierApproachToPickupStatus(status),
+  showCarrierToDropoffRoute: isCarrierHeadingToDropoffStatus(status),
+});
 
 export const getTrackingEtaLabel = (status?: string | null) =>
   isTrackingBeforePickup(status) ? "ETA to pickup" : "ETA to delivery";

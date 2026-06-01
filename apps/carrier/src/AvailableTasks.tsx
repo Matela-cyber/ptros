@@ -486,7 +486,7 @@ export default function AvailableTasks() {
                             }
                             className="text-sm px-3 py-2 rounded-md bg-cyan-100 text-cyan-700 hover:bg-cyan-200 font-semibold"
                           >
-                            Live Track
+                            Map View
                           </button>
                           <button
                             onClick={(event) =>
@@ -534,7 +534,7 @@ export default function AvailableTasks() {
                             }
                             className="text-sm px-3 py-1.5 rounded-md bg-cyan-100 text-cyan-700 hover:bg-cyan-200 font-semibold"
                           >
-                            Live Track
+                            Map View
                           </button>
                         </div>
                       )}
@@ -682,7 +682,7 @@ export default function AvailableTasks() {
                           }
                           className="text-sm px-3 py-2 rounded-md bg-cyan-100 text-cyan-700 hover:bg-cyan-200 font-semibold"
                         >
-                          Live Track
+                          Map View
                         </button>
                         <button
                           onClick={(event) =>
@@ -877,7 +877,7 @@ export default function AvailableTasks() {
                   onClick={() => openLiveTrack(selectedTask.id)}
                   className="px-4 py-2 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 font-semibold rounded-lg transition"
                 >
-                  Live Track
+                  Map View
                 </button>
 
                 {selectedTask.status === "assigned" && (

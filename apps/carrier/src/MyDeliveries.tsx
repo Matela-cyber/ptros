@@ -810,18 +810,8 @@ export default function MyDeliveries() {
                       onClick={() => openLiveTrack(delivery.id)}
                       className="text-sm px-2.5 py-1.5 rounded-md bg-cyan-100 text-cyan-700 hover:bg-cyan-200 font-semibold"
                     >
-                      Live Track
+                      Map View
                     </button>
-                    {["accepted", "picked_up", "in_transit", "stuck"].includes(
-                      delivery.status,
-                    ) && (
-                      <button
-                        onClick={() => setRouteReportDelivery(delivery)}
-                        className="text-sm px-2.5 py-1.5 rounded-md bg-amber-100 text-amber-700 hover:bg-amber-200 font-semibold"
-                      >
-                        Route Report
-                      </button>
-                    )}
                   </div>
 
                   <div className="text-xs text-gray-500">
