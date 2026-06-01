@@ -3,9 +3,9 @@ import { onAuthStateChanged } from "firebase/auth";
 import { collection, doc, getDoc, onSnapshot } from "firebase/firestore";
 import { onValue, ref as rtdbRef } from "firebase/database";
 import {
-  formatTrackingEta,
-  getTrackingEtaLabel,
-  getTrackingStopChain,
+  // formatTrackingEta, // Directions API disabled
+  // getTrackingEtaLabel, // Directions API disabled
+  // getTrackingStopChain, // Directions API disabled
   orderTrackingRouteStops,
   isTrackingBeforePickup,
   shouldShowTrackingCarrierMarker,
@@ -13,9 +13,9 @@ import {
   type TrackingRouteStop,
 } from "@config";
 import {
-  DirectionsRenderer,
+  // DirectionsRenderer, // Disabled: Directions API removed
   GoogleMap,
-  Polyline,
+  // Polyline, // Disabled: used only for gradient segments (Directions API)
 } from "@react-google-maps/api";
 import { useNavigate, useParams } from "react-router-dom";
 import { auth, db, realtimeDb } from "@config";
@@ -56,6 +56,7 @@ interface LiveTrackDelivery {
 }
 
 const DEFAULT_CENTER = { lat: -29.31, lng: 27.48 };
+/* Directions API disabled to reduce cost
 const DIRECTIONS_REQUEST_THROTTLE_MS = 12_000;
 const DIRECTIONS_COORD_DECIMALS = 4;
 
@@ -75,6 +76,7 @@ const buildDirectionsRequestKey = (
     .join("|");
   return `${toDirectionsPointKey(origin)}->${toDirectionsPointKey(destination)}::${waypointKey}`;
 };
+*/
 
 const asMapPoint = (value: any): MapPoint | undefined => {
   if (!value) return undefined;
@@ -133,6 +135,7 @@ const getStopMarkerColors = (status?: string | null) => {
   };
 };
 
+/* Gradient types and helpers disabled (Directions API removed)
 type GradientRouteSegment = {
   id: string;
   path: MapPoint[];
@@ -146,7 +149,9 @@ const getGradientRouteColor = (progress: number) => {
   const hue = Math.round(4 + clampGradientProgress(progress) * 116);
   return `hsl(${hue}, 78%, 45%)`;
 };
+*/
 
+/* toDirectionPath and buildGradientRouteSegments disabled (Directions API removed)
 const toDirectionPath = (directions: any): MapPoint[] => {
   const overview = directions?.routes?.[0]?.overview_path ?? [];
   return overview
@@ -189,6 +194,7 @@ const buildGradientRouteSegments = (
   }).filter((segment) => segment.path.length > 1);
 };
 
+/* getGradientSegmentOptions disabled (used only for gradient polylines)
 const getGradientSegmentOptions = (
   strokeColor: string,
   strokeOpacity: number,
@@ -211,6 +217,7 @@ const getGradientSegmentOptions = (
     },
   ],
 });
+*/
 
 export default function CarrierLiveTrack() {
   const { deliveryId } = useParams<{ deliveryId: string }>();
@@ -222,26 +229,21 @@ export default function CarrierLiveTrack() {
   const [delivery, setDelivery] = useState<LiveTrackDelivery | null>(null);
   const [routeStops, setRouteStops] = useState<TrackingRouteStop[]>([]);
   const [liveLocation, setLiveLocation] = useState<MapPoint | null>(null);
-  const [fullPlanDirections, setFullPlanDirections] = useState<any>(null);
-  const [carrierRouteDirections, setCarrierRouteDirections] =
-    useState<any>(null);
-  const [activeRouteDirections, setActiveRouteDirections] = useState<any>(null);
-  const [etaInfo, setEtaInfo] = useState<{
-    label: string;
-    text: string;
-    detail?: string;
-  } | null>(null);
+  // Directions gradient segments disabled
+  // const [fullPlanDirections] = [null];
+  // const [carrierRouteDirections] = [null];
+  // const [activeRouteDirections] = [null];
+  const etaInfo: { label: string; text: string; detail?: string } | null =
+    null as { label: string; text: string; detail?: string } | null; // Directions API disabled
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
   const [error, setError] = useState<string | null>(null);
   const markerRefs = useRef<Record<string, google.maps.Marker | null>>({});
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
-  const directionsRequestCacheRef = useRef<
-    Record<string, { key: string; at: number; result: any | null }>
-  >({});
-
-  useEffect(() => {
-    directionsRequestCacheRef.current = {};
-  }, [delivery?.id]);
+  // Directions cache disabled
+  // const directionsRequestCacheRef = useRef<
+  //   Record<string, { key: string; at: number; result: any | null }>
+  // >({});
+  // useEffect(() => { directionsRequestCacheRef.current = {}; }, [delivery?.id]);
 
   const handleBack = () => {
     if (window.history.length > 1) {
@@ -382,6 +384,7 @@ export default function CarrierLiveTrack() {
   const isBeforePickupStatus = isTrackingBeforePickup(delivery?.status);
   const showCarrierMarker = shouldShowTrackingCarrierMarker(delivery?.status);
 
+  /* activeRouteStopsAhead disabled (only used by Directions API effects)
   const activeRouteStopsAhead = useMemo(() => {
     if (!delivery) return 0;
     const chain = getTrackingStopChain(
@@ -391,12 +394,14 @@ export default function CarrierLiveTrack() {
     );
     return Math.max(0, chain.length - 1);
   }, [delivery, routeStops]);
+  */
 
   const orderedCarrierRouteStops = useMemo(
     () => orderTrackingRouteStops(routeStops),
     [routeStops],
   );
 
+  /* Directions API useEffects disabled
   useEffect(() => {
     if (!window.google?.maps || !delivery?.deliveryLocation) {
       setFullPlanDirections(null);
@@ -643,6 +648,7 @@ export default function CarrierLiveTrack() {
     isBeforePickupStatus,
     routeStops,
   ]);
+  */
 
   const routeStartPoint = pickupPoint;
   const routeEndPoint = destinationPoint;
@@ -652,6 +658,7 @@ export default function CarrierLiveTrack() {
     ? routeStartPoint || routeEndPoint || DEFAULT_CENTER
     : currentPoint || routeEndPoint || routeStartPoint || DEFAULT_CENTER;
 
+  /* Directions gradient segments disabled
   const fullPlanGradientSegments = useMemo(
     () =>
       buildGradientRouteSegments(
@@ -678,6 +685,7 @@ export default function CarrierLiveTrack() {
       ),
     [activeRouteDirections],
   );
+  */
 
   const focusPoint = (point?: MapPoint | null) => {
     if (!mapInstance || !point) return;
@@ -1031,6 +1039,7 @@ export default function CarrierLiveTrack() {
               fullscreenControl: true,
             }}
           >
+            {/* Directions API disabled: DirectionsRenderer and gradient segments removed
             {fullPlanDirections && (
               <DirectionsRenderer
                 directions={fullPlanDirections}
@@ -1088,6 +1097,7 @@ export default function CarrierLiveTrack() {
                 options={getGradientSegmentOptions(segment.color, 0.94, 6)}
               />
             ))}
+            */}
           </GoogleMap>
         </section>
       </div>

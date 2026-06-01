@@ -1,19 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  DirectionsRenderer,
+  // DirectionsRenderer, // Disabled: Directions API commented out to reduce API cost
   GoogleMap,
-  Polyline,
+  // Polyline, // Disabled: used only for gradient segments (Directions API)
 } from "@react-google-maps/api";
 import {
   db,
   realtimeDb,
-  computeEtaAbsoluteMs,
   formatEtaCountdown,
-  formatTrackingEta,
+  // formatTrackingEta, // Directions API disabled
   formatRouteNetworkSegmentType,
-  getTrackingEtaLabel,
-  getTrackingStopChain,
+  // getTrackingEtaLabel, // Directions API disabled
+  // getTrackingStopChain, // Directions API disabled
   orderTrackingRouteStops,
   getDisplayRouteNetworkSegments,
   getRouteNetworkSegmentStyle,
@@ -25,26 +24,19 @@ import {
   type TrackingRouteStop,
 } from "@config";
 import {
-  arrayUnion,
   collection,
   doc,
   limit,
   onSnapshot,
   orderBy,
   query,
-  Timestamp,
-  updateDoc,
 } from "firebase/firestore";
 import { ref as rtdbRef, onValue } from "firebase/database";
+import { format } from "date-fns";
 import { toast, Toaster } from "react-hot-toast";
-import { decodePolyline } from "./routeHistory";
 import OptimizationReasonDisplay, {
   OptimizationReason,
 } from "./components/OptimizationReasonDisplay";
-import {
-  recommendReassignmentCandidates,
-  submitRouteReport,
-} from "./services/routeIntelligenceService";
 
 interface DeliveryData {
   id: string;
@@ -129,20 +121,6 @@ interface CarrierLocation {
   accuracy?: number;
 }
 
-interface RouteSnapshot {
-  id: string;
-  encodedPolyline: string;
-  startedAt?: number;
-  endedAt?: number;
-}
-
-interface CarrierCandidate {
-  id: string;
-  fullName: string;
-  distanceKm: number;
-  shortcutContributionScore: number;
-}
-
 interface LearnedSegment {
   id: string;
   encodedPolyline?: string;
@@ -151,14 +129,7 @@ interface LearnedSegment {
   vehicleTypeSpecific?: boolean;
 }
 
-const ROUTE_COLORS = [
-  "#a855f7",
-  "#16a34a",
-  "#e11d48",
-  "#ca8a04",
-  "#ea580c",
-  "#84cc16",
-];
+/* Directions API disabled to reduce cost
 const DIRECTIONS_REQUEST_THROTTLE_MS = 12_000;
 const DIRECTIONS_COORD_DECIMALS = 4;
 
@@ -178,6 +149,7 @@ const buildDirectionsRequestKey = (
     .join("|");
   return `${toDirectionsPointKey(origin)}->${toDirectionsPointKey(destination)}::${waypointKey}`;
 };
+*/
 
 const getCircleMarkerIcon = (
   fillColor: string,
@@ -193,8 +165,11 @@ const getCircleMarkerIcon = (
   };
 };
 
+/* RoutePathPoint and gradient types disabled (Directions API removed)
 type RoutePathPoint = { lat: number; lng: number };
+*/
 
+/* Gradient types and helpers disabled (Directions API removed)
 type GradientRouteSegment = {
   id: string;
   path: RoutePathPoint[];
@@ -208,7 +183,9 @@ const getGradientRouteColor = (progress: number) => {
   const hue = Math.round(4 + clampGradientProgress(progress) * 116);
   return `hsl(${hue}, 78%, 45%)`;
 };
+*/
 
+/* toDirectionPath and buildGradientRouteSegments disabled (Directions API removed)
 const toDirectionPath = (directions: any): RoutePathPoint[] => {
   const overview = directions?.routes?.[0]?.overview_path ?? [];
   return overview
@@ -251,6 +228,7 @@ const buildGradientRouteSegments = (
   }).filter((segment) => segment.path.length > 1);
 };
 
+/* getGradientSegmentOptions disabled (used only for Directions gradient polylines)
 const getGradientSegmentOptions = (
   strokeColor: string,
   strokeOpacity: number,
@@ -273,6 +251,7 @@ const getGradientSegmentOptions = (
     },
   ],
 });
+*/
 
 export default function DeliveryTrackingMap() {
   const navigate = useNavigate();
@@ -285,40 +264,27 @@ export default function DeliveryTrackingMap() {
     useState<CarrierLocation | null>(null);
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
   const [loading, setLoading] = useState(true);
-  const [snapshots, setSnapshots] = useState<RouteSnapshot[]>([]);
-  const [replayProgress, setReplayProgress] = useState(100);
-  const [reviewMode, setReviewMode] = useState(false);
-  const [reviewPoints, setReviewPoints] = useState<
-    Array<{ lat: number; lng: number }>
-  >([]);
-  const [routeIssueReason, setRouteIssueReason] = useState("");
-  const [routeIssueTemporary, setRouteIssueTemporary] = useState(true);
-  const [routeIssueCategory, setRouteIssueCategory] =
-    useState("blocked_segment");
-  const [routeIssueExpiresHours, setRouteIssueExpiresHours] = useState(6);
-  const [recommending, setRecommending] = useState(false);
-  const [recommendedCarrier, setRecommendedCarrier] =
-    useState<CarrierCandidate | null>(null);
   const [learnedSegments, setLearnedSegments] = useState<LearnedSegment[]>([]);
   const [routeStops, setRouteStops] = useState<TrackingRouteStop[]>([]);
-  const [fullPlanDirections, setFullPlanDirections] = useState<any>(null);
-  const [carrierRouteDirections, setCarrierRouteDirections] =
-    useState<any>(null);
-  const [activeRouteDirections, setActiveRouteDirections] = useState<any>(null);
-  const [etaInfo, setEtaInfo] = useState<{
+  // Directions API disabled to reduce cost
+  // const [fullPlanDirections, setFullPlanDirections] = useState<any>(null);
+  // const [carrierRouteDirections, setCarrierRouteDirections] = useState<any>(null);
+  // const [activeRouteDirections, setActiveRouteDirections] = useState<any>(null);
+  // etaInfo always null since Directions API is disabled
+  const [etaInfo] = useState<{
     label: string;
     text: string;
     detail?: string;
   } | null>(null);
   const markerRefs = useRef<Record<string, google.maps.Marker | null>>({});
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
-  const directionsRequestCacheRef = useRef<
-    Record<string, { key: string; at: number; result: any | null }>
-  >({});
-
-  useEffect(() => {
-    directionsRequestCacheRef.current = {};
-  }, [delivery?.id]);
+  // Directions cache disabled
+  // const directionsRequestCacheRef = useRef<
+  //   Record<string, { key: string; at: number; result: any | null }>
+  // >({});
+  // useEffect(() => {
+  //   directionsRequestCacheRef.current = {};
+  // }, [delivery?.id]);
 
   useEffect(() => {
     if (!id) {
@@ -377,30 +343,6 @@ export default function DeliveryTrackingMap() {
   useEffect(() => {
     return subscribeRouteNetworkSegments(setManagedSegments);
   }, []);
-
-  useEffect(() => {
-    if (!id) return;
-
-    const q = query(
-      collection(db, "deliveries", id, "routeSnapshots"),
-      orderBy("endedAt", "asc"),
-    );
-
-    const unsub = onSnapshot(q, (snapshot) => {
-      const data: RouteSnapshot[] = snapshot.docs.map((d) => {
-        const row = d.data() as any;
-        return {
-          id: d.id,
-          encodedPolyline: row.encodedPolyline,
-          startedAt: row.startedAt,
-          endedAt: row.endedAt,
-        };
-      });
-      setSnapshots(data);
-    });
-
-    return () => unsub();
-  }, [id]);
 
   useEffect(() => {
     if (!delivery?.carrierId) {
@@ -500,75 +442,7 @@ export default function DeliveryTrackingMap() {
     ],
   );
 
-  const routeSegments = useMemo(() => {
-    const planned = delivery?.route?.polyline
-      ? decodePolyline(delivery.route.polyline)
-      : [];
-
-    const snapshotSegments = snapshots
-      .filter((s) => s.encodedPolyline)
-      .map((s, idx) => ({
-        id: s.id,
-        points: decodePolyline(s.encodedPolyline),
-        color: ROUTE_COLORS[idx % ROUTE_COLORS.length],
-      }))
-      .filter((s) => s.points.length > 1);
-
-    const active = delivery?.routeHistory?.activePolyline
-      ? decodePolyline(delivery.routeHistory.activePolyline)
-      : [];
-
-    const blockedSegments = (delivery?.routeReviews || [])
-      .filter(
-        (review) =>
-          review?.start && review?.end && review?.status !== "resolved",
-      )
-      .map((review, idx) => ({
-        id: `review-${idx}`,
-        points: [review.start!, review.end!],
-        temporary: !!review.temporary,
-        reason: review.reason,
-      }));
-
-    const learnedShortcutSegments = learnedSegments
-      .filter((seg) => seg.encodedPolyline)
-      .map((seg) => ({
-        id: seg.id,
-        points: decodePolyline(seg.encodedPolyline || ""),
-        reason: seg.reason,
-        note: seg.note,
-        vehicleTypeSpecific: seg.vehicleTypeSpecific,
-      }))
-      .filter((seg) => seg.points.length > 1);
-
-    return {
-      planned,
-      snapshotSegments,
-      active,
-      blockedSegments,
-      learnedShortcutSegments,
-    };
-  }, [
-    delivery?.route?.polyline,
-    delivery?.routeHistory?.activePolyline,
-    delivery?.routeReviews,
-    snapshots,
-    learnedSegments,
-  ]);
-
-  const visibleSegmentCount = Math.max(
-    1,
-    Math.ceil(
-      routeSegments.snapshotSegments.length *
-        Math.max(0.01, replayProgress / 100),
-    ),
-  );
-
-  const visibleSnapshotSegments = routeSegments.snapshotSegments.slice(
-    0,
-    visibleSegmentCount,
-  );
-
+  /* activeRouteStopsAhead disabled (used only in Directions API effects)
   const activeRouteStopsAhead = useMemo(() => {
     if (!delivery) return 0;
     const chain = getTrackingStopChain(
@@ -578,6 +452,7 @@ export default function DeliveryTrackingMap() {
     );
     return Math.max(0, chain.length - 1);
   }, [delivery, routeStops]);
+  */
 
   const orderedCarrierRouteStops = useMemo(
     () => orderTrackingRouteStops(routeStops),
@@ -605,6 +480,7 @@ export default function DeliveryTrackingMap() {
     ],
   );
 
+  /* Directions gradient segments disabled
   const fullPlanGradientSegments = useMemo(
     () =>
       buildGradientRouteSegments(
@@ -631,7 +507,9 @@ export default function DeliveryTrackingMap() {
       ),
     [activeRouteDirections],
   );
+  */
 
+  /* Directions API useEffects disabled
   useEffect(() => {
     if (!window.google?.maps || !delivery?.deliveryLocation) {
       setFullPlanDirections(null);
@@ -913,6 +791,7 @@ export default function DeliveryTrackingMap() {
     isBeforePickupStatus,
     routeStops,
   ]);
+  */
 
   useEffect(() => {
     if (!mapInstance || !window.google?.maps) return;
@@ -1093,174 +972,6 @@ export default function DeliveryTrackingMap() {
     return labels[status] || status;
   };
 
-  const onMapClick = (event: google.maps.MapMouseEvent) => {
-    if (!reviewMode || !event.latLng) return;
-    const point = { lat: event.latLng.lat(), lng: event.latLng.lng() };
-    setReviewPoints((prev) => (prev.length >= 2 ? [point] : [...prev, point]));
-  };
-
-  const submitRouteReview = async () => {
-    if (
-      !delivery ||
-      !id ||
-      reviewPoints.length !== 2 ||
-      !routeIssueReason.trim()
-    ) {
-      toast.error("Choose two map points and provide a reason.");
-      return;
-    }
-
-    try {
-      await submitRouteReport({
-        deliveryId: id,
-        trackingCode: delivery.trackingCode,
-        type: routeIssueCategory as
-          | "blocked_path"
-          | "bad_road"
-          | "unsafe_segment"
-          | "wrong_map_road",
-        source: "coordinator",
-        note: routeIssueReason.trim(),
-        reason: routeIssueReason.trim(),
-        temporary: routeIssueTemporary,
-        start: reviewPoints[0],
-        end: reviewPoints[1],
-        createdByName: "Coordinator",
-      });
-
-      await updateDoc(doc(db, "deliveries", id), {
-        routeControl: {
-          hasBlockedSegments: true,
-          lastReviewAt: Timestamp.now(),
-          expiresInHours: routeIssueTemporary ? routeIssueExpiresHours : null,
-        },
-        updatedAt: Timestamp.now(),
-      });
-
-      toast.success("Route segment marked for rejection/review.");
-      setReviewMode(false);
-      setReviewPoints([]);
-      setRouteIssueReason("");
-      setRouteIssueTemporary(true);
-      setRouteIssueCategory("blocked_segment");
-      setRouteIssueExpiresHours(6);
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to save route review.");
-    }
-  };
-
-  const recommendNextCarrier = async () => {
-    if (!delivery || !carrierLocation) return;
-    setRecommending(true);
-
-    try {
-      const ranked = await recommendReassignmentCandidates({
-        deliveryId: delivery.id,
-        trackingCode: delivery.trackingCode,
-        carrierId: delivery.carrierId,
-        pickupLocation: delivery.pickupLocation,
-        deliveryLocation: delivery.deliveryLocation,
-        currentLocation: carrierLocation,
-        packageWeightKg: delivery.packageWeight,
-        packageValue: delivery.packageValue,
-        priority: delivery.priority,
-      });
-
-      const candidates: CarrierCandidate[] = ranked.map((candidate) => ({
-        id: candidate.id,
-        fullName: candidate.fullName,
-        distanceKm: candidate.distanceToPickupKm,
-        shortcutContributionScore: candidate.shortcutContributionScore,
-      }));
-
-      if (!candidates.length) {
-        toast.error("No alternative carriers with valid location found.");
-        setRecommendedCarrier(null);
-        return;
-      }
-
-      setRecommendedCarrier(candidates[0]);
-      toast.success(
-        `Suggested ${candidates[0].fullName} as next best carrier.`,
-      );
-    } catch (error) {
-      console.error(error);
-      toast.error("Unable to recommend next carrier.");
-    } finally {
-      setRecommending(false);
-    }
-  };
-
-  const reassignToRecommendedCarrier = async () => {
-    if (!id || !recommendedCarrier) return;
-
-    try {
-      const nowMs = Date.now();
-      const pickupKm = Number(recommendedCarrier.distanceKm || 0);
-      const pickupEtaMs = computeEtaAbsoluteMs(pickupKm, nowMs);
-      const routeKm =
-        delivery?.pickupLocation && delivery?.deliveryLocation
-          ? pickupKm +
-            (window.google?.maps
-              ? window.google.maps.geometry.spherical.computeDistanceBetween(
-                  new window.google.maps.LatLng(
-                    delivery.pickupLocation.lat,
-                    delivery.pickupLocation.lng,
-                  ),
-                  new window.google.maps.LatLng(
-                    delivery.deliveryLocation.lat,
-                    delivery.deliveryLocation.lng,
-                  ),
-                ) / 1000
-              : pickupKm)
-          : pickupKm;
-
-      await updateDoc(doc(db, "deliveries", id), {
-        carrierId: recommendedCarrier.id,
-        carrierName: recommendedCarrier.fullName,
-        status: "assigned",
-        eta: {
-          pickupEtaMs,
-          deliveryEtaMs: computeEtaAbsoluteMs(routeKm, nowMs),
-          computedAtMs: nowMs,
-          source: "assigned",
-          distanceToPickupKm: pickupKm,
-          totalDistanceKm: routeKm,
-          avgSpeedKmh: 30,
-        },
-        optimizationReasons: arrayUnion({
-          type: "reassignment",
-          reason: `Reassigned to ${recommendedCarrier.fullName} after in-transit optimization`,
-          timestamp: Timestamp.now(),
-          carrierId: recommendedCarrier.id,
-          carrierName: recommendedCarrier.fullName,
-          details: {
-            distanceKm: recommendedCarrier.distanceKm,
-            factors: [
-              "In-transit reroute requested by coordinator",
-              `${recommendedCarrier.distanceKm.toFixed(2)} km from active route`,
-              `${recommendedCarrier.shortcutContributionScore} learned shortcut contribution score`,
-            ],
-          },
-        }),
-        reassignment: {
-          reason: "coordinator_reroute",
-          previousCarrierId: delivery?.carrierId || null,
-          previousCarrierName: delivery?.carrierName || null,
-          recommendedCarrierId: recommendedCarrier.id,
-          recommendedCarrierName: recommendedCarrier.fullName,
-          reassignedAt: Timestamp.now(),
-        },
-        updatedAt: Timestamp.now(),
-      });
-      toast.success("Delivery reassigned to recommended carrier.");
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to reassign carrier.");
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -1311,113 +1022,6 @@ export default function DeliveryTrackingMap() {
         </div>
       </div>
 
-      <div className="bg-white border-t border-b px-4 py-3 grid grid-cols-1 xl:grid-cols-4 gap-3 text-sm">
-        <div className="lg:col-span-2">
-          <p className="font-semibold text-gray-700">Trip Replay</p>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={replayProgress}
-            onChange={(e) => setReplayProgress(Number(e.target.value))}
-            className="w-full"
-          />
-          <p className="text-xs text-gray-500">
-            {visibleSnapshotSegments.length}/
-            {routeSegments.snapshotSegments.length} persisted segments visible
-          </p>
-        </div>
-
-        <div>
-          <p className="font-semibold text-gray-700">Route Review</p>
-          <button
-            onClick={() => {
-              setReviewMode((prev) => !prev);
-              setReviewPoints([]);
-            }}
-            className={`mt-1 px-3 py-1 rounded-md text-white ${reviewMode ? "bg-red-600" : "bg-indigo-600"}`}
-          >
-            {reviewMode ? "Cancel Segment Select" : "Reject Blocked Segment"}
-          </button>
-          <p className="text-xs text-gray-500 mt-1">
-            Click 2 points on map when enabled
-          </p>
-        </div>
-
-        <div>
-          <p className="font-semibold text-gray-700">In-transit Reroute</p>
-          <button
-            onClick={recommendNextCarrier}
-            disabled={recommending}
-            className="mt-1 px-3 py-1 rounded-md bg-emerald-600 text-white disabled:opacity-60"
-          >
-            {recommending ? "Finding..." : "Recommend Next Carrier"}
-          </button>
-          {recommendedCarrier && (
-            <div className="mt-1 text-xs text-gray-600">
-              <p>
-                {recommendedCarrier.fullName} •{" "}
-                {recommendedCarrier.distanceKm.toFixed(2)} km away
-              </p>
-              <p>
-                Learning score: {recommendedCarrier.shortcutContributionScore}
-              </p>
-              <button
-                onClick={reassignToRecommendedCarrier}
-                className="mt-1 px-2 py-1 rounded bg-amber-500 text-white"
-              >
-                Reassign Now
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {reviewMode && (
-        <div className="bg-red-50 border-b border-red-200 px-4 py-3 text-sm grid grid-cols-1 xl:grid-cols-4 gap-3">
-          <select
-            value={routeIssueCategory}
-            onChange={(e) => setRouteIssueCategory(e.target.value)}
-            className="border border-gray-300 rounded px-3 py-2"
-          >
-            <option value="blocked_segment">Blocked segment</option>
-            <option value="temporarily_unseeable">Temporarily unseeable</option>
-            <option value="unsafe_segment">Unsafe segment</option>
-          </select>
-          <input
-            value={routeIssueReason}
-            onChange={(e) => setRouteIssueReason(e.target.value)}
-            className="border border-gray-300 rounded px-3 py-2"
-            placeholder="Why this route section should be rejected/unavailable"
-          />
-          <label className="inline-flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={routeIssueTemporary}
-              onChange={(e) => setRouteIssueTemporary(e.target.checked)}
-            />
-            Temporary issue
-          </label>
-          <input
-            type="number"
-            min={1}
-            max={48}
-            value={routeIssueExpiresHours}
-            onChange={(e) => setRouteIssueExpiresHours(Number(e.target.value))}
-            disabled={!routeIssueTemporary}
-            className="border border-gray-300 rounded px-3 py-2 disabled:opacity-50"
-            placeholder="Expires in hours"
-          />
-          <button
-            onClick={submitRouteReview}
-            disabled={reviewPoints.length !== 2 || !routeIssueReason.trim()}
-            className="px-3 py-2 rounded bg-red-600 text-white disabled:opacity-50"
-          >
-            Save Segment Review
-          </button>
-        </div>
-      )}
-
       <div className="px-4 py-4 bg-gray-50 border-b border-gray-200">
         <div className="relative w-full h-[52vh] min-h-[360px] lg:min-h-[520px] overflow-hidden rounded-xl border border-gray-200 bg-white">
           {typeof window !== "undefined" && (
@@ -1426,7 +1030,6 @@ export default function DeliveryTrackingMap() {
                 zoom={15}
                 center={mapCenter}
                 onLoad={(map) => setMapInstance(map)}
-                onClick={onMapClick}
                 mapContainerStyle={{ height: "100%", width: "100%" }}
                 options={{
                   disableDefaultUI: false,
@@ -1439,6 +1042,7 @@ export default function DeliveryTrackingMap() {
                   ],
                 }}
               >
+                {/* Directions API disabled: DirectionsRenderer and gradient segments removed
                 {fullPlanDirections && (
                   <DirectionsRenderer
                     directions={fullPlanDirections}
@@ -1496,6 +1100,7 @@ export default function DeliveryTrackingMap() {
                     options={getGradientSegmentOptions(segment.color, 0.94, 6)}
                   />
                 ))}
+                */}
               </GoogleMap>
             </>
           )}
@@ -1649,30 +1254,92 @@ export default function DeliveryTrackingMap() {
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-500 font-medium">
-              {etaInfo?.label || "ESTIMATED TIME"}
-            </p>
-            <p className="text-sm text-gray-800">
-              {etaInfo?.text ||
-                (() => {
-                  const eta = delivery.eta;
-                  if (!eta) return "Waiting for live route data";
-                  const prePickup = isTrackingBeforePickup(delivery.status);
-                  const etaMs = prePickup ? eta.pickupEtaMs : eta.deliveryEtaMs;
-                  if (!etaMs) return "Waiting for live route data";
-                  const rem = Math.max(0, etaMs - Date.now());
-                  return rem <= 0 ? "Arriving now" : formatEtaCountdown(rem);
-                })()}
-            </p>
-            {etaInfo?.detail && (
-              <p className="text-xs text-gray-500 mt-1">{etaInfo.detail}</p>
-            )}
-            {!!orderedCarrierRouteStops.length && (
-              <p className="text-xs text-gray-500 mt-1">
-                Carrier linked route: {orderedCarrierRouteStops.length}{" "}
-                remaining stop
-                {orderedCarrierRouteStops.length === 1 ? "" : "s"}
-              </p>
+            {delivery.status === "delivered" ? (
+              <>
+                <p className="text-sm text-gray-500 font-medium">PICKED UP</p>
+                <p className="text-sm text-gray-800">
+                  {delivery.pickupTime
+                    ? format(delivery.pickupTime, "MMM d, h:mm a")
+                    : "—"}
+                </p>
+                <p className="text-sm text-gray-500 font-medium mt-2">
+                  DELIVERED AT
+                </p>
+                <p className="text-sm text-gray-800">
+                  {delivery.deliveryTime
+                    ? format(delivery.deliveryTime, "MMM d, h:mm a")
+                    : "—"}
+                </p>
+              </>
+            ) : ["picked_up", "in_transit", "out_for_delivery"].includes(
+                delivery.status,
+              ) ? (
+              <>
+                <p className="text-sm text-gray-500 font-medium">PICKED UP</p>
+                <p className="text-sm text-gray-800">
+                  {delivery.pickupTime
+                    ? format(delivery.pickupTime, "MMM d, h:mm a")
+                    : "—"}
+                </p>
+                <p className="text-sm text-gray-500 font-medium mt-2">
+                  EST. DELIVERY
+                </p>
+                <p className="text-sm text-gray-800">
+                  {etaInfo?.text ||
+                    (() => {
+                      const eta = delivery.eta;
+                      if (!eta) return "Waiting for live route data";
+                      const etaMs = eta.deliveryEtaMs;
+                      if (!etaMs) return "Waiting for live route data";
+                      const rem = Math.max(0, etaMs - Date.now());
+                      return rem <= 0
+                        ? "Arriving now"
+                        : formatEtaCountdown(rem);
+                    })()}
+                </p>
+                {etaInfo?.detail && (
+                  <p className="text-xs text-gray-500 mt-1">{etaInfo.detail}</p>
+                )}
+                {!!orderedCarrierRouteStops.length && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Carrier linked route: {orderedCarrierRouteStops.length}{" "}
+                    remaining stop
+                    {orderedCarrierRouteStops.length === 1 ? "" : "s"}
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-gray-500 font-medium">
+                  {etaInfo?.label || "ESTIMATED TIME"}
+                </p>
+                <p className="text-sm text-gray-800">
+                  {etaInfo?.text ||
+                    (() => {
+                      const eta = delivery.eta;
+                      if (!eta) return "Waiting for live route data";
+                      const prePickup = isTrackingBeforePickup(delivery.status);
+                      const etaMs = prePickup
+                        ? eta.pickupEtaMs
+                        : eta.deliveryEtaMs;
+                      if (!etaMs) return "Waiting for live route data";
+                      const rem = Math.max(0, etaMs - Date.now());
+                      return rem <= 0
+                        ? "Arriving now"
+                        : formatEtaCountdown(rem);
+                    })()}
+                </p>
+                {etaInfo?.detail && (
+                  <p className="text-xs text-gray-500 mt-1">{etaInfo.detail}</p>
+                )}
+                {!!orderedCarrierRouteStops.length && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Carrier linked route: {orderedCarrierRouteStops.length}{" "}
+                    remaining stop
+                    {orderedCarrierRouteStops.length === 1 ? "" : "s"}
+                  </p>
+                )}
+              </>
             )}
           </div>
           <div>

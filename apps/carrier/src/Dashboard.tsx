@@ -671,12 +671,6 @@ export default function Dashboard({ user }: DashboardProps) {
                       >
                         Live Track
                       </button>
-                      <button
-                        onClick={() => setShowJobDetailsModal(true)}
-                        className="px-4 py-2 bg-white/20 border border-white/40 text-white rounded-lg text-sm font-semibold hover:bg-white/30"
-                      >
-                        Route Details
-                      </button>
                     </div>
                   </div>
 
@@ -692,15 +686,13 @@ export default function Dashboard({ user }: DashboardProps) {
                       <div
                         className={
                           `h-2.5 rounded-full transition-all duration-500 ` +
-                          (
-                            calculateDeliveryProgress(activeDelivery) < 40
-                              ? "bg-red-500"
-                              : calculateDeliveryProgress(activeDelivery) < 70
+                          (calculateDeliveryProgress(activeDelivery) < 40
+                            ? "bg-red-500"
+                            : calculateDeliveryProgress(activeDelivery) < 70
                               ? "bg-yellow-400"
                               : calculateDeliveryProgress(activeDelivery) < 100
-                              ? "bg-blue-500"
-                              : "bg-green-500"
-                          )
+                                ? "bg-blue-500"
+                                : "bg-green-500")
                         }
                         style={{
                           width: `${calculateDeliveryProgress(activeDelivery)}%`,
