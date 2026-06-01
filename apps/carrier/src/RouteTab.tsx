@@ -229,7 +229,7 @@ function DeliveryModal({
   }
 
   const typeColor = stop.type === "pickup" ? "bg-blue-600" : "bg-green-600";
-  const stopEtaMeta = formatEtaMeta(stop, nowMs);
+  const stopEtaMeta = stop.visited ? null : formatEtaMeta(stop, nowMs);
 
   const handleStatusUpdate = async (newStatus: Delivery["status"]) => {
     if (newStatus === "picked_up" || newStatus === "delivered") {
@@ -713,7 +713,7 @@ function RouteMap({
           stopStatusesByDeliveryId[stop.id],
         ),
       });
-      const etaMeta = formatEtaMeta(stop, nowMs);
+      const etaMeta = stop.visited ? null : formatEtaMeta(stop, nowMs);
       const icon = {
         path: window.google.maps.SymbolPath.CIRCLE,
         fillColor: tone.markerFill,
@@ -1516,31 +1516,33 @@ export default function RouteTab() {
                       <p className="text-xs text-gray-400 mt-0.5 font-mono">
                         [{stop.lat.toFixed(5)}, {stop.lng.toFixed(5)}]
                       </p>
-                      {typeof stop.etaToReachMs === "number" && (
-                        <p className="text-xs mt-1 text-emerald-700 font-medium">
-                          ⏱ ETA to reach:{" "}
-                          {formatCountdown(stop.etaToReachMs - nowMs)}
-                          {typeof stop.distanceFromCarrierKm === "number" && (
-                            <span className="text-gray-500 font-normal">
-                              {" "}
-                              · {stop.distanceFromCarrierKm.toFixed(2)} km
-                            </span>
-                          )}
-                        </p>
-                      )}
-                      {typeof stop.reoptimizedAtMs === "number" && (
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          Updated{" "}
-                          {new Date(stop.reoptimizedAtMs).toLocaleTimeString(
-                            [],
-                            {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            },
-                          )}
-                          {stop.etaSource ? ` · ${stop.etaSource}` : ""}
-                        </p>
-                      )}
+                      {!stop.visited &&
+                        typeof stop.etaToReachMs === "number" && (
+                          <p className="text-xs mt-1 text-emerald-700 font-medium">
+                            ⏱ ETA to reach:{" "}
+                            {formatCountdown(stop.etaToReachMs - nowMs)}
+                            {typeof stop.distanceFromCarrierKm === "number" && (
+                              <span className="text-gray-500 font-normal">
+                                {" "}
+                                · {stop.distanceFromCarrierKm.toFixed(2)} km
+                              </span>
+                            )}
+                          </p>
+                        )}
+                      {!stop.visited &&
+                        typeof stop.reoptimizedAtMs === "number" && (
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Updated{" "}
+                            {new Date(stop.reoptimizedAtMs).toLocaleTimeString(
+                              [],
+                              {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              },
+                            )}
+                            {stop.etaSource ? ` · ${stop.etaSource}` : ""}
+                          </p>
+                        )}
                       {stop.cumulativeLoad !== undefined &&
                         (() => {
                           const load = stop.cumulativeLoad;
@@ -1612,7 +1614,8 @@ export default function RouteTab() {
         visitedStops.length > 0 &&
         (() => {
           const enrichedVisited = visitedStops.map((stop) => {
-            if (stop.lat !== 0 || stop.lng !== 0) return stop;
+            const base = { ...stop, visited: true };
+            if (stop.lat !== 0 || stop.lng !== 0) return base;
             const del = deliveries.find((d) => d.id === stop.id);
             if (del) {
               const loc =
@@ -1620,16 +1623,16 @@ export default function RouteTab() {
                   ? (del.pickupLocation ?? del.currentLocation)
                   : del.deliveryLocation;
               if (loc && (loc.lat !== 0 || loc.lng !== 0))
-                return { ...stop, lat: loc.lat, lng: loc.lng };
+                return { ...base, lat: loc.lat, lng: loc.lng };
             }
-            return stop;
+            return base;
           });
           return (
             <RouteMap
               orderedStops={enrichedVisited}
               stopStatusesByDeliveryId={stopStatusesByDeliveryId}
               nowMs={nowMs}
-              carrierPos={carrierPos}
+              carrierPos={null} // hide carrier in visited view
               pathMode="straight"
               managedSegments={managedSegments}
               onStopClick={(stop) =>

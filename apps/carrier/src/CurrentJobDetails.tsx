@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { formatEtaCountdown } from "@config";
+import { formatEtaCountdown, TRACKING_ROUTE_COLORS } from "@config";
 import { GoogleMap, InfoWindow, Marker } from "@react-google-maps/api";
 import { Delivery } from "./types";
 import { formatCurrency, formatDate } from "./utils";
@@ -23,18 +23,20 @@ export default function CurrentJobDetails({
 }: CurrentJobDetailsProps) {
   const { updateStatus, loading, error, getAvailableStatuses, getStatusInfo } =
     useDeliveryStatus();
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  const [etaRemainingMs, setEtaRemainingMs] = useState<number | null>(null);
   const [showMoreDetails, setShowMoreDetails] = useState(false);
-  const [showPickupOtpModal, setShowPickupOtpModal] = useState(false);
   const [showDeliveryRouteModal, setShowDeliveryRouteModal] = useState(false);
-  const [pickupOtpInput, setPickupOtpInput] = useState("");
+  const [showPickupOtpModal, setShowPickupOtpModal] = useState(false);
   const [deliveryOtpInput, setDeliveryOtpInput] = useState("");
-  const [acceptPickupRisk, setAcceptPickupRisk] = useState(false);
+  const [pickupOtpInput, setPickupOtpInput] = useState("");
   const [acceptDeliveryRisk, setAcceptDeliveryRisk] = useState(false);
-  const [pickupRiskReason, setPickupRiskReason] = useState("");
+  const [acceptPickupRisk, setAcceptPickupRisk] = useState(false);
   const [deliveryRiskReason, setDeliveryRiskReason] = useState("");
-  const [otpErrorMessage, setOtpErrorMessage] = useState<string | null>(null);
-  const [deviationReason, setDeviationReason] = useState("normal_route");
+  const [pickupRiskReason, setPickupRiskReason] = useState("");
+  const [deviationReason, setDeviationReason] = useState<
+    "normal_route" | "shortcut" | "blocked_route" | "traffic" | "other"
+  >("normal_route");
   const [deviationNote, setDeviationNote] = useState("");
   const [shortcutPoints, setShortcutPoints] = useState<
     Array<{ lat: number; lng: number }>
@@ -47,9 +49,9 @@ export default function CurrentJobDetails({
     title: string;
     details: string[];
   } | null>(null);
+  const [otpErrorMessage, setOtpErrorMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  // ── ETA countdown ────────────────────────────────────────────────────────
-  const [etaRemainingMs, setEtaRemainingMs] = useState<number | null>(null);
   useEffect(() => {
     const eta = delivery?.eta;
     if (!eta) {
@@ -839,7 +841,16 @@ export default function CurrentJobDetails({
                 </label>
                 <select
                   value={deviationReason}
-                  onChange={(e) => setDeviationReason(e.target.value)}
+                  onChange={(e) =>
+                    setDeviationReason(
+                      e.target.value as
+                        | "normal_route"
+                        | "shortcut"
+                        | "blocked_route"
+                        | "traffic"
+                        | "other",
+                    )
+                  }
                   className="w-full rounded-lg border border-gray-300 p-2 text-sm"
                 >
                   <option value="normal_route">Normal route (no issues)</option>
@@ -983,18 +994,18 @@ export default function CurrentJobDetails({
                           label: "Blocked / restricted",
                         },
                         {
-                          color: "#fbbf24",
-                          opacity: 0.4,
+                          color: TRACKING_ROUTE_COLORS.carrierToPickup,
+                          opacity: 0.95,
                           label: "Carrier → Pickup",
                         },
                         {
-                          color: "#fb923c",
-                          opacity: 0.4,
+                          color: TRACKING_ROUTE_COLORS.pickupToDropoff,
+                          opacity: 0.95,
                           label: "Pickup → Dropoff",
                         },
                         {
-                          color: "#14b8a6",
-                          opacity: 1,
+                          color: TRACKING_ROUTE_COLORS.carrierToDropoff,
+                          opacity: 0.95,
                           label: "Active progress",
                         },
                         {

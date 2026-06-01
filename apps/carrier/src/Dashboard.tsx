@@ -669,7 +669,7 @@ export default function Dashboard({ user }: DashboardProps) {
                         }
                         className="px-4 py-2 bg-cyan-500/90 text-white rounded-lg text-sm font-semibold hover:bg-cyan-500"
                       >
-                        Live Track
+                        Map View
                       </button>
                     </div>
                   </div>
