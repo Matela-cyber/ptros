@@ -10,6 +10,7 @@ import { collection, query, where, getDocs } from "firebase/firestore";
 import { auth } from "@config";
 import { toast, Toaster } from "react-hot-toast";
 import { Link, useSearchParams } from "react-router-dom";
+import { RatingModal } from "./components/RatingModal";
 
 interface Order {
   id: string;
@@ -21,6 +22,8 @@ interface Order {
   createdAt: Date;
   estimatedDelivery?: Date;
   eta?: DeliveryEta | null;
+  carrierId?: string;
+  carrierName?: string;
 }
 
 export default function OrderHistory() {
@@ -29,6 +32,8 @@ export default function OrderHistory() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("all");
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), 1000);
@@ -72,6 +77,8 @@ export default function OrderHistory() {
           createdAt: data.createdAt?.toDate() || new Date(),
           estimatedDelivery: data.estimatedDelivery?.toDate(),
           eta: data.eta ?? null,
+          carrierId: data.carrierId,
+          carrierName: data.carrierName,
         });
       });
 
@@ -268,6 +275,17 @@ export default function OrderHistory() {
                     >
                       Live Track
                     </Link>
+                    {order.status === "delivered" && order.carrierId && (
+                      <button
+                        onClick={() => {
+                          setSelectedOrder(order);
+                          setShowRatingModal(true);
+                        }}
+                        className="rounded-md bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-amber-600"
+                      >
+                        Rate
+                      </button>
+                    )}
                     <Link
                       to={`/orders/${order.id}`}
                       className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-700"
@@ -280,6 +298,24 @@ export default function OrderHistory() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Rating Modal */}
+      {selectedOrder && selectedOrder.carrierId && selectedOrder.carrierName && (
+        <RatingModal
+          isOpen={showRatingModal}
+          onClose={() => {
+            setShowRatingModal(false);
+            setSelectedOrder(null);
+          }}
+          deliveryId={selectedOrder.id}
+          carrierId={selectedOrder.carrierId}
+          carrierName={selectedOrder.carrierName}
+          onRatingSubmitted={() => {
+            setShowRatingModal(false);
+            setSelectedOrder(null);
+          }}
+        />
       )}
     </div>
   );

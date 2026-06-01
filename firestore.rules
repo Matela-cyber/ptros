@@ -544,6 +544,35 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/deliveries/$(request.resource.data.deliveryId)).data.carrierId == request.auth.uid;
     }
 
+    // ==================== DELIVERY RATINGS ====================
+    // Customer ratings for carriers on completed deliveries
+    match /deliveryRatings/{ratingId} {
+      // Customers can read their own ratings
+      allow read: if isCustomer() && resource.data.customerId == request.auth.uid;
+
+      // Coordinators can read all ratings for analytics
+      allow read: if isCoordinator();
+
+      // Customers can only create ratings for deliveries they placed
+      allow create: if isCustomer()
+        && request.resource.data.customerId == request.auth.uid
+        && request.resource.data.rating is number
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5
+        && request.resource.data.deliveryId is string
+        && get(/databases/$(database)/documents/deliveries/$(request.resource.data.deliveryId)).data.customerId == request.auth.uid;
+
+      // Customers can update their own ratings
+      allow update: if isCustomer()
+        && resource.data.customerId == request.auth.uid
+        && request.resource.data.rating is number
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5;
+
+      // Prevent rating deletion
+      allow delete: if false;
+    }
+
     // ==================== DEFAULT DENY ====================
     match /{document=**} {
       allow read, write: if false;

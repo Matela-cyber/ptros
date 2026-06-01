@@ -19,13 +19,16 @@ import {
   faPhone,
   faPrint,
   faShareNodes,
+  faStar,
 } from "@fortawesome/free-solid-svg-icons";
+import { RatingModal } from "./components/RatingModal";
 
 interface OrderDetail {
   id: string;
   trackingCode: string;
   customerId?: string;
   customerEmail?: string;
+  carrierId?: string;
   status: string;
   pickupAddress: string;
   deliveryAddress: string;
@@ -63,6 +66,8 @@ export default function OrderDetails() {
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [hasRated, setHasRated] = useState(false);
 
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), 1000);
@@ -285,6 +290,7 @@ export default function OrderDetails() {
             trackingCode: data.trackingCode,
             customerId: data.customerId,
             customerEmail: data.customerEmail,
+            carrierId: data.carrierId,
             status: data.status,
             pickupAddress: data.pickupAddress,
             deliveryAddress: data.deliveryAddress,
@@ -631,6 +637,26 @@ export default function OrderDetails() {
             </div>
           )}
 
+          {/* Rating Section */}
+          {order.status === "delivered" && order.carrierId && (
+            <div className="bg-white rounded-xl shadow p-6 border-l-4 border-amber-500">
+              <h3 className="font-bold mb-3 flex items-center">
+                <FontAwesomeIcon icon={faStar} className="mr-2 text-amber-500" />
+                Rate Carrier
+              </h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Help us improve by rating your delivery experience with{" "}
+                <span className="font-semibold">{order.carrierName}</span>
+              </p>
+              <button
+                onClick={() => setShowRatingModal(true)}
+                className="w-full px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium transition"
+              >
+                {hasRated ? "Update Rating" : "Rate Delivery"}
+              </button>
+            </div>
+          )}
+
           {/* Actions */}
           <div className="bg-white rounded-xl shadow p-6">
             <h3 className="font-bold mb-4">Actions</h3>
@@ -651,6 +677,21 @@ export default function OrderDetails() {
           </div>
         </div>
       </div>
+
+      {/* Rating Modal */}
+      {order && order.carrierId && order.carrierName && (
+        <RatingModal
+          isOpen={showRatingModal}
+          onClose={() => setShowRatingModal(false)}
+          deliveryId={order.id}
+          carrierId={order.carrierId}
+          carrierName={order.carrierName}
+          onRatingSubmitted={() => {
+            setHasRated(true);
+            setShowRatingModal(false);
+          }}
+        />
+      )}
     </div>
   );
 }
