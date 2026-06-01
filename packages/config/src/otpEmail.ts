@@ -7,8 +7,8 @@ export interface SendDeliveryOtpEmailsInput {
 
 export interface SendDeliveryOtpEmailsResult {
   success: boolean;
-  senderEmailSent: boolean;
-  receiverEmailSent: boolean;
+  pickupEmailSent: boolean;
+  dropoffEmailSent: boolean;
   message: string;
 }
 
@@ -39,7 +39,6 @@ async function sendTemplate(params: {
   otpCode: string;
   otpPhaseLabel: string;
   pickupAddress: string;
-  deliveryAddress: string;
 }) {
   const subject = `Your PTROS OTP Code - ${params.trackingCode}`;
   await emailjs.send(
@@ -53,15 +52,13 @@ async function sendTemplate(params: {
       otp_code: params.otpCode,
       otp_phase: params.otpPhaseLabel,
       pickup_address: params.pickupAddress,
-      delivery_address: params.deliveryAddress,
       message: `${params.otpPhaseLabel} OTP for ${params.trackingCode}: ${params.otpCode}`,
-      // Extra fields to satisfy any default EmailJS template variables
+      // Common EmailJS fallback fields for template headers
       subject,
-      title: subject,
       name: params.toName,
       from_name: "PTROS_Ls",
-      reply_to: "",
-      time: new Date().toLocaleString(),
+      reply_to: "noreply@ptros.co.ls",
+      email: params.toEmail,
     },
     {
       publicKey: params.publicKey,
@@ -78,17 +75,17 @@ export async function sendDeliveryOtpEmails(
     const defaultTemplateId = getRequiredEnv("VITE_EMAILJS_TEMPLATE_ID");
 
     // Use default template if specific ones aren't set
-    const senderTemplateId =
+    const pickupTemplateId =
       getRequiredEnv("VITE_EMAILJS_TEMPLATE_ID_SENDER") || defaultTemplateId;
-    const receiverTemplateId =
+    const dropoffTemplateId =
       getRequiredEnv("VITE_EMAILJS_TEMPLATE_ID_RECEIVER") || defaultTemplateId;
 
     // Only require the default template ID to exist
     if (!serviceId || !publicKey || !defaultTemplateId) {
       return {
         success: false,
-        senderEmailSent: false,
-        receiverEmailSent: false,
+        pickupEmailSent: false,
+        dropoffEmailSent: false,
         message:
           "EmailJS is not fully configured. Set VITE_EMAILJS_SERVICE_ID, VITE_EMAILJS_PUBLIC_KEY, and VITE_EMAILJS_TEMPLATE_ID.",
       };
@@ -101,8 +98,8 @@ export async function sendDeliveryOtpEmails(
     if (!deliverySnap.exists()) {
       return {
         success: false,
-        senderEmailSent: false,
-        receiverEmailSent: false,
+        pickupEmailSent: false,
+        dropoffEmailSent: false,
         message: "Delivery not found for OTP email sending.",
       };
     }
@@ -113,13 +110,26 @@ export async function sendDeliveryOtpEmails(
       delivery?: { code?: string };
     };
 
-    const senderEmail = safeString(deliveryData.senderEmail);
-    const receiverEmail = safeString(deliveryData.receiverEmail);
-    const senderName = safeString(
+    // pickup user = person at pickup address (gets pickup OTP)
+    // Try senderEmail first, then customerEmail, then createdByEmail as fallbacks
+    const pickupUserEmail = safeString(
+      deliveryData.senderEmail,
+      safeString(
+        deliveryData.customerEmail,
+        safeString(deliveryData.createdByEmail),
+      ),
+    );
+    const pickupUserName = safeString(
       deliveryData.pickupContactName,
       safeString(deliveryData.customerName, "Customer"),
     );
-    const receiverName = safeString(
+    // dropoff user = person at delivery address (gets delivery OTP)
+    // Try receiverEmail first, then deliveryContactEmail as fallback
+    const dropoffUserEmail = safeString(
+      deliveryData.receiverEmail,
+      safeString(deliveryData.deliveryContactEmail),
+    );
+    const dropoffUserName = safeString(
       deliveryData.deliveryContactName,
       "Receiver",
     );
@@ -133,95 +143,110 @@ export async function sendDeliveryOtpEmails(
       deliveryData.pickupAddress,
       "Pickup point",
     );
-    const deliveryAddress = safeString(
-      deliveryData.deliveryAddress,
-      "Delivery destination",
-    );
 
     if (!pickupCode || !deliveryCode) {
       return {
         success: false,
-        senderEmailSent: false,
-        receiverEmailSent: false,
+        pickupEmailSent: false,
+        dropoffEmailSent: false,
         message: "OTP codes are missing on this delivery.",
       };
     }
 
-    let senderEmailSent = false;
-    let receiverEmailSent = false;
+    let pickupEmailSent = false;
+    let dropoffEmailSent = false;
     const errors: string[] = [];
 
-    // Send to sender (pickup OTP)
-    if (senderEmail && senderTemplateId) {
+    console.log(
+      "[OTP Email] Pickup user email:",
+      pickupUserEmail || "(empty — will skip)",
+    );
+    console.log(
+      "[OTP Email] Dropoff user email:",
+      dropoffUserEmail || "(empty — will skip)",
+    );
+
+    // System sends pickup OTP to the pickup user
+    if (pickupUserEmail && pickupTemplateId) {
       try {
+        console.log("[OTP Email] Sending pickup OTP to:", pickupUserEmail);
         await sendTemplate({
           serviceId,
-          templateId: senderTemplateId,
+          templateId: pickupTemplateId,
           publicKey,
-          toEmail: senderEmail,
-          toName: senderName,
+          toEmail: pickupUserEmail,
+          toName: pickupUserName,
           trackingCode,
           otpCode: pickupCode,
           otpPhaseLabel: "Pickup",
           pickupAddress,
-          deliveryAddress,
         });
-        senderEmailSent = true;
+        pickupEmailSent = true;
+        console.log("[OTP Email] Pickup OTP sent ✓");
       } catch (error: any) {
-        errors.push(
-          `sender: ${safeString(error?.text || error?.message, "send_failed")}`,
-        );
+        const msg = safeString(error?.text || error?.message, "send_failed");
+        console.error("[OTP Email] Pickup send failed:", msg, error);
+        errors.push(`pickup: ${msg}`);
       }
+    } else {
+      console.warn(
+        "[OTP Email] Skipping pickup email — email empty or template missing",
+      );
     }
 
-    // Send to receiver (delivery OTP)
-    if (receiverEmail && receiverTemplateId) {
+    // System sends delivery OTP to the dropoff user
+    if (dropoffUserEmail && dropoffTemplateId) {
       try {
+        console.log("[OTP Email] Sending dropoff OTP to:", dropoffUserEmail);
         await sendTemplate({
           serviceId,
-          templateId: receiverTemplateId,
+          templateId: dropoffTemplateId,
           publicKey,
-          toEmail: receiverEmail,
-          toName: receiverName,
+          toEmail: dropoffUserEmail,
+          toName: dropoffUserName,
           trackingCode,
           otpCode: deliveryCode,
           otpPhaseLabel: "Delivery",
           pickupAddress,
-          deliveryAddress,
         });
-        receiverEmailSent = true;
+        dropoffEmailSent = true;
+        console.log("[OTP Email] Dropoff OTP sent ✓");
       } catch (error: any) {
-        errors.push(
-          `receiver: ${safeString(error?.text || error?.message, "send_failed")}`,
-        );
+        const msg = safeString(error?.text || error?.message, "send_failed");
+        console.error("[OTP Email] Dropoff send failed:", msg, error);
+        errors.push(`dropoff: ${msg}`);
       }
+    } else {
+      console.warn(
+        "[OTP Email] Skipping dropoff email — email empty or template missing",
+      );
     }
 
-    if (!senderEmailSent && !receiverEmailSent) {
+    if (!pickupEmailSent && !dropoffEmailSent) {
       return {
         success: false,
-        senderEmailSent,
-        receiverEmailSent,
+        pickupEmailSent,
+        dropoffEmailSent,
         message: errors.length
           ? `EmailJS send failed (${errors.join(" | ")})`
-          : "EmailJS send failed for both recipients.",
+          : "EmailJS send failed for both users.",
       };
     }
 
     return {
       success: true,
-      senderEmailSent,
-      receiverEmailSent,
+      pickupEmailSent,
+      dropoffEmailSent,
       message:
-        senderEmailSent && receiverEmailSent
-          ? "Pickup and delivery OTP emails sent via EmailJS."
+        pickupEmailSent && dropoffEmailSent
+          ? "Pickup and dropoff OTP emails sent via EmailJS."
           : "OTP email sent partially via EmailJS.",
     };
   } catch (error: any) {
     return {
       success: false,
-      senderEmailSent: false,
-      receiverEmailSent: false,
+      pickupEmailSent: false,
+      dropoffEmailSent: false,
       message: `EmailJS setup error: ${safeString(error?.message, "unknown_error")}`,
     };
   }
