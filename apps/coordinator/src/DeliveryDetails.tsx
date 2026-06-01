@@ -95,6 +95,11 @@ interface DeliveryDetails {
   coordinatorReviewReasons?: string[];
   proposedCarrier?: ProposedCarrier | null;
   eta?: DeliveryEta | null;
+  otp?: {
+    pickup?: { code?: string; verified?: boolean };
+    delivery?: { code?: string; verified?: boolean };
+  };
+  otpCode?: string;
 }
 
 export default function DeliveryDetails() {
@@ -167,6 +172,8 @@ export default function DeliveryDetails() {
           coordinatorReviewReasons: data.coordinatorReviewReasons ?? [],
           proposedCarrier: data.proposedCarrier ?? null,
           eta: data.eta ?? null,
+          otp: data.otp ?? null,
+          otpCode: data.otpCode ?? "",
         });
 
         // Fetch customer and carrier profiles
@@ -973,6 +980,49 @@ export default function DeliveryDetails() {
                   </p>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* OTP Codes */}
+          <div className="bg-white rounded-xl shadow p-6 border-l-4 border-amber-400">
+            <h2 className="text-xl font-bold mb-4 inline-flex items-center gap-2">
+              🔑 OTP Codes
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-500 mb-1">
+                  Pickup OTP
+                </label>
+                {delivery.otp?.pickup?.code ? (
+                  <div>
+                    <span className="inline-flex items-center px-4 py-2 rounded-lg bg-amber-50 text-amber-800 font-bold tracking-widest text-2xl border border-amber-200">
+                      {delivery.otp.pickup.code}
+                    </span>
+                    {delivery.otp.pickup.verified && (
+                      <p className="text-xs text-green-600 mt-1">✓ Verified</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400">Not generated yet</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 mb-1">
+                  Delivery OTP
+                </label>
+                {delivery.otp?.delivery?.code || delivery.otpCode ? (
+                  <div>
+                    <span className="inline-flex items-center px-4 py-2 rounded-lg bg-amber-50 text-amber-800 font-bold tracking-widest text-2xl border border-amber-200">
+                      {delivery.otp?.delivery?.code || delivery.otpCode}
+                    </span>
+                    {delivery.otp?.delivery?.verified && (
+                      <p className="text-xs text-green-600 mt-1">✓ Verified</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400">Not generated yet</p>
+                )}
+              </div>
             </div>
           </div>
 
