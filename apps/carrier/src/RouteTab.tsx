@@ -1630,7 +1630,7 @@ export default function RouteTab() {
               stopStatusesByDeliveryId={stopStatusesByDeliveryId}
               nowMs={nowMs}
               carrierPos={carrierPos}
-              pathMode={pathMode}
+              pathMode="straight"
               managedSegments={managedSegments}
               onStopClick={(stop) =>
                 setSelectedStop(

@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  DirectionsRenderer,
+  // DirectionsRenderer, // Disabled: Directions API removed
   GoogleMap,
   InfoWindow,
   Marker,
-  Polyline,
+  // Polyline, // Disabled: used only for gradient segments (Directions API)
 } from "@react-google-maps/api";
 import {
   db,
@@ -29,12 +29,15 @@ import { toast, Toaster } from "react-hot-toast";
 import { format } from "date-fns";
 import DeliveryTimeline from "./DeliveryTimeline";
 
+/* formatMinutes helper disabled (Directions ETA display removed)
 const formatMinutes = (secs: number): string => {
   const mins = Math.round(secs / 60);
   if (mins === 0) return "< 1 min";
   return mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
 };
+*/
 
+/* Directions API helpers disabled
 const DIRECTIONS_REQUEST_THROTTLE_MS = 12_000;
 const DIRECTIONS_COORD_DECIMALS = 4;
 
@@ -56,6 +59,7 @@ const buildDirectionsRequestKey = (
     .join("|");
   return `${toDirectionsPointKey(origin)}->${toDirectionsPointKey(destination)}::${waypointKey}`;
 };
+*/
 
 // Handles plain objects { lat, lng }, Firestore GeoPoints (lat is a function),
 // and alternative spellings (latitude/longitude).
@@ -79,12 +83,15 @@ const asLatLng = (value: any): { lat: number; lng: number } | null => {
   return { lat, lng };
 };
 
+/* Gradient route segment type disabled
 type GradientRouteSegment = {
   id: string;
   path: { lat: number; lng: number }[];
   color: string;
 };
+*/
 
+/* Directions gradient helpers disabled
 const clampGradientProgress = (progress: number) =>
   Math.min(1, Math.max(0, progress));
 
@@ -159,6 +166,7 @@ const getGradientSegmentOptions = (
     },
   ],
 });
+*/
 
 interface DeliveryData {
   id: string;
@@ -259,10 +267,10 @@ export default function PackageTrackingPage({
   const [carrierLocation, setCarrierLocation] =
     useState<CarrierLocation | null>(null);
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
-  const [toPickupDirections, setToPickupDirections] = useState<any>(null);
-  const [toDropoffDirections, setToDropoffDirections] = useState<any>(null);
-  const [fullPlanDirections, setFullPlanDirections] = useState<any>(null);
-  const [linkedRouteDirections, setLinkedRouteDirections] = useState<any>(null);
+  // const [toPickupDirections, setToPickupDirections] = useState<any>(null);
+  // const [toDropoffDirections, setToDropoffDirections] = useState<any>(null);
+  // const [fullPlanDirections, setFullPlanDirections] = useState<any>(null);
+  // const [linkedRouteDirections, setLinkedRouteDirections] = useState<any>(null);
   const [routeMeta, setRouteMeta] = useState<{
     distanceText?: string;
     durationText?: string;
@@ -279,6 +287,7 @@ export default function PackageTrackingPage({
   const [persistedEtaRemainingMs, setPersistedEtaRemainingMs] = useState<
     number | null
   >(null);
+  /* Directions API state and cache disabled
   const directionsRequestCacheRef = useRef<
     Record<string, { key: string; at: number; result: any | null }>
   >({});
@@ -286,6 +295,7 @@ export default function PackageTrackingPage({
   useEffect(() => {
     directionsRequestCacheRef.current = {};
   }, [delivery?.id]);
+*/
 
   useEffect(() => {
     const eta = delivery?.eta;
@@ -416,181 +426,8 @@ export default function PackageTrackingPage({
   }, [delivery?.id, delivery?.currentLocation, delivery?.status]);
 
   useEffect(() => {
-    if (!window.google?.maps || !delivery?.deliveryLocation) {
-      setToPickupDirections(null);
-      setToDropoffDirections(null);
-      setFullPlanDirections(null);
-      setLinkedRouteDirections(null);
-      setRouteMeta(null);
-      return;
-    }
-
-    const deliveryPoint = {
-      lat: delivery.deliveryLocation.lat,
-      lng: delivery.deliveryLocation.lng,
-    };
-
-    const pickupPoint = delivery.pickupLocation
-      ? {
-          lat: delivery.pickupLocation.lat,
-          lng: delivery.pickupLocation.lng,
-        }
-      : null;
-
-    // For pre-pickup approach: only use confirmed live RTDB GPS to avoid routing from a
-    // stale Firestore seed that may equal the pickup address (causing a false "1 min" ETA).
-    const approachPoint =
-      carrierLocationIsLive && carrierLocation
-        ? { lat: carrierLocation.lat, lng: carrierLocation.lng }
-        : null;
-
-    // For post-pickup active route: any carrier location (live or Firestore seed) is useful.
-    const activePoint = carrierLocation
-      ? { lat: carrierLocation.lat, lng: carrierLocation.lng }
-      : delivery.currentLocation
-        ? {
-            lat: delivery.currentLocation.lat,
-            lng: delivery.currentLocation.lng,
-          }
-        : null;
-
-    const service = new window.google.maps.DirectionsService();
-    let cancelled = false;
-
-    const getRoute = (
-      routeId: string,
-      origin: { lat: number; lng: number },
-      destination: { lat: number; lng: number },
-      waypoints: Array<{
-        location: { lat: number; lng: number };
-        stopover: true;
-      }> = [],
-    ) =>
-      new Promise<any | null>((resolve) => {
-        const requestKey = buildDirectionsRequestKey(
-          origin,
-          destination,
-          waypoints,
-        );
-        const cached = directionsRequestCacheRef.current[routeId];
-        const now = Date.now();
-        if (
-          cached &&
-          cached.key === requestKey &&
-          now - cached.at < DIRECTIONS_REQUEST_THROTTLE_MS
-        ) {
-          resolve(cached.result);
-          return;
-        }
-
-        service.route(
-          {
-            origin,
-            destination,
-            waypoints,
-            optimizeWaypoints: false,
-            travelMode: window.google.maps.TravelMode.DRIVING,
-          },
-          (result: any, status: any) => {
-            const normalizedResult = status === "OK" && result ? result : null;
-            directionsRequestCacheRef.current[routeId] = {
-              key: requestKey,
-              at: Date.now(),
-              result: normalizedResult,
-            };
-            resolve(normalizedResult);
-          },
-        );
-      });
-
-    (async () => {
-      const isBeforePickup = ["pending", "assigned", "accepted"].includes(
-        delivery.status,
-      );
-
-      const summaryChain = (delivery.trackingRouteSummary?.routeChain || [])
-        .filter(
-          (stop) => Number.isFinite(stop.lat) && Number.isFinite(stop.lng),
-        )
-        .slice(0, 24);
-      const linkedOrigin = isBeforePickup ? approachPoint : activePoint;
-      const linkedDestination = summaryChain.length
-        ? {
-            lat: summaryChain[summaryChain.length - 1].lat,
-            lng: summaryChain[summaryChain.length - 1].lng,
-          }
-        : null;
-      const linkedWaypoints = summaryChain.slice(0, -1).map((stop) => ({
-        location: { lat: stop.lat, lng: stop.lng },
-        stopover: true as const,
-      }));
-
-      const [pickupResult, dropoffResult, fullPlanResult, linkedResult] =
-        await Promise.all([
-          // Approach route (carrier → pickup): only pre-pickup AND live RTDB GPS.
-          isBeforePickup && approachPoint && pickupPoint
-            ? getRoute("approach", approachPoint, pickupPoint)
-            : Promise.resolve(null),
-          // Active delivery route (carrier → dropoff): only post-pickup.
-          // Pre-pickup this is null so fullPlanResult alone draws the ghost route,
-          // preventing double-drawing of the same pickup→delivery segment.
-          !isBeforePickup && activePoint
-            ? getRoute("dropoff", activePoint, deliveryPoint)
-            : Promise.resolve(null),
-          // Ghost plan (pickup → delivery): always computed as baseline reference.
-          pickupPoint
-            ? getRoute("full-plan", pickupPoint, deliveryPoint)
-            : Promise.resolve(null),
-          linkedOrigin && linkedDestination
-            ? getRoute(
-                "linked",
-                linkedOrigin,
-                linkedDestination,
-                linkedWaypoints,
-              )
-            : Promise.resolve(null),
-        ]);
-
-      if (cancelled) return;
-
-      setToPickupDirections(
-        isBeforePickup ? linkedResult || pickupResult : null,
-      );
-      setToDropoffDirections(
-        !isBeforePickup ? linkedResult || dropoffResult : null,
-      );
-      setFullPlanDirections(fullPlanResult);
-      setLinkedRouteDirections(linkedResult);
-
-      // Post-pickup: use the active carrier→delivery leg for distance/duration.
-      // Pre-pickup: dropoffResult is null; fall back to ghost plan for distance display.
-      const route = (
-        linkedResult ??
-        dropoffResult ??
-        pickupResult ??
-        fullPlanResult
-      )?.routes?.[0];
-      if (route?.legs?.length) {
-        const totalMeters = route.legs.reduce(
-          (sum: number, leg: any) => sum + (leg.distance?.value || 0),
-          0,
-        );
-        const totalSeconds = route.legs.reduce(
-          (sum: number, leg: any) => sum + (leg.duration?.value || 0),
-          0,
-        );
-        setRouteMeta({
-          distanceText: `${parseFloat((totalMeters / 1000).toFixed(2))} km`,
-          durationText: formatMinutes(totalSeconds),
-        });
-      } else {
-        setRouteMeta(null);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    // Google Directions API disabled for customer tracking.
+    setRouteMeta(null);
   }, [
     delivery?.status,
     delivery?.pickupLocation,
@@ -604,6 +441,7 @@ export default function PackageTrackingPage({
   const showCarrierMarker = shouldShowTrackingCarrierMarker(delivery?.status);
   const etaLabel = getTrackingEtaLabel(delivery?.status);
 
+  /* Directions ETA display disabled
   const etaToPickupText: string | null = (() => {
     const legs = toPickupDirections?.routes?.[0]?.legs;
     if (!legs) return null;
@@ -623,6 +461,7 @@ export default function PackageTrackingPage({
     );
     return formatMinutes(secs);
   })();
+  */
 
   // Center on pickup pre-pickup (carrier pin is hidden from customer);
   // center on live carrier or Firestore snapshot post-pickup.
@@ -734,6 +573,7 @@ export default function PackageTrackingPage({
     ],
   );
 
+  /* Directions gradient segments disabled
   const fullPlanGradientSegments = useMemo(
     () =>
       buildGradientRouteSegments(
@@ -762,6 +602,7 @@ export default function PackageTrackingPage({
       ),
     [isBeforePickupStatus, toDropoffDirections, toPickupDirections],
   );
+*/
 
   // Keep pickup and dropoff visible throughout the trip, and add the carrier once the
   // customer is allowed to see it.
@@ -861,39 +702,14 @@ export default function PackageTrackingPage({
             >
               {getStatusLabel(delivery.status)}
             </span>
-            {isBeforePickupStatus && etaToPickupText && (
+            {persistedEtaRemainingMs !== null && (
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-800 border border-emerald-200">
-                ⏱ {etaLabel}: {etaToPickupText}
+                ⏱ {etaLabel}:{" "}
+                {persistedEtaRemainingMs <= 0
+                  ? "arriving now"
+                  : formatEtaCountdown(persistedEtaRemainingMs)}
               </span>
             )}
-            {isBeforePickupStatus &&
-              !etaToPickupText &&
-              persistedEtaRemainingMs !== null && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-800 border border-emerald-200">
-                  ⏱ {etaLabel}:{" "}
-                  {persistedEtaRemainingMs <= 0
-                    ? "arriving now"
-                    : formatEtaCountdown(persistedEtaRemainingMs)}
-                </span>
-              )}
-            {!isBeforePickupStatus &&
-              delivery.status !== "delivered" &&
-              etaToDeliveryText && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-800 border border-emerald-200">
-                  ⏱ {etaLabel}: {etaToDeliveryText}
-                </span>
-              )}
-            {!isBeforePickupStatus &&
-              delivery.status !== "delivered" &&
-              !etaToDeliveryText &&
-              persistedEtaRemainingMs !== null && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-800 border border-emerald-200">
-                  ⏱ {etaLabel}:{" "}
-                  {persistedEtaRemainingMs <= 0
-                    ? "arriving now"
-                    : formatEtaCountdown(persistedEtaRemainingMs)}
-                </span>
-              )}
             {delivery.estimatedDelivery && (
               <span className="text-gray-600">
                 Estimated: {format(delivery.estimatedDelivery, "MMM dd, yyyy")}
@@ -926,84 +742,7 @@ export default function PackageTrackingPage({
                       ],
                     }}
                   >
-                    {/* Road between P and D */}
-                    {fullPlanDirections && (
-                      <DirectionsRenderer
-                        directions={fullPlanDirections}
-                        options={
-                          {
-                            suppressMarkers: true,
-                            suppressBoundsUpdate: true,
-                            suppressPolylines: true,
-                          } as any
-                        }
-                      />
-                    )}
-                    {fullPlanGradientSegments.map((segment) => (
-                      <Polyline
-                        key={segment.id}
-                        path={segment.path}
-                        options={getGradientSegmentOptions(
-                          segment.color,
-                          0.36,
-                          4,
-                        )}
-                      />
-                    ))}
-
-                    {linkedRouteDirections && (
-                      <DirectionsRenderer
-                        directions={linkedRouteDirections}
-                        options={
-                          {
-                            suppressMarkers: true,
-                            suppressBoundsUpdate: true,
-                            suppressPolylines: true,
-                          } as any
-                        }
-                      />
-                    )}
-                    {linkedRouteGradientSegments.map((segment) => (
-                      <Polyline
-                        key={segment.id}
-                        path={segment.path}
-                        options={getGradientSegmentOptions(
-                          segment.color,
-                          0.58,
-                          5,
-                        )}
-                      />
-                    ))}
-
-                    {(isBeforePickupStatus
-                      ? toPickupDirections
-                      : toDropoffDirections) && (
-                      <DirectionsRenderer
-                        directions={
-                          isBeforePickupStatus
-                            ? toPickupDirections
-                            : toDropoffDirections
-                        }
-                        options={
-                          {
-                            suppressMarkers: true,
-                            suppressBoundsUpdate: true,
-                            suppressPolylines: true,
-                          } as any
-                        }
-                      />
-                    )}
-                    {activeRouteGradientSegments.map((segment) => (
-                      <Polyline
-                        key={segment.id}
-                        path={segment.path}
-                        options={getGradientSegmentOptions(
-                          segment.color,
-                          0.94,
-                          6,
-                        )}
-                      />
-                    ))}
+                    {/* Road directions and gradient overlays disabled */}
 
                     {/* Pickup — green circle matching TrackingMap */}
                     {delivery.pickupLocation && (
@@ -1149,18 +888,14 @@ export default function PackageTrackingPage({
                         ? routeMeta.distanceText
                         : "Route unavailable (waiting for valid coordinates)"}
                     </p>
-                    {isBeforePickupStatus && etaToPickupText && (
+                    {persistedEtaRemainingMs !== null && (
                       <p className="text-xs text-emerald-700 font-semibold mt-1">
-                        ⏱ {etaLabel}: {etaToPickupText}
+                        ⏱ {etaLabel}:{" "}
+                        {persistedEtaRemainingMs <= 0
+                          ? "arriving now"
+                          : formatEtaCountdown(persistedEtaRemainingMs)}
                       </p>
                     )}
-                    {!isBeforePickupStatus &&
-                      delivery?.status !== "delivered" &&
-                      etaToDeliveryText && (
-                        <p className="text-xs text-emerald-700 font-semibold mt-1">
-                          ⏱ {etaLabel}: {etaToDeliveryText}
-                        </p>
-                      )}
                     {!!delivery.trackingRouteSummary
                       ?.remainingRouteStopCount && (
                       <p className="text-xs text-slate-500 mt-1">
