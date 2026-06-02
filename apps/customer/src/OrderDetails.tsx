@@ -641,7 +641,10 @@ export default function OrderDetails() {
           {order.status === "delivered" && order.carrierId && (
             <div className="bg-white rounded-xl shadow p-6 border-l-4 border-amber-500">
               <h3 className="font-bold mb-3 flex items-center">
-                <FontAwesomeIcon icon={faStar} className="mr-2 text-amber-500" />
+                <FontAwesomeIcon
+                  icon={faStar}
+                  className="mr-2 text-amber-500"
+                />
                 Rate Carrier
               </h3>
               <p className="text-sm text-gray-600 mb-4">
@@ -679,13 +682,13 @@ export default function OrderDetails() {
       </div>
 
       {/* Rating Modal */}
-      {order && order.carrierId && order.carrierName && (
+      {order && order.carrierId && (
         <RatingModal
           isOpen={showRatingModal}
           onClose={() => setShowRatingModal(false)}
           deliveryId={order.id}
           carrierId={order.carrierId}
-          carrierName={order.carrierName}
+          carrierName={order.carrierName || "Carrier"}
           onRatingSubmitted={() => {
             setHasRated(true);
             setShowRatingModal(false);
