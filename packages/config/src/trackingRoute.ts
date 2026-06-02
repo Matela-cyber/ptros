@@ -27,7 +27,9 @@ export interface DeliveryTrackingRouteSummary {
 }
 
 const PRE_PICKUP_STATUSES = new Set(["pending", "assigned", "accepted"]);
-const CARRIER_TO_PICKUP_STATUSES = new Set(["assigned", "accepted"]);
+// per spec: assigned = carrier assigned but not yet accepted → no carrier route shown
+// only 'accepted' triggers the carrier-approaching-pickup route
+const CARRIER_TO_PICKUP_STATUSES = new Set(["accepted"]);
 const CARRIER_TO_DROPOFF_STATUSES = new Set([
   "picked_up",
   "in_transit",
@@ -35,9 +37,10 @@ const CARRIER_TO_DROPOFF_STATUSES = new Set([
 ]);
 
 export const TRACKING_ROUTE_COLORS = {
-  pickupToDropoff: "#2563eb",
-  carrierToPickup: "#f97316",
-  carrierToDropoff: "#22c55e",
+  pickupToDropoff: "#2563eb", // Blue
+  carrierToPickup: "#f97316", // Orange
+  carrierToDropoff: "#22c55e", // Green
+  carrierMarker: "#7c3aed", // Purple (distinct from route lines)
 };
 
 const hasFiniteCoordinate = (value: unknown): value is number =>

@@ -202,7 +202,9 @@ export default function TrackingMap({ user }: Props) {
   // Default center (Maseru, Lesotho)
   const defaultCenter = { lat: -29.31, lng: 27.48 };
   const activeStatuses = [
+    "pending",
     "assigned",
+    "accepted",
     "picked_up",
     "in_transit",
     "out_for_delivery",
@@ -321,7 +323,9 @@ export default function TrackingMap({ user }: Props) {
       collection(db, "deliveries"),
       where("customerId", "==", user.uid),
       where("status", "in", [
+        "pending",
         "assigned",
+        "accepted",
         "picked_up",
         "in_transit",
         "out_for_delivery",
@@ -694,7 +698,7 @@ export default function TrackingMap({ user }: Props) {
       delivery.carrierName
         ? `${delivery.carrierName} (Carrier)`
         : "Carrier location",
-      getCircleMarkerIcon("#3B82F6", 12),
+      getCircleMarkerIcon("#7c3aed", 12),
       120,
       [
         `Status: ${delivery.status.replace(/_/g, " ")}`,
@@ -1006,13 +1010,44 @@ export default function TrackingMap({ user }: Props) {
     );
   }
 
-  // Map legend for multi-delivery tracking
+  // Map legend — dynamic based on selected delivery's status
+  const selectedDeliveryObj = selectedDelivery
+    ? visibleDeliveries.find((d) => d.id === selectedDelivery)
+    : null;
+  const {
+    showCarrierMarker: legendShowCarrier,
+    showCarrierToPickupRoute: legendShowC2P,
+    showCarrierToDropoffRoute: legendShowC2D,
+  } = getTrackingRouteDisplayState(selectedDeliveryObj?.status);
   const legendItems: LegendItem[] = [
     { color: "#059669", label: "Pickup location", opacity: 1 },
     { color: "#DC2626", label: "Dropoff location", opacity: 1 },
-    { color: "#3B82F6", label: "Carrier position", opacity: 1 },
-    { color: "#f97316", label: "Active delivery route", opacity: 0.9 },
-    { color: "#3B82F6", label: "Pickup → Dropoff baseline", opacity: 0.7 },
+    ...(legendShowCarrier
+      ? [{ color: "#7c3aed", label: "Carrier position", opacity: 1 }]
+      : []),
+    ...(legendShowC2P
+      ? [
+          {
+            color: TRACKING_ROUTE_COLORS.carrierToPickup,
+            label: "Carrier → Pickup",
+            opacity: 0.9,
+          },
+        ]
+      : []),
+    ...(legendShowC2D
+      ? [
+          {
+            color: TRACKING_ROUTE_COLORS.carrierToDropoff,
+            label: "Carrier → Dropoff",
+            opacity: 0.9,
+          },
+        ]
+      : []),
+    {
+      color: TRACKING_ROUTE_COLORS.pickupToDropoff,
+      label: "Pickup → Dropoff",
+      opacity: 0.7,
+    },
   ];
 
   return (
@@ -1180,7 +1215,10 @@ export default function TrackingMap({ user }: Props) {
               />
 
               <div className="absolute bottom-4 left-4 z-10">
-                <MapLegend items={legendItems} title="Multi-Delivery Tracking" />
+                <MapLegend
+                  items={legendItems}
+                  title="Multi-Delivery Tracking"
+                />
               </div>
 
               <div className="absolute top-4 left-4 z-20">

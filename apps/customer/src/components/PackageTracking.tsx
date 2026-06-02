@@ -604,7 +604,7 @@ export default function PackageTrackingPage({
       } else {
         const marker = new window.google.maps.Marker({
           position,
-          map: mapInstance,
+          map: mapInstance.current,
           icon,
           zIndex,
           title,
@@ -630,7 +630,7 @@ export default function PackageTrackingPage({
             : null
         : null,
       delivery.carrierName || "Carrier location",
-      getCircleMarkerIcon("#3B82F6", 6),
+      getCircleMarkerIcon("#7c3aed", 10),
       120,
       [
         `Status: ${getStatusLabel(delivery.status)}`,
@@ -780,7 +780,7 @@ export default function PackageTrackingPage({
     ...(showCarrierMarker
       ? [
           {
-            color: "#3B82F6",
+            color: "#7c3aed",
             label: "Carrier position",
             opacity: 1,
           },
