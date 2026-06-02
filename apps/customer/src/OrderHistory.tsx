@@ -301,7 +301,7 @@ export default function OrderHistory() {
       )}
 
       {/* Rating Modal */}
-      {selectedOrder && selectedOrder.carrierId && selectedOrder.carrierName && (
+      {selectedOrder && selectedOrder.carrierId && (
         <RatingModal
           isOpen={showRatingModal}
           onClose={() => {
@@ -309,8 +309,8 @@ export default function OrderHistory() {
             setSelectedOrder(null);
           }}
           deliveryId={selectedOrder.id}
-          carrierId={selectedOrder.carrierId}
-          carrierName={selectedOrder.carrierName}
+          carrierId={selectedOrder.carrierId!}
+          carrierName={selectedOrder.carrierName || "Carrier"}
           onRatingSubmitted={() => {
             setShowRatingModal(false);
             setSelectedOrder(null);

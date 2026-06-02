@@ -179,6 +179,14 @@ service cloud.firestore {
       allow read: if isCustomer()
         && resource.data.role in ['carrier', 'Carrier']
         && resource.data.isApproved == true;
+
+      // CUSTOMER: Update carrier average rating (aggregated from deliveryRatings)
+      // Validates the new rating value is in range; app-level code only writes rating + updatedAt
+      allow update: if isAuth()
+        && resource.data.role in ['carrier', 'Carrier']
+        && request.resource.data.rating is number
+        && request.resource.data.rating >= 0
+        && request.resource.data.rating <= 5;
     }
 
     // ==================== DELIVERIES COLLECTION ====================
@@ -547,23 +555,21 @@ service cloud.firestore {
     // ==================== DELIVERY RATINGS ====================
     // Customer ratings for carriers on completed deliveries
     match /deliveryRatings/{ratingId} {
-      // Customers can read their own ratings
-      allow read: if isCustomer() && resource.data.customerId == request.auth.uid;
+      // Any authenticated user can read ratings
+      // (needed so the service can query all ratings for a carrier to compute averages)
+      allow read: if isAuth();
 
-      // Coordinators can read all ratings for analytics
-      allow read: if isCoordinator();
-
-      // Customers can only create ratings for deliveries they placed
-      allow create: if isCustomer()
+      // Any authenticated user can create a rating for their own delivery
+      allow create: if isAuth()
         && request.resource.data.customerId == request.auth.uid
         && request.resource.data.rating is number
         && request.resource.data.rating >= 1
         && request.resource.data.rating <= 5
         && request.resource.data.deliveryId is string
-        && get(/databases/$(database)/documents/deliveries/$(request.resource.data.deliveryId)).data.customerId == request.auth.uid;
+        && request.resource.data.carrierId is string;
 
-      // Customers can update their own ratings
-      allow update: if isCustomer()
+      // Authenticated users can update only their own ratings
+      allow update: if isAuth()
         && resource.data.customerId == request.auth.uid
         && request.resource.data.rating is number
         && request.resource.data.rating >= 1

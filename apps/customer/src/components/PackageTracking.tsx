@@ -901,15 +901,12 @@ export default function PackageTrackingPage({
       </div>
 
       <div className="px-4 py-4 bg-gray-50 border-b border-gray-200">
-<div className="relative w-full h-[52vh] min-h-[360px] lg:min-h-[520px] overflow-hidden rounded-xl border border-gray-200 bg-white">
-        <div
-          ref={mapRef}
-          className="w-full h-full"
-        />
-        <div className="absolute bottom-4 left-4 z-10">
-          <MapLegend items={legendItems} title="Delivery Route" />
+        <div className="relative w-full h-[52vh] min-h-[360px] lg:min-h-[520px] overflow-hidden rounded-xl border border-gray-200 bg-white">
+          <div ref={mapRef} className="w-full h-full" />
+          <div className="absolute bottom-4 left-4 z-10">
+            <MapLegend items={legendItems} title="Delivery Route" />
+          </div>
         </div>
-      </div>
 
         <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
           <p className="text-xs text-slate-600 font-semibold uppercase">
@@ -1126,7 +1123,7 @@ export default function PackageTrackingPage({
       )}
 
       {/* Rating Section */}
-      {delivery.status === "delivered" && delivery.carrierId && delivery.carrierName && (
+      {delivery.status === "delivered" && delivery.carrierId && (
         <div className="bg-amber-50 border-t border-amber-200 px-4 py-3">
           <div className="flex items-center justify-between">
             <div>
@@ -1134,7 +1131,8 @@ export default function PackageTrackingPage({
                 ⭐ Rate Your Delivery
               </p>
               <p className="text-xs text-amber-700">
-                Help us improve by rating your experience with {delivery.carrierName}
+                Help us improve by rating your experience with{" "}
+                {delivery.carrierName || "your carrier"}
               </p>
             </div>
             <button
@@ -1148,13 +1146,13 @@ export default function PackageTrackingPage({
       )}
 
       {/* Rating Modal */}
-      {delivery && delivery.carrierId && delivery.carrierName && (
+      {delivery && delivery.carrierId && (
         <RatingModal
           isOpen={showRatingModal}
           onClose={() => setShowRatingModal(false)}
           deliveryId={delivery.id}
           carrierId={delivery.carrierId}
-          carrierName={delivery.carrierName}
+          carrierName={delivery.carrierName || "Carrier"}
           onRatingSubmitted={() => {
             setShowRatingModal(false);
           }}
