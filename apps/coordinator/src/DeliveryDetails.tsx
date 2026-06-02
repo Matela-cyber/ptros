@@ -1233,32 +1233,6 @@ export default function DeliveryDetails() {
             </h2>
             <div className="space-y-3">
               <button
-                onClick={() => {
-                  const phone =
-                    delivery.customerPhone || delivery.deliveryContactPhone;
-                  if (!phone) {
-                    toast.error("No customer phone available");
-                    return;
-                  }
-                  window.location.href = `tel:${phone}`;
-                }}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                Send Update to Customer
-              </button>
-              <button
-                onClick={() => {
-                  if (!delivery.carrierPhone) {
-                    toast.error("No carrier phone available");
-                    return;
-                  }
-                  window.location.href = `tel:${delivery.carrierPhone}`;
-                }}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                Contact Carrier
-              </button>
-              <button
                 onClick={cancelDelivery}
                 className="w-full px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50"
               >

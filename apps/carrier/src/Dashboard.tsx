@@ -954,7 +954,11 @@ export default function Dashboard({ user }: DashboardProps) {
                         </div>
                         <div className="text-right">
                           <p className="text-lg font-bold text-green-600">
-                            {formatCurrency(delivery.earnings)}
+                            {formatCurrency(
+                              delivery.earnings ||
+                                delivery.estimatedEarnings ||
+                                0,
+                            )}
                           </p>
                           <p className="text-xs text-gray-400">
                             {formatDate(delivery.deliveryTime?.toDate())}

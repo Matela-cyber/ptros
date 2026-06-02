@@ -58,8 +58,8 @@ export interface Delivery {
   carrierId?: string;
   carrierName?: string;
   carrierPhone?: string;
-  earnings: number;
-  estimatedEarnings: number;
+  earnings?: number;
+  estimatedEarnings?: number;
   estimatedDelivery?: Timestamp;
   pickupTime?: Timestamp;
   deliveryTime?: Timestamp;

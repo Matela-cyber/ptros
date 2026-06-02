@@ -327,48 +327,6 @@ export default function Settings() {
           </div>
         </section>
 
-        <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-gray-800">Notifications</h2>
-
-          <label className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
-            <span className="text-sm font-medium text-gray-700">
-              Desktop notifications
-            </span>
-            <input
-              type="checkbox"
-              checked={settings.enableDesktopNotifications}
-              onChange={(e) =>
-                update("enableDesktopNotifications", e.target.checked)
-              }
-              className="h-4 w-4"
-            />
-          </label>
-
-          <label className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
-            <span className="text-sm font-medium text-gray-700">
-              Email alerts
-            </span>
-            <input
-              type="checkbox"
-              checked={settings.emailAlerts}
-              onChange={(e) => update("emailAlerts", e.target.checked)}
-              className="h-4 w-4"
-            />
-          </label>
-
-          <label className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
-            <span className="text-sm font-medium text-gray-700">
-              SMS alerts
-            </span>
-            <input
-              type="checkbox"
-              checked={settings.smsAlerts}
-              onChange={(e) => update("smsAlerts", e.target.checked)}
-              className="h-4 w-4"
-            />
-          </label>
-        </section>
-
         <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-4 lg:col-span-2">
           <h2 className="text-lg font-semibold text-gray-800">Map Defaults</h2>
 
