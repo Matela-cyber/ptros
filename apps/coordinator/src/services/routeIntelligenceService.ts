@@ -2,6 +2,7 @@ import {
   db,
   realtimeDb,
   defaultBusinessRules,
+  loadBusinessRulesConfig,
   syncDeliveryLocationGraphStructure,
   type DeliveryGraphSyncResult,
 } from "@config";
@@ -433,15 +434,6 @@ const fetchCarrierProfiles = async (): Promise<
   });
 };
 
-// Vehicle speed — reads from shared businessRules so coordinator Settings changes take effect
-const getVehicleSpeedKmh = (vehicleType?: string): number => {
-  const normalized = normalizeVehicleType(vehicleType);
-  return (
-    defaultBusinessRules.vehicleProfiles[normalized] ??
-    defaultBusinessRules.vehicleProfiles.unknown
-  ).speedKmh;
-};
-
 // Fetch real-time carrier locations from RTDB /tracks/{uid}
 const fetchCarrierRtdbLocations = async (
   carrierIds: string[],
@@ -730,10 +722,11 @@ export const getCarrierRecommendationsForDraft = async (
     ? haversineKm(delivery.pickupLocation, delivery.deliveryLocation)
     : 0;
 
-  const [carriers, activeLoads, managedSegments] = await Promise.all([
+  const [carriers, activeLoads, managedSegments, rules] = await Promise.all([
     fetchCarrierProfiles(),
     buildActiveDeliveryLoads(),
     fetchManagedSegments(),
+    loadBusinessRulesConfig(),
   ]);
 
   // Fetch RTDB live locations + routeStops state for all carriers in parallel
@@ -807,11 +800,14 @@ export const getCarrierRecommendationsForDraft = async (
       const routeState = routeStates[carrier.id];
 
       const normalizedVehicleType = normalizeVehicleType(carrier.vehicleType);
-      const maxWeightKg =
-        carrier.maxWeightKg || getVehicleCapacityKg(carrier.vehicleType);
+      // Use vehicle profiles from Firestore rules (coordinator Settings → Vehicle Profiles)
+      const vehicleProfile =
+        rules.vehicleProfiles[normalizedVehicleType] ??
+        rules.vehicleProfiles.unknown;
+      const maxWeightKg = carrier.maxWeightKg || vehicleProfile.capacityKg;
       const maxParcels =
         carrier.maxParcels || getVehicleParcelLimit(carrier.vehicleType);
-      const speedKmh = getVehicleSpeedKmh(carrier.vehicleType);
+      const speedKmh = vehicleProfile.speedKmh;
       const distanceToPickupKm = haversineKm(
         currentLocation,
         delivery.pickupLocation!,
@@ -844,10 +840,18 @@ export const getCarrierRecommendationsForDraft = async (
       const volumeFactor = parseDimensionsVolumeFactor(
         delivery.packageDimensions,
       );
+      // Use loaded business rules for all scoring weights
+      const r = rules.recommendation;
       const workloadPenalty =
-        pendingStopCount * 7 + activeLoadWeightKg * 0.18 + volumeFactor * 2;
+        pendingStopCount * r.workloadPenaltyPerActive +
+        activeLoadWeightKg * 0.18 +
+        volumeFactor * 2;
       const availabilityPenalty =
-        carrier.status === "active" ? 0 : carrier.status === "busy" ? 8 : 120;
+        carrier.status === "active"
+          ? 0
+          : carrier.status === "busy"
+            ? r.busyStatusPenalty
+            : r.unknownStatusPenalty;
       const stalePenalty = freshLocation
         ? 0
         : Math.min(45, staleLocationMinutes * 1.25);
@@ -872,7 +876,10 @@ export const getCarrierRecommendationsForDraft = async (
         estimatedDetourKm = Math.max(estimatedDetourKm, viaDropoff - direct);
       }
 
-      const capacityPenalty = overloadKg > 0 ? 400 + overloadKg * 18 : 0;
+      const capacityPenalty =
+        overloadKg > 0
+          ? r.capacityBasePenalty + overloadKg * r.capacityPenaltyPerKg
+          : 0;
       const strictPriorityPenalty =
         activeInfo.priorities.some((priority) => isPriorityStrict(priority)) &&
         isPriorityStrict(delivery.priority)
@@ -906,13 +913,14 @@ export const getCarrierRecommendationsForDraft = async (
           strictPriorityPenalty,
       );
 
-      // Rating bonus: Higher rated carriers get score reduction (0.5 per rating point)
-      // 5.0 ⭐ → -2.5, 4.0 ⭐ → -2.0, 3.0 ⭐ → -1.5, 0.0 → 0.0
-      const ratingBonus = -(carrier.rating || 0) * 0.5;
+      // Rating bonus: higher rated carriers get score reduction
+      // Uses ratingBoostPerPoint from business rules (default: 4 points per star → adjustable)
+      // A 5★ carrier with boost=4 gets -20, a 0★ gets 0
+      const ratingBonus = -(carrier.rating || 0) * r.ratingBoostPerPoint;
 
       const recommendationScore =
-        distanceToPickupKm * 2.25 +
-        estimatedDetourKm * 2.9 +
+        distanceToPickupKm * r.distancePenaltyPerKm +
+        estimatedDetourKm * r.routePenaltyPerKm +
         workloadPenalty +
         availabilityPenalty +
         stalePenalty +
@@ -932,21 +940,19 @@ export const getCarrierRecommendationsForDraft = async (
           ? routeState.remainingRouteDistanceKm
           : pendingStopCount * 2.5;
       const estimatedDeliveryHours = Math.max(
-        0.5,
+        rules.recommendation.minimumEtaHours,
         (distanceToPickupKm + routeDistanceKm + chainedDistanceKm) / speedKmh,
       );
       const pv = Number(
-        delivery.packageValue || defaultBusinessRules.pricing.baseValueFallback,
+        delivery.packageValue || rules.pricing.baseValueFallback,
       );
       const estimatedPrice = Math.round(
         Math.max(
-          defaultBusinessRules.pricing.minimumCharge,
-          pv * defaultBusinessRules.pricing.packageValueRate +
-            routeDistanceKm * defaultBusinessRules.pricing.distanceRatePerKm,
+          rules.pricing.minimumCharge,
+          pv * rules.pricing.packageValueRate +
+            routeDistanceKm * rules.pricing.distanceRatePerKm,
         ) *
-          (1 +
-            activeInfo.count *
-              defaultBusinessRules.pricing.activeDeliverySurchargeRate),
+          (1 + activeInfo.count * rules.pricing.activeDeliverySurchargeRate),
       );
 
       const reasonFactors = [
@@ -1004,11 +1010,53 @@ export const getCarrierRecommendationsForDraft = async (
         normalizedVehicleType,
         recommendationScore: Number(recommendationScore.toFixed(2)),
         recommendationReason: reasonFactors.join(" • "),
-        autoAssignable:
-          overloadKg === 0 &&
-          freshLocation &&
-          carrier.status !== "inactive" &&
-          recommendationScore < 140,
+        autoAssignable: (() => {
+          // Base eligibility: not overloaded, fresh GPS, not inactive, score within threshold
+          const baseEligible =
+            overloadKg === 0 &&
+            freshLocation &&
+            carrier.status !== "inactive" &&
+            recommendationScore < 140;
+          if (!baseEligible) return false;
+
+          const triggers = rules.coordinatorReviewTriggers;
+
+          // Trigger 1: Missing verified coordinates — hold if pickup or delivery location is absent
+          if (
+            triggers.missingVerifiedCoordinates &&
+            (!delivery.pickupLocation || !delivery.deliveryLocation)
+          )
+            return false;
+
+          // Trigger 2: No recommended carrier available — if this carrier is the only option with
+          // a score barely under the threshold, hold for manual review (score > 100 = marginal)
+          if (
+            triggers.noRecommendedCarrierAvailable &&
+            recommendationScore > 100
+          )
+            return false;
+
+          // Trigger 3: Carrier capacity/availability risk — hold if carrier is at risk
+          if (
+            triggers.carrierCapacityOrAvailabilityRisk &&
+            (overloadKg > 0 ||
+              !freshLocation ||
+              carrier.status === "busy" ||
+              pendingStopCount >= maxParcels)
+          )
+            return false;
+
+          // Trigger 4: Urgent priority — always hold urgent orders for manual confirmation
+          if (
+            triggers.urgentPriorityRequiresConfirmation &&
+            ["urgent", "express"].includes(
+              (delivery.priority || "").toLowerCase(),
+            )
+          )
+            return false;
+
+          return true;
+        })(),
         distanceToPickupKm: Number(distanceToPickupKm.toFixed(2)),
         estimatedDetourKm: Number(estimatedDetourKm.toFixed(2)),
         activeDeliveries: activeInfo.count,

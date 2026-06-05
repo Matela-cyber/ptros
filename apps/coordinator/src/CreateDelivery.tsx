@@ -1311,16 +1311,53 @@ export default function CreateDelivery() {
       const manuallySelectedCarrier = recommendedCarriers.find(
         (carrier) => carrier.id === selectedCarrierId,
       );
+
+      // In auto mode: only assign if the top carrier is actually auto-assignable
+      // (autoAssignable already accounts for coordinatorReviewTriggers in the service)
       const preferredCarrier =
         carrierSelectionMode === "auto"
-          ? bestRecommendedCarrier
+          ? bestRecommendedCarrier?.autoAssignable
+            ? bestRecommendedCarrier
+            : null
           : manuallySelectedCarrier || null;
+
+      // Build review reasons so the delivery document records why it needs manual attention
+      const coordinatorReviewReasons: string[] = [];
+      if (
+        businessRules.coordinatorReviewTriggers.missingVerifiedCoordinates &&
+        (!pickupCoords || !deliveryCoords)
+      ) {
+        coordinatorReviewReasons.push("missing_verified_coordinates");
+      }
+      if (
+        businessRules.coordinatorReviewTriggers.noRecommendedCarrierAvailable &&
+        recommendedCarriers.length === 0
+      ) {
+        coordinatorReviewReasons.push("no_recommended_carrier_available");
+      }
+      if (
+        businessRules.coordinatorReviewTriggers
+          .carrierCapacityOrAvailabilityRisk &&
+        bestRecommendedCarrier &&
+        !bestRecommendedCarrier.autoAssignable
+      ) {
+        coordinatorReviewReasons.push("carrier_capacity_or_availability_risk");
+      }
+      if (
+        businessRules.coordinatorReviewTriggers
+          .urgentPriorityRequiresConfirmation &&
+        formData.priority === "urgent"
+      ) {
+        coordinatorReviewReasons.push(
+          "urgent_priority_requires_coordinator_confirmation",
+        );
+      }
+      const requiresCoordinatorReview = coordinatorReviewReasons.length > 0;
 
       const effectiveSelectedCarrierId =
         formData.carrierId ||
-        preferredCarrier?.id ||
-        (bestRecommendedCarrier?.autoAssignable
-          ? bestRecommendedCarrier.id
+        (preferredCarrier && !requiresCoordinatorReview
+          ? preferredCarrier.id
           : "");
 
       // Get selected carrier if assigned
@@ -1339,6 +1376,9 @@ export default function CreateDelivery() {
         // Basic Info
         trackingCode,
         status: effectiveSelectedCarrierId ? "assigned" : "pending",
+        requiresCoordinatorReview,
+        coordinatorReviewReasons:
+          coordinatorReviewReasons.length > 0 ? coordinatorReviewReasons : null,
         priority: formData.priority,
 
         // Customer Info
@@ -1604,7 +1644,15 @@ export default function CreateDelivery() {
       // Save to Firestore
       const docRef = await addDoc(collection(db, "deliveries"), deliveryData);
 
-      if (!formData.carrierId && bestRecommendedCarrier?.autoAssignable) {
+      if (requiresCoordinatorReview) {
+        toast(
+          `Order held for manual assignment — ${coordinatorReviewReasons.join(", ").replace(/_/g, " ")}`,
+          { icon: "⚠️", duration: 5000 },
+        );
+      } else if (
+        !formData.carrierId &&
+        bestRecommendedCarrier?.autoAssignable
+      ) {
         toast.success(
           `Auto-assigned to ${bestRecommendedCarrier.fullName} (best route fit)`,
           { duration: 3500 },

@@ -602,6 +602,30 @@ export default function Settings() {
                 className="mt-1 w-full p-2 border border-gray-300 rounded-lg"
               />
             </label>
+
+            <label className="block">
+              <span className="text-sm text-gray-700">
+                Rating score reduction per star ⭐
+              </span>
+              <p className="text-xs text-gray-400 mb-1">
+                Score reduction applied per rating point (0–5★). Higher value =
+                rating matters more. Default: 4. A 5★ carrier at 4 pts/star gets
+                −20 score advantage.
+              </p>
+              <input
+                type="number"
+                min={0}
+                step="0.5"
+                value={businessRules.recommendation.ratingBoostPerPoint}
+                onChange={(e) =>
+                  updateRecommendation(
+                    "ratingBoostPerPoint",
+                    Number(e.target.value) || 0,
+                  )
+                }
+                className="mt-1 w-full p-2 border border-gray-300 rounded-lg"
+              />
+            </label>
           </div>
         </div>
 
