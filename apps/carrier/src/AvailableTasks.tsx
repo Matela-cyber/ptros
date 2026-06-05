@@ -5,7 +5,7 @@ import { toast, Toaster } from "react-hot-toast";
 import { useGPSLocation } from "./hooks";
 import { getCarrierLiveTrackUrl } from "./liveTrackUrl";
 import { formatNumber, formatCurrency } from "./format";
-import { defaultBusinessRules } from "@config";
+import { defaultBusinessRules, loadBusinessRulesConfig } from "@config";
 import {
   RouteStop,
   bundleFitRoute,
@@ -152,14 +152,15 @@ export default function AvailableTasks() {
   ) => {
     setAccepting(delivery.id);
     try {
-      const [currentStops, profile] = await Promise.all([
+      const [currentStops, profile, liveRules] = await Promise.all([
         CarrierService.getRouteStops() as Promise<RouteStop[]>,
         CarrierService.getCarrierProfile(),
+        loadBusinessRulesConfig(),
       ]);
       const vType = (
         (profile?.vehicleType ?? "unknown") as string
       ).toLowerCase();
-      const vProfiles = defaultBusinessRules.vehicleProfiles as Record<
+      const vProfiles = liveRules.vehicleProfiles as Record<
         string,
         { capacityKg: number }
       >;
@@ -167,7 +168,7 @@ export default function AvailableTasks() {
         (profile as any)?.capacityWeight ??
         vProfiles[vType]?.capacityKg ??
         vProfiles["unknown"]?.capacityKg ??
-        80;
+        defaultBusinessRules.vehicleProfiles.unknown.capacityKg;
       const newStops = buildStopsFromDeliveries([delivery]).map((s) => ({
         ...s,
         loadKg: delivery.packageWeight ?? 0,

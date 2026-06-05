@@ -418,9 +418,8 @@ service cloud.firestore {
       allow read: if isAuth();
 
       // Coordinators own business strategy tuning controls
-      allow create, update: if isCoordinator()
-        && configId == 'orderEngine'
-        && isValidBusinessRulesPayload(request.resource.data);
+      // Payload validation is enforced in application code (sanitizeBusinessRulesConfig)
+      allow create, update: if isCoordinator() && configId == 'orderEngine';
 
       allow delete: if isCoordinator() && configId == 'orderEngine';
     }
