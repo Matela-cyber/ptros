@@ -309,7 +309,7 @@ export default function DeliveryDetails() {
       });
 
       toast.success("Marked as paid (COD received)");
-      loadDelivery(delivery.id);
+      await loadDelivery(delivery.id);
     } catch (error) {
       console.error("Failed to mark COD paid:", error);
       toast.error("Failed to mark payment as received");

@@ -142,6 +142,10 @@ export default function MyDeliveries() {
             pickupLocation: data.pickupLocation,
             deliveryLocation: data.deliveryLocation,
             eta: data.eta ?? null,
+            paymentMethod: data.paymentMethod,
+            paymentStatus: data.paymentStatus,
+            payerNumber: data.payerNumber,
+            paymentAmount: data.paymentAmount,
           });
         });
         setDeliveries(deliveryList);
