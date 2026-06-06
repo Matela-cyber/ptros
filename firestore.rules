@@ -277,6 +277,44 @@ service cloud.firestore {
           'eta'
         ]);
 
+      // CARRIER: Allow marking payments (COD or confirming mobile money) on own assigned delivery
+      // Carriers can only update payment-related fields and only for deliveries assigned to them.
+      allow update: if isCarrier()
+        && resource.data.carrierId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'paymentStatus',
+          'payerNumber',
+          'paymentConfirmedBy',
+          'paymentConfirmedAt',
+          'paymentHistory',
+          'updatedAt'
+        ])
+        // validate allowed paymentStatus values when being written
+        && (
+          !(request.resource.data.keys().hasAny(['paymentStatus']))
+          || request.resource.data.paymentStatus in ['processing', 'paid', 'failed']
+        )
+        && (
+          !(request.resource.data.keys().hasAny(['paymentConfirmedBy']))
+          || request.resource.data.paymentConfirmedBy == request.auth.uid
+        )
+        && (
+          !(request.resource.data.keys().hasAny(['paymentConfirmedAt']))
+          || request.resource.data.paymentConfirmedAt is timestamp
+        )
+        && (
+          !(request.resource.data.keys().hasAny(['paymentHistory']))
+          || request.resource.data.paymentHistory is list
+        )
+        && (
+          !(request.resource.data.keys().hasAny(['payerNumber']))
+          || request.resource.data.payerNumber is string
+        )
+        && (
+          !(request.resource.data.keys().hasAny(['updatedAt']))
+          || request.resource.data.updatedAt is timestamp
+        );
+
       // CARRIER: Write ETA-only update to any delivery in their active route.
       // refreshRouteEtas() batch-writes only the eta field across all deliveries
       // in the carrier's linked-list route after every accept or reoptimise.
@@ -312,6 +350,42 @@ service cloud.firestore {
         && request.resource.data.senderEmail is string
         && request.resource.data.receiverEmail is string
         && request.resource.data.otp is map;
+
+      // CUSTOMER: Update payment fields for their own delivery
+      allow update: if isCustomer()
+        && resource.data.customerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'paymentStatus',
+          'payerNumber',
+          'paymentHistory',
+          'paymentConfirmedBy',
+          'paymentConfirmedAt',
+          'updatedAt'
+        ])
+        && (
+          !(request.resource.data.keys().hasAny(['paymentStatus']))
+          || request.resource.data.paymentStatus in ['pending', 'processing', 'paid', 'failed']
+        )
+        && (
+          !(request.resource.data.keys().hasAny(['paymentConfirmedBy']))
+          || request.resource.data.paymentConfirmedBy == request.auth.uid
+        )
+        && (
+          !(request.resource.data.keys().hasAny(['paymentConfirmedAt']))
+          || request.resource.data.paymentConfirmedAt is timestamp
+        )
+        && (
+          !(request.resource.data.keys().hasAny(['paymentHistory']))
+          || request.resource.data.paymentHistory is list
+        )
+        && (
+          !(request.resource.data.keys().hasAny(['payerNumber']))
+          || request.resource.data.payerNumber is string
+        )
+        && (
+          !(request.resource.data.keys().hasAny(['updatedAt']))
+          || request.resource.data.updatedAt is timestamp
+        );
 
       // Route snapshot stream for persistent trip replay
       match /routeSnapshots/{snapshotId} {

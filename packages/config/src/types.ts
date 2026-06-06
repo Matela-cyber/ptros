@@ -42,4 +42,23 @@ export interface Delivery {
   updatedAt: Date;
   estimatedDelivery?: Date;
   actualDelivery?: Date;
+  // Payment fields
+  paymentMethod?:
+    | "card_prepaid"
+    | "cash_on_delivery"
+    | "mobile_money"
+    | "bank_transfer";
+  paymentAmount?: number | null;
+  paymentStatus?: "pending" | "processing" | "paid" | "failed";
+  payerNumber?: string | null; // e.g., M-Pesa phone number used for payment
+  paymentConfirmedBy?: string | null; // uid of user who confirmed payment (carrier/coordinator/customer)
+  paymentConfirmedAt?: Date | null;
+  paymentHistory?: Array<{
+    type: string; // e.g., "mpesa_attempt", "mpesa_success", "cod_received"
+    method?: string;
+    amount?: number | null;
+    initiatedBy?: string | null;
+    timestamp?: Date | null;
+    meta?: any;
+  }>;
 }
