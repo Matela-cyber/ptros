@@ -55,6 +55,10 @@ interface Delivery {
   pickupLocation?: { lat: number; lng: number };
   deliveryLocation?: { lat: number; lng: number };
   eta?: DeliveryEta | null;
+  paymentMethod?: string;
+  paymentStatus?: string;
+  payerNumber?: string;
+  paymentAmount?: number;
 }
 
 export default function MyDeliveries() {
@@ -401,6 +405,31 @@ export default function MyDeliveries() {
       "_blank",
       "noopener,noreferrer",
     );
+  };
+
+  const markCodPaidCarrier = async (deliveryId: string) => {
+    try {
+      const ts = Timestamp.now();
+      const delivery = deliveries.find((item) => item.id === deliveryId);
+      await updateDoc(doc(db, "deliveries", deliveryId), {
+        paymentStatus: "paid",
+        paymentConfirmedBy: auth.currentUser?.uid || null,
+        paymentConfirmedAt: ts,
+        paymentHistory: arrayUnion({
+          type: "cod_paid",
+          method: "cash_on_delivery",
+          amount: delivery?.paymentAmount || 0,
+          confirmedBy: auth.currentUser?.uid || null,
+          timestamp: ts,
+          meta: { note: "COD received by carrier" },
+        }),
+        updatedAt: ts,
+      });
+      toast.success("Marked as paid (COD received)");
+    } catch (err) {
+      console.error("Failed to mark COD paid:", err);
+      toast.error("Failed to mark payment as received");
+    }
   };
 
   const submitRouteReport = async () => {
@@ -812,6 +841,15 @@ export default function MyDeliveries() {
                     >
                       Map View
                     </button>
+                    {delivery.paymentMethod === "cash_on_delivery" &&
+                      delivery.paymentStatus !== "paid" && (
+                        <button
+                          onClick={() => markCodPaidCarrier(delivery.id)}
+                          className="text-sm px-2.5 py-1.5 rounded-md bg-yellow-100 text-yellow-700 hover:bg-yellow-200 font-semibold"
+                        >
+                          Mark COD Paid
+                        </button>
+                      )}
                   </div>
 
                   <div className="text-xs text-gray-500">

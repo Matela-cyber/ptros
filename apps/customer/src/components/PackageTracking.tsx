@@ -18,12 +18,15 @@ import {
   type TrackingRouteStop,
 } from "@config";
 import {
+  arrayUnion,
   collection,
   doc,
   limit,
   onSnapshot,
   orderBy,
   query,
+  updateDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { ref as rtdbRef, onValue } from "firebase/database";
 import { toast, Toaster } from "react-hot-toast";
@@ -110,6 +113,9 @@ interface DeliveryData {
   packageValue?: number;
   packageWeight?: number;
   paymentMethod?: string;
+  paymentAmount?: number;
+  paymentStatus?: string;
+  payerNumber?: string;
   otpCode?: string;
   otpVerified?: boolean;
   senderEmail?: string;
@@ -302,6 +308,71 @@ export default function PackageTrackingPage({
 
     return () => unsubscribe();
   }, [id, navigate, isGuest]);
+
+  const simulateMpesaPayment = async (providedNumber?: string) => {
+    if (!delivery) return;
+    try {
+      let number = providedNumber || delivery.customerPhone || "";
+      if (!number) {
+        const promptNum = window.prompt(
+          "Enter M-Pesa number to use for payment (you can use a different number than registration):",
+        );
+        if (!promptNum) return;
+        number = promptNum.trim();
+      }
+
+      const deliveryRef = doc(db, "deliveries", delivery.id);
+
+      // mark processing and record attempt
+      await updateDoc(deliveryRef, {
+        paymentStatus: "processing",
+        payerNumber: number,
+        paymentHistory: arrayUnion({
+          type: "mpesa_attempt",
+          method: "mobile_money",
+          amount: delivery.paymentAmount || 0,
+          initiatedBy: auth.currentUser?.uid || null,
+          payerNumber: number,
+          timestamp: serverTimestamp(),
+          meta: { note: "M-Pesa payment attempt started" },
+        }),
+        updatedAt: serverTimestamp(),
+      });
+
+      toast.loading("Waiting for M-Pesa confirmation...", { id: "mpesa-wait" });
+
+      // simulate 5s wait
+      setTimeout(async () => {
+        try {
+          await updateDoc(deliveryRef, {
+            paymentStatus: "paid",
+            paymentConfirmedBy: auth.currentUser?.uid || null,
+            paymentConfirmedAt: serverTimestamp(),
+            payerNumber: number,
+            paymentHistory: arrayUnion({
+              type: "mpesa_confirmed",
+              method: "mobile_money",
+              amount: delivery.paymentAmount || 0,
+              confirmedBy: auth.currentUser?.uid || null,
+              payerNumber: number,
+              timestamp: serverTimestamp(),
+              meta: { note: "M-Pesa payment confirmed" },
+            }),
+            updatedAt: serverTimestamp(),
+          });
+          toast.dismiss("mpesa-wait");
+          toast.success("M-Pesa payment simulated: payment confirmed");
+        } catch (err) {
+          console.error("Failed to finalize mpesa payment", err);
+          toast.dismiss("mpesa-wait");
+          toast.error("Failed to finalize payment");
+        }
+      }, 5000);
+    } catch (error) {
+      console.error("M-Pesa simulation failed:", error);
+      toast.error("Failed to initiate M-Pesa payment");
+    }
+  };
 
   useEffect(() => {
     return subscribeRouteNetworkSegments(setManagedSegments);
@@ -1002,6 +1073,35 @@ export default function PackageTrackingPage({
             </div>
           </div>
         )}
+
+        {/* Payment info & actions */}
+        <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-700">Payment</p>
+              <p className="text-xs text-gray-500">
+                Method: {delivery.paymentMethod || "N/A"} • Status:{" "}
+                {delivery.paymentStatus || "pending"}
+              </p>
+              {delivery.payerNumber && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Payer: {delivery.payerNumber}
+                </p>
+              )}
+            </div>
+            <div>
+              {delivery.paymentMethod === "mobile_money" &&
+                delivery.paymentStatus !== "paid" && (
+                  <button
+                    onClick={() => simulateMpesaPayment()}
+                    className="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700"
+                  >
+                    Pay with M-Pesa
+                  </button>
+                )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {(delivery.routeFeedback?.length || learnedSegments.length) && (

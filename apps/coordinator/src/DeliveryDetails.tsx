@@ -3,11 +3,12 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   db,
+  auth,
   formatEtaCountdown,
   getActiveEtaMs,
   type DeliveryEta,
 } from "@config";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { arrayUnion, doc, getDoc, updateDoc } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
 import { format } from "date-fns";
 import { writeTimestamp, getTimeServiceStatus } from "./services/timeService";
@@ -283,6 +284,38 @@ export default function DeliveryDetails() {
     }
   };
 
+  const markCodPaid = async () => {
+    if (!delivery) return;
+    try {
+      const timestamp = await writeTimestamp(
+        `deliveries/${delivery.id}/payment`,
+      );
+      const timeServiceStatus = getTimeServiceStatus();
+
+      await updateDoc(doc(db, "deliveries", delivery.id), {
+        paymentStatus: "paid",
+        paymentConfirmedBy: auth.currentUser?.uid || null,
+        paymentConfirmedAt: timestamp,
+        paymentHistory: arrayUnion({
+          type: "cod_paid",
+          method: "cash_on_delivery",
+          amount: delivery.paymentAmount || 0,
+          confirmedBy: auth.currentUser?.uid || null,
+          timestamp,
+          meta: { note: "COD marked as paid" },
+        }),
+        updatedAt: timestamp,
+        timeSource: timeServiceStatus.primarySource,
+      });
+
+      toast.success("Marked as paid (COD received)");
+      loadDelivery(delivery.id);
+    } catch (error) {
+      console.error("Failed to mark COD paid:", error);
+      toast.error("Failed to mark payment as received");
+    }
+  };
+
   const smartAssignCarrier = async () => {
     if (!delivery) return;
 
@@ -531,6 +564,15 @@ export default function DeliveryDetails() {
                 Mark as Delivered
               </button>
             )}
+            {delivery.paymentMethod === "cash_on_delivery" &&
+              delivery.paymentStatus !== "paid" && (
+                <button
+                  onClick={markCodPaid}
+                  className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700"
+                >
+                  Mark as Paid (COD)
+                </button>
+              )}
             <span
               className={`px-4 py-2 rounded-full font-medium ${
                 delivery.status === "pending"

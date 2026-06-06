@@ -502,6 +502,7 @@ export default function CreateDelivery() {
     carrierId: "",
     priority: "standard",
     paymentMethod: "cash_on_delivery",
+    payerNumber: "",
     paymentAmount: "",
     paymentStatus: "pending",
 
@@ -1550,6 +1551,21 @@ export default function CreateDelivery() {
           ? Number(formData.paymentAmount)
           : estimatedEarnings,
         paymentStatus: formData.paymentStatus,
+        payerNumber: (formData as any).payerNumber || null,
+        paymentHistory: (formData as any).payerNumber
+          ? [
+              {
+                type: "created",
+                method: formData.paymentMethod,
+                amount: formData.paymentAmount
+                  ? Number(formData.paymentAmount)
+                  : estimatedEarnings,
+                initiatedBy: auth.currentUser?.uid || null,
+                timestamp: createdTimestamp,
+                meta: { note: "Created with payerNumber" },
+              },
+            ]
+          : [],
 
         // Special Requirements
         isFragile: formData.isFragile,
@@ -1738,6 +1754,7 @@ export default function CreateDelivery() {
         carrierId: "",
         priority: "standard",
         paymentMethod: "cash_on_delivery",
+        payerNumber: "",
         paymentAmount: "",
         paymentStatus: "pending",
         isFragile: false,
@@ -2445,6 +2462,22 @@ export default function CreateDelivery() {
                   <option value="bank_transfer">Bank Transfer</option>
                 </select>
               </div>
+
+              {formData.paymentMethod === "mobile_money" && (
+                <div className="mt-3">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    M-Pesa number (use different number if desired)
+                  </label>
+                  <input
+                    type="tel"
+                    name="payerNumber"
+                    value={(formData as any).payerNumber || ""}
+                    onChange={handleChange}
+                    placeholder="e.g., 2665XXXXXXXX"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                  />
+                </div>
+              )}
 
               <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
                 <p className="text-sm font-medium text-blue-800">
