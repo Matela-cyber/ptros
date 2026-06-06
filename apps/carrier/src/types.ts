@@ -113,7 +113,7 @@ export interface Delivery {
     };
   };
   otpVerified: boolean;
-  paymentMethod: "cash" | "mobile_money" | "card";
+  paymentMethod: "cash" | "mobile_money";
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
