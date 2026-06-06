@@ -416,8 +416,8 @@ export default function MyDeliveries() {
         paymentConfirmedBy: auth.currentUser?.uid || null,
         paymentConfirmedAt: ts,
         paymentHistory: arrayUnion({
-          type: "cod_paid",
-          method: "cash_on_delivery",
+          type: "cash_paid",
+          method: "cash",
           amount: delivery?.paymentAmount || 0,
           confirmedBy: auth.currentUser?.uid || null,
           timestamp: ts,
@@ -841,15 +841,14 @@ export default function MyDeliveries() {
                     >
                       Map View
                     </button>
-                    {delivery.paymentMethod === "cash_on_delivery" &&
-                      delivery.paymentStatus !== "paid" && (
-                        <button
-                          onClick={() => markCodPaidCarrier(delivery.id)}
-                          className="text-sm px-2.5 py-1.5 rounded-md bg-yellow-100 text-yellow-700 hover:bg-yellow-200 font-semibold"
-                        >
-                          Mark COD Paid
-                        </button>
-                      )}
+                    {delivery.paymentStatus !== "paid" && (
+                      <button
+                        onClick={() => markCodPaidCarrier(delivery.id)}
+                        className="text-sm px-2.5 py-1.5 rounded-md bg-yellow-100 text-yellow-700 hover:bg-yellow-200 font-semibold"
+                      >
+                        Mark COD Paid
+                      </button>
+                    )}
                   </div>
 
                   <div className="text-xs text-gray-500">

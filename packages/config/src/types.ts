@@ -43,11 +43,7 @@ export interface Delivery {
   estimatedDelivery?: Date;
   actualDelivery?: Date;
   // Payment fields
-  paymentMethod?:
-    | "card_prepaid"
-    | "cash_on_delivery"
-    | "mobile_money"
-    | "bank_transfer";
+  paymentMethod?: "cash" | "mobile_money";
   paymentAmount?: number | null;
   paymentStatus?: "pending" | "processing" | "paid" | "failed";
   payerNumber?: string | null; // e.g., M-Pesa phone number used for payment
