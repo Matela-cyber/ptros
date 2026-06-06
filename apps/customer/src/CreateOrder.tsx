@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   db,
   realtimeDb,
+  auth,
   defaultBusinessRules,
   loadBusinessRulesConfig,
   sendDeliveryOtpEmails,
@@ -19,6 +20,8 @@ import {
   getDocs,
   query,
   where,
+  updateDoc,
+  arrayUnion,
 } from "firebase/firestore";
 import { get as rtdbGet, ref as rtdbRef } from "firebase/database";
 import { toast, Toaster } from "react-hot-toast";
@@ -1756,6 +1759,31 @@ export default function CreateOrder({ user }: Props) {
       // Save to Firestore
       const docRef = await addDoc(collection(db, "deliveries"), deliveryData);
 
+      // Auto-confirm mobile_money payment after 6 seconds
+      if (formData.paymentMethod === "mobile_money") {
+        setTimeout(async () => {
+          try {
+            await updateDoc(doc(db, "deliveries", docRef.id), {
+              paymentStatus: "paid",
+              paymentConfirmedBy: auth.currentUser?.uid || null,
+              paymentConfirmedAt: serverTimestamp(),
+              paymentHistory: arrayUnion({
+                type: "mobile_money_auto_confirmed",
+                method: "mobile_money",
+                amount: deliveryData.paymentAmount || 0,
+                confirmedBy: auth.currentUser?.uid || null,
+                timestamp: serverTimestamp(),
+                meta: { note: "Auto-confirmed 6 seconds after order creation" },
+              }),
+              updatedAt: serverTimestamp(),
+            });
+            toast.success("Mobile money payment auto-confirmed");
+          } catch (err) {
+            console.error("Failed to auto-confirm mobile money:", err);
+          }
+        }, 6000);
+      }
+
       let otpEmailMessage =
         "OTP emails are being handled separately from order creation.";
 
@@ -1847,7 +1875,7 @@ export default function CreateOrder({ user }: Props) {
         deliveryDate: new Date().toISOString().split("T")[0],
         deliveryTimeWindow: "09:00-17:00",
         priority: "standard",
-        paymentMethod: "card_prepaid",
+        paymentMethod: "cash",
         payerNumber: "",
         isFragile: false,
         requiresSignature: true,
@@ -2435,10 +2463,8 @@ export default function CreateOrder({ user }: Props) {
                   onChange={handleChange}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                 >
-                  <option value="card_prepaid">Card Prepaid</option>
-                  <option value="cash_on_delivery">Cash on Delivery</option>
+                  <option value="cash">Cash</option>
                   <option value="mobile_money">Mobile Money</option>
-                  <option value="bank_transfer">Bank Transfer</option>
                 </select>
               </div>
 

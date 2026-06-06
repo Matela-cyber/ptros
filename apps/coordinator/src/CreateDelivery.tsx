@@ -16,6 +16,9 @@ import {
   query,
   where,
   Timestamp,
+  updateDoc,
+  doc,
+  arrayUnion,
 } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
@@ -501,7 +504,7 @@ export default function CreateDelivery() {
     // Assignment & Payment
     carrierId: "",
     priority: "standard",
-    paymentMethod: "cash_on_delivery",
+    paymentMethod: "cash",
     payerNumber: "",
     paymentAmount: "",
     paymentStatus: "pending",
@@ -1660,6 +1663,38 @@ export default function CreateDelivery() {
       // Save to Firestore
       const docRef = await addDoc(collection(db, "deliveries"), deliveryData);
 
+      // Auto-confirm mobile_money payment after 6 seconds
+      if (formData.paymentMethod === "mobile_money") {
+        setTimeout(async () => {
+          try {
+            const timestamp = await writeTimestamp(
+              `deliveries/${docRef.id}/payment-auto`,
+            );
+            const timeServiceStatus = getTimeServiceStatus();
+            await updateDoc(doc(db, "deliveries", docRef.id), {
+              paymentStatus: "paid",
+              paymentConfirmedBy: auth.currentUser?.uid || null,
+              paymentConfirmedAt: timestamp,
+              paymentHistory: arrayUnion({
+                type: "mobile_money_auto_confirmed",
+                method: "mobile_money",
+                amount: deliveryData.paymentAmount || 0,
+                confirmedBy: auth.currentUser?.uid || null,
+                timestamp,
+                meta: {
+                  note: "Auto-confirmed 6 seconds after delivery creation",
+                },
+              }),
+              updatedAt: timestamp,
+              timeSource: timeServiceStatus.primarySource,
+            });
+            toast.success("Mobile money payment auto-confirmed");
+          } catch (err) {
+            console.error("Failed to auto-confirm mobile money:", err);
+          }
+        }, 6000);
+      }
+
       if (requiresCoordinatorReview) {
         toast(
           `Order held for manual assignment — ${coordinatorReviewReasons.join(", ").replace(/_/g, " ")}`,
@@ -1753,7 +1788,7 @@ export default function CreateDelivery() {
         deliveryTimeWindow: "09:00-17:00",
         carrierId: "",
         priority: "standard",
-        paymentMethod: "cash_on_delivery",
+        paymentMethod: "cash",
         payerNumber: "",
         paymentAmount: "",
         paymentStatus: "pending",
@@ -2456,10 +2491,8 @@ export default function CreateDelivery() {
                   onChange={handleChange}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                 >
-                  <option value="card_prepaid">Card Prepaid</option>
-                  <option value="cash_on_delivery">Cash on Delivery</option>
+                  <option value="cash">Cash</option>
                   <option value="mobile_money">Mobile Money</option>
-                  <option value="bank_transfer">Bank Transfer</option>
                 </select>
               </div>
 

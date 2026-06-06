@@ -297,8 +297,8 @@ export default function DeliveryDetails() {
         paymentConfirmedBy: auth.currentUser?.uid || null,
         paymentConfirmedAt: timestamp,
         paymentHistory: arrayUnion({
-          type: "cod_paid",
-          method: "cash_on_delivery",
+          type: "cash_paid",
+          method: "cash",
           amount: delivery.paymentAmount || 0,
           confirmedBy: auth.currentUser?.uid || null,
           timestamp,
@@ -564,15 +564,14 @@ export default function DeliveryDetails() {
                 Mark as Delivered
               </button>
             )}
-            {delivery.paymentMethod === "cash_on_delivery" &&
-              delivery.paymentStatus !== "paid" && (
-                <button
-                  onClick={markCodPaid}
-                  className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700"
-                >
-                  Mark as Paid (COD)
-                </button>
-              )}
+            {delivery.paymentStatus !== "paid" && (
+              <button
+                onClick={markCodPaid}
+                className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700"
+              >
+                Mark as Paid (COD)
+              </button>
+            )}
             <span
               className={`px-4 py-2 rounded-full font-medium ${
                 delivery.status === "pending"
