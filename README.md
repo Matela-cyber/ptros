@@ -1,44 +1,67 @@
-# PTROS - Advanced Delivery & Logistics Management Platform
+# PTROS Platform
 
-> A modern, full-stack platform for managing carrier operations with real-time route optimization, live tracking, and intelligent dispatch systems.
+> PTROS is a multi-app logistics platform built for the full delivery ecosystem: carrier operations, coordinator oversight, and customer-facing order visibility. The platform is not limited to the carrier app alone; it includes multiple integrated web applications connected to the same backend, data layer, and operational workflows.
 
-[![Live Demo](https://img.shields.io/badge/Live-Demo-blue?style=flat-square)](https://ptros-carrier.vercel.app)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9+-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18.3-61DAFB?style=flat-square&logo=react)](https://react.dev/)
 [![Firebase](https://img.shields.io/badge/Firebase-Realtime-FFCA28?style=flat-square&logo=firebase)](https://firebase.google.com/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](#license)
 
-## 📋 Overview
+## 📋 Platform Overview
 
-PTROS is an enterprise-grade logistics management platform built with modern cloud technologies. It provides carriers, dispatchers, and delivery personnel with comprehensive tools for route optimization, real-time vehicle tracking, dynamic delivery scheduling, and performance analytics.
+PTROS is an integrated delivery and logistics platform that supports the complete operational flow across three primary web experiences:
 
-### Key Features
+- Carrier app: delivery execution, route handling, and live operational updates
+- Coordinator app: dispatch management, fleet oversight, and operational control
+- Customer app: order tracking, communication, and transparency for end users
 
-- **🗺️ Real-Time Map Visualization** - Live tracking of delivery vehicles with interactive map interfaces (Leaflet, Google Maps)
-- **📍 Intelligent Route Optimization** - Advanced algorithms for optimal delivery sequencing and cost reduction
-- **🚗 Carrier Management** - Comprehensive carrier profiles, vehicle management, and performance metrics
-- **📱 Responsive Design** - Mobile-first interface optimized for dispatch centers and on-field personnel
-- **⚡ Real-Time Updates** - Firebase Realtime Database for instant data synchronization across all clients
-- **🔐 Secure Backend** - Cloud Functions with Firebase security rules and authentication
-- **📊 Analytics Dashboard** - Actionable insights into delivery metrics, efficiency, and performance
+This repository contains the shared platform codebase for those connected apps and the backend services that support them. The carrier experience is one part of the larger PTROS system, not the entire product.
+
+### Core Platform Capabilities
+
+- Real-time vehicle and order tracking
+- Route optimization and dispatch sequencing
+- Coordinator dashboard for operational oversight
+- Customer visibility into delivery status and communication
+- Shared backend services for order management, notifications, and integrations
+- Multi-app architecture with one connected logistics workflow
 
 ---
 
 ## 🏗️ Architecture
 
-This is a **monorepo** project using **Turbo** for build orchestration and **pnpm** for package management, consisting of:
+This is a monorepo for the PTROS platform using Turbo for orchestration and pnpm for package management. The repository includes multiple web applications that operate as a single integrated system.
 
 ### Core Structure
 
-```
+```bash
 ptros/
-├── apps/                      # Application packages
-│   └── carrier/              # Carrier dashboard & delivery app
-├── functions/                # Firebase Cloud Functions
-├── packages/                 # Shared packages & utilities
-├── docs/                     # Documentation
-└── scripts/                  # Utility scripts
+├── apps/                              # Web applications
+│   ├── carrier/                       # Carrier operations dashboard and delivery workflow
+│   ├── coordinator/                   # Dispatch and operations coordination
+│   └── customer/                      # Customer-facing tracking and communication portal
+├── functions/                          # Firebase Cloud Functions / backend logic
+├── packages/                          # Shared utilities, config, and types
+├── docs/                              # Documentation
+├── scripts/                           # Utility scripts
+├── package.json                       # Root workspace config
+├── pnpm-lock.yaml                     # Lockfile
+├── turbo.json                         # Turbo config
+├── firebase.json                      # Firebase config
+├── firestore.rules                    # Firestore security rules
+├── database.rules.json                # Realtime Database rules
+├── storage.rules                      # Storage rules
+├── README.md                          # Project overview
+└── LICENSE                            # License
 ```
+
+### Application Roles
+
+| App | Purpose |
+|------|---------|
+| **Carrier** | Driver and route execution tools, live updates, delivery task handling |
+| **Coordinator** | Dispatch control, fleet visibility, assignment logic, operations oversight |
+| **Customer** | Customer order tracking, status visibility, and communication experience |
 
 ### Technology Stack
 
@@ -64,201 +87,164 @@ ptros/
 
 ### Prerequisites
 
-- **Node.js** 20.x or higher
-- **pnpm** 8.x or higher
-- **Firebase CLI** for backend deployment
-- Valid Firebase project credentials
+- Node.js 20.x or higher
+- pnpm 8.x or higher
+- Firebase CLI
+- Valid Firebase project configuration
 
 ### Installation
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/Matela-cyber/ptros.git
-   cd ptros
-   ```
+1. Clone the repository
 
-2. **Install dependencies**
-   ```bash
-   pnpm install
-   ```
+```bash
+git clone https://github.com/Matela-cyber/ptros.git
+cd ptros
+```
 
-3. **Set up environment variables**
-   ```bash
-   # Copy example environment file
-   cp .env.example .env
-   # Edit .env with your Firebase credentials and API keys
-   ```
+2. Install dependencies
 
-4. **Start development servers**
-   ```bash
-   pnpm dev
-   ```
-   This starts all apps and functions using Turbo's parallel execution.
+```bash
+pnpm install
+```
+
+3. Configure environment variables
+
+```bash
+cp .env.example .env
+```
+
+4. Start the platform
+
+```bash
+pnpm dev
+```
+
+This runs the monorepo and starts the connected app services for the PTROS platform.
 
 ### Available Scripts
 
 ```bash
 # Development
-pnpm dev              # Start all development servers
-pnpm build            # Build all packages
-pnpm lint             # Run linting across all packages
+pnpm dev              # Start all apps and services
+pnpm build            # Build all packages and apps
+pnpm lint             # Run linting across the repo
 
 # Firebase
 pnpm functions:serve  # Start Firebase emulators locally
-pnpm functions:deploy # Deploy functions to Firebase
+pnpm functions:deploy # Deploy backend functions
 pnpm functions:logs   # Stream Firebase function logs
-
-# Tunneling (for testing webhooks)
-pnpm tunnel:carrier   # Expose local carrier app via ngrok
 ```
 
 ---
 
-## 📦 Project Structure
+## 📦 Project Structure by App
 
 ### `/apps/carrier`
-The main carrier dashboard and delivery management application.
+The delivery operations layer used for carrier-side execution.
 
-- **components/** - Reusable React components (maps, forms, lists, modals)
-- **hooks/** - Custom React hooks for state management and API integration
-- **pages/** - Route-level page components
-- **services/** - Data access layer and API wrappers for Firebase
-- **types/** - Shared TypeScript type definitions
-- **utils/** - Helper functions and utilities
+- route handling and delivery execution
+- live operational updates
+- driver-facing task workflows
+
+### `/apps/coordinator`
+The operational control layer used for dispatchers and coordinators.
+
+- fleet monitoring
+- assignment and scheduling visibility
+- coordination and dispatch workflows
+
+### `/apps/customer`
+The customer experience layer used for order tracking and communication.
+
+- status tracking
+- customer notifications
+- visibility into delivery progress
 
 ### `/functions`
-Serverless Cloud Functions for backend logic:
+Serverless backend services for business logic and platform integrations.
 
-- Order processing and validation
-- Route optimization algorithms
-- Email notifications (via Resend)
-- Database triggers and cleanup
-- Payment processing and webhooks
+- order processing and validation
+- route optimization workflows
+- notifications and email flows
+- database triggers and cleanup
 
 ### `/packages`
-Shared utilities and configuration:
-
-- Common TypeScript configurations
-- Shared constants and enums
-- Utility functions and helpers
+Shared utilities, configs, and platform-level resources.
 
 ---
 
-## 🗺️ Features in Detail
+## 🗺️ Platform Features
 
-### Real-Time Map Visualization
-- **Live Vehicle Tracking** - See all active deliveries on an interactive map
-- **Multi-Map Support** - Toggle between Leaflet and Google Maps
-- **Route Display** - Visualize optimized delivery sequences
-- **Geofencing** - Define service areas and delivery zones
+### Real-Time Delivery Operations
+- Live order and vehicle tracking
+- Delivery status visibility across apps
+- Centralized operational data flow
 
 ### Route Optimization
-- **Intelligent Sequencing** - Automatic route ordering based on location and time windows
-- **Cost Minimization** - Reduce fuel costs and delivery time
-- **Driver Assignment** - Smart matching of deliveries to available carriers
-- **Real-Time Adjustments** - Update routes dynamically based on traffic and availability
+- Delivery sequencing based on operational constraints
+- Efficient assignment and routing logic
+- Dynamic updates as conditions change
 
-### Carrier Operations
-- **Delivery Tracking** - Real-time status updates for all in-transit deliveries
-- **Performance Metrics** - Track KPIs like on-time delivery rate and revenue
-- **Order Management** - Comprehensive order lifecycle management
-- **Communication** - Integrated notifications and messaging
+### Multi-App Coordination
+- Carrier app handles execution
+- Coordinator app manages oversight and dispatch actions
+- Customer app provides transparency and communication
 
----
-
-## 📊 Documentation
-
-Additional documentation is available in the repository:
-
-- **[MAP_VISUALIZATION_GUIDE.md](./MAP_VISUALIZATION_GUIDE.md)** - Guide to map features and customization
-- **[ROUTE_OPTIMIZATION_TRACKING_GUIDE.md](./ROUTE_OPTIMIZATION_TRACKING_GUIDE.md)** - Route optimization implementation details
-- **[CHANGELOG.md](./CHANGELOG.md)** - Version history and release notes
-
----
-
-## 🔒 Security
-
-- **Firebase Security Rules** - Row-level security for Firestore and Realtime Database
-- **Authentication** - Firebase Auth with multi-factor support
-- **Environment Secrets** - Sensitive credentials managed via environment variables
-- **Input Validation** - Server-side validation of all inputs
-- **HTTPS Only** - All communications encrypted in transit
-
-### Key Security Files
-
-- `firestore.rules` - Firestore access control
-- `database.rules.json` - Realtime Database security
-- `storage.rules` - Cloud Storage access policies
+### Operational Intelligence
+- KPI and efficiency monitoring
+- Dispatch and execution analytics
+- Status updates across the platform lifecycle
 
 ---
 
 ## 🌐 Deployment
 
-### Frontend (Carrier App)
-Deployed to **Vercel** for optimized performance:
-```bash
-pnpm build
-vercel deploy
-```
+The PTROS platform is designed as a multi-app system, with each application deployed independently while sharing the same core backend and business logic.
 
-### Backend (Cloud Functions)
-Deploy to Firebase:
+### Frontend Applications
+
+Each web app can be deployed to Vercel or a similar frontend platform as needed.
+
+### Backend
+
 ```bash
 pnpm functions:deploy
 ```
 
 ### Database
-Configure Firestore indexes in Firebase Console using `firestore.indexes.json`.
+
+Configure Firebase resources and indexes using the repo's Firestore and Realtime Database rules.
 
 ---
 
-## 🛠️ Development Workflow
+## 🔒 Security
 
-### Linting & Code Quality
-```bash
-pnpm lint
-```
-
-### Type Checking
-```bash
-pnpm build
-```
-
-### Testing
-Run tests with your preferred framework:
-```bash
-pnpm test
-```
-
----
-
-## 📈 Performance
-
-- **Build Time** - Optimized via Turbo caching (~10-15 seconds from scratch)
-- **Bundle Size** - Code-split with Vite (~150KB gzipped)
-- **Runtime** - Leverages React 18 concurrent rendering
-- **Database** - Firestore with optimized indexes for query performance
+- Firebase Authentication
+- Firestore and Realtime Database access rules
+- Environment-based secret management
+- HTTPS-only communication
+- Server-side validation and secure backend logic
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please follow these steps:
+Contributions are welcome. Please follow the normal GitHub flow:
 
 1. Create a feature branch (`git checkout -b feature/amazing-feature`)
 2. Commit your changes (`git commit -m 'Add amazing feature'`)
 3. Push to the branch (`git push origin feature/amazing-feature`)
-4. Open a Pull Request
+4. Open a pull request
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License. See the LICENSE file for details.
 
 ---
 
-## 👤 Author
+## 👤 Maintainer
 
 **Matela-cyber**
 
@@ -269,24 +255,26 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 📞 Support
 
-For questions, issues, or suggestions:
+For issues, questions, or feature requests:
+
 - Open an [Issue](https://github.com/Matela-cyber/ptros/issues)
-- Check existing [Documentation](./docs)
+- Review repository documentation in the `docs` directory
 
 ---
 
 ## 🙏 Acknowledgments
 
-Built with modern technologies including:
-- React & TypeScript ecosystems
-- Firebase & Google Cloud Platform
-- Open-source mapping libraries
-- The JavaScript/Node.js community
+Built with modern tooling and a multi-app platform architecture, including:
+
+- React and TypeScript
+- Firebase and Google Cloud services
+- Tailwind CSS and Vite
+- Open source mapping and logistics tooling
 
 ---
 
 <div align="center">
 
-**[⬆ Back to Top](#ptros---advanced-delivery--logistics-management-platform)**
+**[⬆ Back to Top](#ptros-platform)**
 
 </div>
