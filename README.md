@@ -2,6 +2,9 @@
 
 > PTROS is a multi-app logistics platform built for the full delivery ecosystem: carrier operations, coordinator oversight, and customer-facing order visibility. The platform is not limited to the carrier app alone; it includes multiple integrated web applications connected to the same backend, data layer, and operational workflows.
 
+[![Carrier App](https://img.shields.io/badge/Carrier-App-00C7B7?style=flat-square)](https://ptros-carrier.vercel.app)
+[![Coordinator App](https://img.shields.io/badge/Coordinator-App-7C3AED?style=flat-square)](https://ptros-coordinator.vercel.app)
+[![Customer App](https://img.shields.io/badge/Customer-App-FF6B35?style=flat-square)](https://ptros-customer.vercel.app)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9+-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18.3-61DAFB?style=flat-square&logo=react)](https://react.dev/)
 [![Firebase](https://img.shields.io/badge/Firebase-Realtime-FFCA28?style=flat-square&logo=firebase)](https://firebase.google.com/)
@@ -203,7 +206,9 @@ The PTROS platform is designed as a multi-app system, with each application depl
 
 ### Frontend Applications
 
-Each web app can be deployed to Vercel or a similar frontend platform as needed.
+- [Carrier App](https://ptros-carrier.vercel.app)
+- [Coordinator App](https://ptros-coordinator.vercel.app)
+- [Customer App](https://ptros-customer.vercel.app)
 
 ### Backend
 
